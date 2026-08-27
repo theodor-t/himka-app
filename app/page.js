@@ -1207,29 +1207,35 @@ function FinancialInsights({ db, totals, monthly }) {
 }
 
 function PrintReport({ db, totals, todayAppointments }) {
+  const activeDebts = db.debts.filter((debt) => !debt.paid);
+  const debtTotal = activeDebts.reduce(
+    (sum, debt) => sum + Number(debt.amount || 0),
+    0,
+  );
+  const availableWindows = db.windows
+    .filter((slot) => parseDate(slot.datetime))
+    .sort((first, second) => parseDate(first.datetime) - parseDate(second.datetime))
+    .slice(0, 6);
   return (
     <section className="print-report">
-      <h1>ANGEL DETAILING</h1>
-      <p>
-        Финансовый отчёт и расписание на {dateText(new Date()).slice(0, 10)}
-      </p>
+      <div className="print-report-header">
+        <div>
+          <span className="print-report-kicker">ANGEL DETAILING · CONTROL CENTER</span>
+          <h1>Операционный отчёт</h1>
+          <p>Сформирован {dateText(new Date())}</p>
+        </div>
+        <img src="/angel-logo.png" alt="ANGEL DETAILING" />
+      </div>
       <div className="print-report-grid">
-        <div>
-          <span>Доходы за месяц</span>
-          <strong>{money(totals.incomeMonth)}</strong>
-        </div>
-        <div>
-          <span>Затраты за месяц</span>
-          <strong>{money(totals.expensesMonth)}</strong>
-        </div>
-        <div>
-          <span>Чистая прибыль</span>
-          <strong>{money(totals.incomeMonth - totals.expensesMonth)}</strong>
-        </div>
-        <div>
-          <span>Клиентов всего</span>
-          <strong>{db.clients.length}</strong>
-        </div>
+        <div><span>Баланс кассы</span><strong>{money(totals.cash)}</strong></div>
+        <div><span>Доходы всего</span><strong>{money(totals.income)}</strong></div>
+        <div><span>Затраты всего</span><strong>{money(totals.commonExpenses)}</strong></div>
+        <div><span>Чистая прибыль</span><strong>{money(totals.profit)}</strong></div>
+      </div>
+      <div className="print-report-secondary">
+        <div><span>Клиентов</span><strong>{db.clients.length}</strong></div>
+        <div><span>Долги к погашению</span><strong>{money(debtTotal)}</strong></div>
+        <div><span>Свободных окон</span><strong>{db.windows.length}</strong></div>
       </div>
       <h2>Записи на сегодня</h2>
       {todayAppointments.length ? (
@@ -1248,6 +1254,19 @@ function PrintReport({ db, totals, todayAppointments }) {
       ) : (
         <p>Записей на сегодня нет.</p>
       )}
+      <div className="print-report-columns">
+        <div>
+          <h2>Должники</h2>
+          {activeDebts.length ? activeDebts.slice(0, 6).map((debt) => {
+            const client = db.clients.find((row) => String(row.id) === String(debt.clientId));
+            return <div className="print-list-row" key={debt.id}><span>{client?.car || "Клиент"}</span><strong>{money(debt.amount)}</strong></div>;
+          }) : <p>Активных долгов нет.</p>}
+        </div>
+        <div>
+          <h2>Свободные окна</h2>
+          {availableWindows.length ? availableWindows.map((slot) => <div className="print-list-row" key={slot.id}><span>{dateText(slot.datetime).split(" ")[0]}</span><strong>{dateText(slot.datetime).slice(11)}</strong></div>) : <p>Свободных окон нет.</p>}
+        </div>
+      </div>
     </section>
   );
 }

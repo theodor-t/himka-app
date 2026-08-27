@@ -1710,16 +1710,20 @@ tr:last-child td {
 @media print {
   @page {
     margin: 18mm;
+    size: A4;
   }
   body {
-    background: #fff;
-    color: #111;
+    background: #0a0a0c;
+    color: #f4f4f5;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .sidebar,
   .top-bar,
   .modal,
   .overlay,
-  .page-container > *:not(.print-report) {
+  .page-container > *:not(.dashboard-shell),
+  .dashboard-shell > *:not(.print-report) {
     display: none !important;
   }
   .app-container,
@@ -1729,44 +1733,103 @@ tr:last-child td {
     height: auto;
     overflow: visible;
     padding: 0;
-    background: #fff;
+    background: #0a0a0c;
   }
   .print-report {
-    display: block;
-    color: #111;
-    font-family: Arial, sans-serif;
+    display: block !important;
+    color: #f4f4f5;
+    font-family: "Space Grotesk", sans-serif;
+  }
+  .print-report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #ff003c;
+  }
+  .print-report-header img {
+    width: 92px;
+    height: 92px;
+    object-fit: cover;
+    border-radius: 12px;
+  }
+  .print-report-kicker {
+    color: #ff003c;
+    font: 700 10px monospace;
+    letter-spacing: 2px;
   }
   .print-report h1 {
-    color: #111;
-    font-size: 24px;
+    margin: 8px 0 5px;
+    color: #fff;
+    font-size: 30px;
+  }
+  .print-report-header p,
+  .print-report h2 {
+    margin: 0;
   }
   .print-report h2 {
-    margin: 28px 0 12px;
+    margin: 22px 0 12px;
     font-size: 16px;
   }
   .print-report p {
-    color: #555;
+    color: #94a3b8;
+    font-size: 11px;
   }
   .print-report-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 12px;
-    margin: 24px 0;
+    margin: 20px 0 12px;
   }
   .print-report-grid div,
+  .print-report-secondary > div,
   .print-appointment {
     display: grid;
     gap: 5px;
     padding: 12px;
-    border: 1px solid #ddd;
+    border: 1px solid #3f3f46;
+    background: #18181b;
+  }
+  .print-report-grid strong {
+    color: #38bdf8;
+    font: 700 17px monospace;
+  }
+  .print-report-secondary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .print-report-secondary strong {
+    color: #fff;
+    font: 700 15px monospace;
   }
   .print-report-grid span,
+  .print-report-secondary span,
   .print-appointment span {
-    color: #555;
+    color: #94a3b8;
     font-size: 12px;
   }
   .print-appointment {
     margin-bottom: 8px;
+  }
+  .print-report-columns {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+  }
+  .print-list-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid #3f3f46;
+    font-size: 12px;
+  }
+  .print-list-row strong {
+    color: #f59e0b;
+    font-family: monospace;
   }
 }
 @media (max-width: 380px) {

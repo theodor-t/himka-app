@@ -686,7 +686,8 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
     .filter(({ parsedDate }) => parsedDate)
     .filter(({ parsedDate }) => {
       const daysFromToday =
-        (parsedDate - new Date(today.getFullYear(), today.getMonth(), today.getDate())) /
+        (parsedDate -
+          new Date(today.getFullYear(), today.getMonth(), today.getDate())) /
         86400000;
       return daysFromToday >= 0 && daysFromToday < 7;
     })
@@ -735,7 +736,11 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
           </div>
         )}
         <div className="button-row">
-          <Button variant="secondary" icon={FileText} onClick={() => window.print()}>
+          <Button
+            variant="secondary"
+            icon={FileText}
+            onClick={() => window.print()}
+          >
             PDF-отчёт
           </Button>
           <Button variant="secondary" icon={Save} onClick={exportData}>
@@ -811,7 +816,11 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
           </div>
         </div>
       </section>
-      <PrintReport db={db} totals={totals} todayAppointments={todayAppointments} />
+      <PrintReport
+        db={db}
+        totals={totals}
+        todayAppointments={todayAppointments}
+      />
       <MonthlyChart data={monthly} />
     </>
   );
@@ -821,20 +830,44 @@ function PrintReport({ db, totals, todayAppointments }) {
   return (
     <section className="print-report">
       <h1>ANGEL DETAILING</h1>
-      <p>Финансовый отчёт и расписание на {dateText(new Date()).slice(0, 10)}</p>
+      <p>
+        Финансовый отчёт и расписание на {dateText(new Date()).slice(0, 10)}
+      </p>
       <div className="print-report-grid">
-        <div><span>Доходы за месяц</span><strong>{money(totals.incomeMonth)}</strong></div>
-        <div><span>Затраты за месяц</span><strong>{money(totals.expensesMonth)}</strong></div>
-        <div><span>Чистая прибыль</span><strong>{money(totals.incomeMonth - totals.expensesMonth)}</strong></div>
-        <div><span>Клиентов всего</span><strong>{db.clients.length}</strong></div>
+        <div>
+          <span>Доходы за месяц</span>
+          <strong>{money(totals.incomeMonth)}</strong>
+        </div>
+        <div>
+          <span>Затраты за месяц</span>
+          <strong>{money(totals.expensesMonth)}</strong>
+        </div>
+        <div>
+          <span>Чистая прибыль</span>
+          <strong>{money(totals.incomeMonth - totals.expensesMonth)}</strong>
+        </div>
+        <div>
+          <span>Клиентов всего</span>
+          <strong>{db.clients.length}</strong>
+        </div>
       </div>
       <h2>Записи на сегодня</h2>
-      {todayAppointments.length ? todayAppointments.map((client) => (
-        <div className="print-appointment" key={client.id}>
-          <strong>{dateText(client.datetime).slice(11)} · {client.car || "Без имени"}</strong>
-          <span>{client.service || "Услуга не указана"} · {client.phone || "Телефон не указан"}</span>
-        </div>
-      )) : <p>Записей на сегодня нет.</p>}
+      {todayAppointments.length ? (
+        todayAppointments.map((client) => (
+          <div className="print-appointment" key={client.id}>
+            <strong>
+              {dateText(client.datetime).slice(11)} ·{" "}
+              {client.car || "Без имени"}
+            </strong>
+            <span>
+              {client.service || "Услуга не указана"} ·{" "}
+              {client.phone || "Телефон не указан"}
+            </span>
+          </div>
+        ))
+      ) : (
+        <p>Записей на сегодня нет.</p>
+      )}
     </section>
   );
 }

@@ -50,6 +50,7 @@ const EMPTY_DB = {
   incomes: [],
   warehouse: [],
   withdrawals: [],
+  debts: [],
   logs: [],
 };
 const NAV = [
@@ -59,7 +60,8 @@ const NAV = [
   ["profit", "3. Прибыль", TrendingUp],
   ["warehouse", "4. Склад", Package],
   ["withdrawals", "5. Вывод денег", Wallet],
-  ["logs", "6. Журнал логов", History],
+  ["debts", "6. Должники", Wallet],
+  ["logs", "7. Журнал логов", History],
 ];
 const RU_COLLATOR = new Intl.Collator("ru", { numeric: true });
 
@@ -88,6 +90,7 @@ const isSameDay = (value, reference = new Date()) => {
 const normalizeDb = (data) => ({
   ...EMPTY_DB,
   ...(data || {}),
+  debts: data?.debts || [],
   logs: data?.logs || [],
 });
 
@@ -458,6 +461,7 @@ export default function Home() {
         setClientQuery={setClientQuery}
         clientStatus={clientStatus}
         setClientStatus={setClientStatus}
+        navigate={navigate}
         sort={sorted}
         sortBy={sortBy}
         openModal={setModal}
@@ -478,6 +482,7 @@ export default function Home() {
       profitMonth,
       clientQuery,
       clientStatus,
+      navigate,
       sort,
     ],
   );
@@ -624,6 +629,7 @@ function PageContent({
   setClientQuery,
   clientStatus,
   setClientStatus,
+  navigate,
   sort,
   sortBy,
   openModal,
@@ -642,6 +648,7 @@ function PageContent({
         reload={reload}
         exportData={exportData}
         importData={importData}
+        navigate={navigate}
       />
     );
   if (page === "clients")
@@ -701,10 +708,21 @@ function PageContent({
         user={user}
       />
     );
+  if (page === "debts")
+    return (
+      <Debtors
+        db={db}
+        sort={sort}
+        sortBy={sortBy}
+        openModal={openModal}
+        mutate={mutate}
+        user={user}
+      />
+    );
   return <Logs db={db} sort={sort} sortBy={sortBy} />;
 }
 
-function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
+function Dashboard({ db, totals, monthly, reload, exportData, importData, navigate }) {
   const month = currentMonth();
   const today = new Date();
   const appointments = db.clients
@@ -833,21 +851,10 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
         </div>
         <div className="card snapshot-card">
           <div className="card-header">
-            <span>Сводка за месяц</span>
-            <TrendingUp size={18} className="red-icon" />
+            <span>Список должников</span>
+            <Wallet size={18} className="warning-icon" />
           </div>
-          <div className="snapshot-row">
-            <span>Доходы</span>
-            <strong className="positive">+{money(totals.incomeMonth)}</strong>
-          </div>
-          <div className="snapshot-row">
-            <span>Затраты</span>
-            <strong className="negative">-{money(totals.expensesMonth)}</strong>
-          </div>
-          <div className="snapshot-row snapshot-total">
-            <span>Чистая прибыль</span>
-            <strong>{money(totals.incomeMonth - totals.expensesMonth)}</strong>
-          </div>
+          <DebtorsPreview db={db} navigate={navigate} />
         </div>
       </section>
       <PrintReport
@@ -857,6 +864,50 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
       />
       <MonthlyChart data={monthly} />
       <FinancialInsights db={db} totals={totals} />
+    </>
+  );
+}
+
+function DebtorsPreview({ db, navigate }) {
+  const activeDebts = db.debts.filter((debt) => !debt.paid);
+  const total = activeDebts.reduce((sum, debt) => sum + Number(debt.amount || 0), 0);
+  return activeDebts.length ? (
+    <>
+      <div className="debt-preview-total"><span>Ожидается к погашению</span><strong>{money(total)}</strong></div>
+      <div className="debt-preview-list">
+        {activeDebts.slice(0, 4).map((debt) => {
+          const client = db.clients.find((row) => String(row.id) === String(debt.clientId));
+          return <div className="debt-preview-row" key={debt.id}><span>{client?.car || "Удаленный клиент"}</span><strong>{money(debt.amount)}</strong></div>;
+        })}
+      </div>
+      <button className="text-action" type="button" onClick={() => navigate("debts")}>Открыть всех должников <ArrowRight size={14} /></button>
+    </>
+  ) : <div className="empty-reminder">Активных долгов нет</div>;
+}
+
+function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
+  const activeDebts = db.debts.filter((debt) => !debt.paid);
+  const total = activeDebts.reduce((sum, debt) => sum + Number(debt.amount || 0), 0);
+  return (
+    <>
+      <section className="card debt-summary-card">
+        <div className="card-header"><span>Учет долгов</span><Button icon={Plus} onClick={() => openModal({ type: "debt" })}>Добавить долг</Button></div>
+        <div className="stats-grid">
+          <div className="stat-card warning"><span className="stat-label">Активных должников</span><strong>{activeDebts.length}</strong></div>
+          <Stat label="Общая сумма долга" value={total} color="danger" />
+          <div className="stat-card success"><span className="stat-label">Погашено долгов</span><strong>{db.debts.filter((debt) => debt.paid).length}</strong></div>
+        </div>
+      </section>
+      <section className="card">
+        <div className="card-header"><span>Все долги</span></div>
+        <Table sortBy={sortBy} headers={["Клиент", "Сумма", "Статус", "Комментарий", "Автор", "Дата", "Действия"].map((label, index) => [label, ["clientId", "amount", "paid", "comment", "author", "date"][index]])}>
+          {sort(db.debts, "date", -1).map((debt) => {
+            const client = db.clients.find((row) => String(row.id) === String(debt.clientId));
+            return <tr key={debt.id}><td><strong>{client?.car || "Удаленный клиент"}</strong></td><td className={debt.paid ? "positive" : "warning"}>{money(debt.amount)}</td><td><Badge status={debt.paid ? "done" : "waiting"}>{debt.paid ? "Погашен" : "Не погашен"}</Badge></td><td>{debt.comment || "-"}</td><td><Badge>{debt.author || user}</Badge></td><td>{debt.date}</td><td><Actions onEdit={() => openModal({ type: "debt", item: debt })} onDelete={() => confirm("Удалить долг?") && mutate({ debts: db.debts.filter((row) => row.id !== debt.id) }, `Удален долг: ${client?.car || debt.clientId}`)} /></td></tr>;
+          })}
+          {!db.debts.length && <EmptyRow colSpan={7}>Должников пока нет</EmptyRow>}
+        </Table>
+      </section>
     </>
   );
 }
@@ -1045,8 +1096,14 @@ function MonthlyChart({ data }) {
 }
 
 function Table({ headers, children, sortBy }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const rows = Array.isArray(children) ? children : [children];
+  const totalPages = Math.max(1, Math.ceil(rows.length / 20));
+  useEffect(() => setCurrentPage((page) => Math.min(page, totalPages)), [totalPages]);
+  const visibleRows = rows.slice((currentPage - 1) * 20, currentPage * 20);
   return (
-    <div className="table-responsive">
+    <>
+      <div className="table-responsive">
       <table>
         <thead>
           <tr>
@@ -1058,9 +1115,11 @@ function Table({ headers, children, sortBy }) {
             ))}
           </tr>
         </thead>
-        <tbody>{children}</tbody>
+        <tbody>{visibleRows}</tbody>
       </table>
-    </div>
+      </div>
+      {totalPages > 1 && <div className="pagination" aria-label="Пагинация"><button className="btn-sm btn-qty" type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>←</button><span>Страница {currentPage} из {totalPages}</span><button className="btn-sm btn-qty" type="button" disabled={currentPage === totalPages} onClick={() => setCurrentPage((page) => page + 1)}>→</button></div>}
+    </>
   );
 }
 function Actions({ onEdit, onDelete }) {
@@ -1141,6 +1200,7 @@ function Clients({
         headers={[
           "Авто",
           "Телефон",
+          "Сиденья",
           "Услуга",
           "Дата",
           "Статус",
@@ -1152,6 +1212,7 @@ function Clients({
           [
             "car",
             "phone",
+            "seatType",
             "service",
             "datetime",
             "status",
@@ -1166,6 +1227,7 @@ function Clients({
               <strong>{client.car}</strong>
             </td>
             <td>{client.phone || "-"}</td>
+            <td>{client.seatType || "-"}</td>
             <td>{client.service || "-"}</td>
             <td>{dateText(client.datetime)}</td>
             <td>
@@ -1194,7 +1256,7 @@ function Clients({
           </tr>
         ))}
         {!filteredClients.length && (
-          <EmptyRow colSpan={8}>Нет клиентов по выбранным фильтрам</EmptyRow>
+          <EmptyRow colSpan={9}>Нет клиентов по выбранным фильтрам</EmptyRow>
         )}
       </Table>
     </section>
@@ -1693,6 +1755,7 @@ function Logs({ db, sort, sortBy }) {
 function ModalContent({ type, item, db, user, onClose, mutate }) {
   const isClient = type === "client";
   const isWarehouse = type === "warehouse";
+  const isDebt = type === "debt";
   const [form, setForm] = useState(
     item
       ? { ...item }
@@ -1700,6 +1763,7 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
         ? {
             car: "",
             phone: "",
+            seatType: "",
             service: "",
             datetime: "",
             status: "В ожидании",
@@ -1707,7 +1771,9 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
           }
         : isWarehouse
           ? { name: "", qty: "" }
-          : { clientId: db.clients[0]?.id || "", amount: "" },
+          : isDebt
+            ? { clientId: db.clients[0]?.id || "", amount: "", paid: false, comment: "" }
+            : { clientId: db.clients[0]?.id || "", amount: "" },
   );
   const update = (event) =>
     setForm({ ...form, [event.target.name]: event.target.value });
@@ -1719,6 +1785,8 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
       return alert("Заполните название и количество!");
     if (type === "income" && (!form.clientId || !Number(form.amount)))
       return alert("Выберите клиента и сумму!");
+    if (isDebt && (!form.clientId || Number(form.amount) <= 0))
+      return alert("Выберите клиента и укажите сумму долга!");
     if (isClient) {
       const value = {
         ...form,
@@ -1767,6 +1835,11 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
         `Доход: +${form.amount} MDL (${client?.car || form.clientId})`,
       );
     }
+    if (isDebt) {
+      const client = db.clients.find((row) => String(row.id) === String(form.clientId));
+      const value = { ...form, id: item?.id || Date.now(), clientId: Number(form.clientId), amount: Number(form.amount), paid: Boolean(form.paid), date: item?.date || nowText(), author: item?.author || user };
+      mutate({ debts: item ? db.debts.map((row) => (row.id === item.id ? value : row)) : [value, ...db.debts] }, `${item ? "Изменен долг" : "Добавлен долг"}: ${client?.car || form.clientId}`);
+    }
     onClose();
   };
   return (
@@ -1780,7 +1853,11 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
             ? item
               ? "Редактировать товар"
               : "Новый товар"
-            : "Добавить доход"
+            : isDebt
+              ? item
+                ? "Редактировать долг"
+                : "Новый долг"
+              : "Добавить доход"
       }
       onClose={onClose}
     >
@@ -1802,6 +1879,16 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
                 onChange={update}
                 placeholder="+373 ..."
               />
+            </Field>
+            <Field label="Тип сидений">
+              <select name="seatType" value={form.seatType || ""} onChange={update}>
+                <option value="">Не указано</option>
+                <option>Ткань</option>
+                <option>Кожа</option>
+                <option>Ткань+кожа</option>
+                <option>Алькантара</option>
+                <option>Другое</option>
+              </select>
             </Field>
             <Field label="Услуга">
               <input
@@ -1878,6 +1965,18 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
                 placeholder="1000"
               />
             </Field>
+          </>
+        )}
+        {isDebt && (
+          <>
+            <Field label="Выберите клиента">
+              <select name="clientId" value={form.clientId} onChange={update}>
+                {db.clients.length ? db.clients.map((client) => <option key={client.id} value={client.id}>{client.car}{client.phone ? ` (${client.phone})` : ""}</option>) : <option value="">Сначала добавьте клиентов</option>}
+              </select>
+            </Field>
+            <Field label="Сумма долга (MDL)"><input name="amount" type="number" min="0.01" step="0.01" value={form.amount} onChange={update} placeholder="450" /></Field>
+            <Field label="Комментарий"><textarea name="comment" value={form.comment} onChange={update} placeholder="Что осталось оплатить..." /></Field>
+            <label className="checkbox-field"><input name="paid" type="checkbox" checked={Boolean(form.paid)} onChange={(event) => setForm({ ...form, paid: event.target.checked })} /><span>Долг погашен</span></label>
           </>
         )}
         <div className="modal-actions">

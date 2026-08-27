@@ -50,6 +50,7 @@ function readDatabase() {
       incomes: [],
       warehouse: [],
       withdrawals: [],
+      debts: [],
       logs: [],
     };
   }
@@ -70,6 +71,7 @@ function validateDatabase(data) {
     "incomes",
     "warehouse",
     "withdrawals",
+    "debts",
     "logs",
   ];
   if (!data || typeof data !== "object") throw new Error("Invalid database");

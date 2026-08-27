@@ -901,6 +901,7 @@ function Dashboard({
         db={db}
         totals={totals}
         todayAppointments={todayAppointments}
+        monthly={monthly}
       />
       <FinancialInsights db={db} totals={totals} monthly={monthly} />
     </div>
@@ -1206,7 +1207,7 @@ function FinancialInsights({ db, totals, monthly }) {
   );
 }
 
-function PrintReport({ db, totals, todayAppointments }) {
+function PrintReport({ db, totals, todayAppointments, monthly }) {
   const activeDebts = db.debts.filter((debt) => !debt.paid);
   const debtTotal = activeDebts.reduce(
     (sum, debt) => sum + Number(debt.amount || 0),
@@ -1236,6 +1237,12 @@ function PrintReport({ db, totals, todayAppointments }) {
         <div><span>Клиентов</span><strong>{db.clients.length}</strong></div>
         <div><span>Долги к погашению</span><strong>{money(debtTotal)}</strong></div>
         <div><span>Свободных окон</span><strong>{db.windows.length}</strong></div>
+      </div>
+      <div className="print-chart">
+        <div className="print-chart-heading"><h2>Динамика по месяцам</h2><span>Доходы · затраты · прибыль</span></div>
+        <div className="print-chart-grid">
+          {monthly.map((item) => <div className="print-chart-column" key={item.month}><div className="print-chart-bars"><i className="income" style={{ height: `${Math.max(3, (item.income / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%` }} /><i className="expenses" style={{ height: `${Math.max(3, (item.expenses / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%` }} /><i className="profit" style={{ height: `${Math.max(3, (Math.abs(item.profit) / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%` }} /></div><span>{item.month.slice(0, 3)}</span></div>)}
+        </div>
       </div>
       <h2>Записи на сегодня</h2>
       {todayAppointments.length ? (

@@ -525,96 +525,94 @@ export default function Home() {
           loading={!sessionChecked}
         />
         {(!sessionChecked || loadingMessage) && (
-          <LoadingOverlay
-            message={loadingMessage || "Проверка сессии..."}
-          />
+          <LoadingOverlay message={loadingMessage || "Проверка сессии..."} />
         )}
       </>
     );
   return (
     <>
       <div className="app-container">
-      <div
-        className={`overlay ${menuOpen ? "active" : ""}`}
-        onClick={() => setMenuOpen(false)}
-      />
-      <aside className={`sidebar ${menuOpen ? "mobile-open" : ""}`}>
-        <div className="sidebar-header">
-          <div className="brand">
-            <span className="brand-icon">
-              <img src="/angel-logo.webp" alt="ANGEL DETAILING" />
-            </span>
-            <span className="brand-text">
-              ANGEL <small>DETAILING</small>
-            </span>
-          </div>
-        </div>
-        <nav className="nav-list">
-          {NAV.map(([id, label, Icon]) => (
-            <button
-              key={id}
-              className={`nav-item ${page === id ? "active" : ""}`}
-              onClick={() => navigate(id)}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="user-info-sidebar">
-          <div className="user-profile">
-            <User size={16} /> <strong>{user}</strong>
-          </div>
-          <button
-            className="logout-btn"
-            type="button"
-            onClick={logout}
-            title="Выйти из системы"
-            aria-label="Выйти из системы"
-          >
-            <LogOut size={14} />
-            <span>Выйти</span>
-          </button>
-        </div>
-      </aside>
-      <main className="main-content">
-        <header className="top-bar">
-          <div className="top-title">
-            <button
-              className="mobile-menu-btn"
-              onClick={() => setMenuOpen(true)}
-              aria-label="Открыть меню"
-            >
-              <Menu size={21} />
-            </button>
-            <h1>{NAV.find((item) => item[0] === page)?.[1] || "Панель"}</h1>
-          </div>
-          <div className="top-bar-actions">
-            <span className="sync-status">{sync}</span>
-            <button
-              className="page-reload-btn"
-              type="button"
-              onClick={() => window.location.reload()}
-              title="Перезагрузить страницу"
-              aria-label="Перезагрузить страницу"
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-        </header>
-        <div className="page-container">{pageContent}</div>
-      </main>
-      {modal && (
-        <ModalContent
-          type={modal.type}
-          item={modal.item}
-          preset={modal.preset}
-          db={db}
-          user={user}
-          onClose={() => setModal(null)}
-          mutate={mutate}
+        <div
+          className={`overlay ${menuOpen ? "active" : ""}`}
+          onClick={() => setMenuOpen(false)}
         />
-      )}
+        <aside className={`sidebar ${menuOpen ? "mobile-open" : ""}`}>
+          <div className="sidebar-header">
+            <div className="brand">
+              <span className="brand-icon">
+                <img src="/angel-logo.webp" alt="ANGEL DETAILING" />
+              </span>
+              <span className="brand-text">
+                ANGEL <small>DETAILING</small>
+              </span>
+            </div>
+          </div>
+          <nav className="nav-list">
+            {NAV.map(([id, label, Icon]) => (
+              <button
+                key={id}
+                className={`nav-item ${page === id ? "active" : ""}`}
+                onClick={() => navigate(id)}
+              >
+                <Icon size={18} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="user-info-sidebar">
+            <div className="user-profile">
+              <User size={16} /> <strong>{user}</strong>
+            </div>
+            <button
+              className="logout-btn"
+              type="button"
+              onClick={logout}
+              title="Выйти из системы"
+              aria-label="Выйти из системы"
+            >
+              <LogOut size={14} />
+              <span>Выйти</span>
+            </button>
+          </div>
+        </aside>
+        <main className="main-content">
+          <header className="top-bar">
+            <div className="top-title">
+              <button
+                className="mobile-menu-btn"
+                onClick={() => setMenuOpen(true)}
+                aria-label="Открыть меню"
+              >
+                <Menu size={21} />
+              </button>
+              <h1>{NAV.find((item) => item[0] === page)?.[1] || "Панель"}</h1>
+            </div>
+            <div className="top-bar-actions">
+              <span className="sync-status">{sync}</span>
+              <button
+                className="page-reload-btn"
+                type="button"
+                onClick={() => window.location.reload()}
+                title="Перезагрузить страницу"
+                aria-label="Перезагрузить страницу"
+              >
+                <RefreshCw size={16} />
+              </button>
+            </div>
+          </header>
+          <div className="page-container">{pageContent}</div>
+        </main>
+        {modal && (
+          <ModalContent
+            type={modal.type}
+            item={modal.item}
+            preset={modal.preset}
+            db={db}
+            user={user}
+            onClose={() => setModal(null)}
+            mutate={mutate}
+          />
+        )}
       </div>
       {loadingMessage && <LoadingOverlay message={loadingMessage} />}
     </>
@@ -1247,33 +1245,85 @@ function PrintReport({ db, totals, todayAppointments, monthly }) {
   );
   const availableWindows = db.windows
     .filter((slot) => parseDate(slot.datetime))
-    .sort((first, second) => parseDate(first.datetime) - parseDate(second.datetime))
+    .sort(
+      (first, second) => parseDate(first.datetime) - parseDate(second.datetime),
+    )
     .slice(0, 6);
   return (
     <section className="print-report">
       <div className="print-report-header">
         <div>
-          <span className="print-report-kicker">ANGEL DETAILING · CONTROL CENTER</span>
+          <span className="print-report-kicker">
+            ANGEL DETAILING · CONTROL CENTER
+          </span>
           <h1>Операционный отчёт</h1>
           <p>Сформирован {dateText(new Date())}</p>
         </div>
         <img src="/angel-logo.png" alt="ANGEL DETAILING" />
       </div>
       <div className="print-report-grid">
-        <div><span>Баланс кассы</span><strong>{money(totals.cash)}</strong></div>
-        <div><span>Доходы всего</span><strong>{money(totals.income)}</strong></div>
-        <div><span>Затраты всего</span><strong>{money(totals.commonExpenses)}</strong></div>
-        <div><span>Чистая прибыль</span><strong>{money(totals.profit)}</strong></div>
+        <div>
+          <span>Баланс кассы</span>
+          <strong>{money(totals.cash)}</strong>
+        </div>
+        <div>
+          <span>Доходы всего</span>
+          <strong>{money(totals.income)}</strong>
+        </div>
+        <div>
+          <span>Затраты всего</span>
+          <strong>{money(totals.commonExpenses)}</strong>
+        </div>
+        <div>
+          <span>Чистая прибыль</span>
+          <strong>{money(totals.profit)}</strong>
+        </div>
       </div>
       <div className="print-report-secondary">
-        <div><span>Клиентов</span><strong>{db.clients.length}</strong></div>
-        <div><span>Долги к погашению</span><strong>{money(debtTotal)}</strong></div>
-        <div><span>Свободных окон</span><strong>{db.windows.length}</strong></div>
+        <div>
+          <span>Клиентов</span>
+          <strong>{db.clients.length}</strong>
+        </div>
+        <div>
+          <span>Долги к погашению</span>
+          <strong>{money(debtTotal)}</strong>
+        </div>
+        <div>
+          <span>Свободных окон</span>
+          <strong>{db.windows.length}</strong>
+        </div>
       </div>
       <div className="print-chart">
-        <div className="print-chart-heading"><h2>Динамика по месяцам</h2><span>Доходы · затраты · прибыль</span></div>
+        <div className="print-chart-heading">
+          <h2>Динамика по месяцам</h2>
+          <span>Доходы · затраты · прибыль</span>
+        </div>
         <div className="print-chart-grid">
-          {monthly.map((item) => <div className="print-chart-column" key={item.month}><div className="print-chart-bars"><i className="income" style={{ height: `${Math.max(3, (item.income / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%` }} /><i className="expenses" style={{ height: `${Math.max(3, (item.expenses / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%` }} /><i className="profit" style={{ height: `${Math.max(3, (Math.abs(item.profit) / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%` }} /></div><span>{item.month.slice(0, 3)}</span></div>)}
+          {monthly.map((item) => (
+            <div className="print-chart-column" key={item.month}>
+              <div className="print-chart-bars">
+                <i
+                  className="income"
+                  style={{
+                    height: `${Math.max(3, (item.income / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%`,
+                  }}
+                />
+                <i
+                  className="expenses"
+                  style={{
+                    height: `${Math.max(3, (item.expenses / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%`,
+                  }}
+                />
+                <i
+                  className="profit"
+                  style={{
+                    height: `${Math.max(3, (Math.abs(item.profit) / Math.max(...monthly.map((row) => Math.max(row.income, row.expenses, Math.abs(row.profit))), 1)) * 100)}%`,
+                  }}
+                />
+              </div>
+              <span>{item.month.slice(0, 3)}</span>
+            </div>
+          ))}
         </div>
       </div>
       <h2>Записи на сегодня</h2>
@@ -1296,14 +1346,34 @@ function PrintReport({ db, totals, todayAppointments, monthly }) {
       <div className="print-report-columns">
         <div>
           <h2>Должники</h2>
-          {activeDebts.length ? activeDebts.slice(0, 6).map((debt) => {
-            const client = db.clients.find((row) => String(row.id) === String(debt.clientId));
-            return <div className="print-list-row" key={debt.id}><span>{client?.car || "Клиент"}</span><strong>{money(debt.amount)}</strong></div>;
-          }) : <p>Активных долгов нет.</p>}
+          {activeDebts.length ? (
+            activeDebts.slice(0, 6).map((debt) => {
+              const client = db.clients.find(
+                (row) => String(row.id) === String(debt.clientId),
+              );
+              return (
+                <div className="print-list-row" key={debt.id}>
+                  <span>{client?.car || "Клиент"}</span>
+                  <strong>{money(debt.amount)}</strong>
+                </div>
+              );
+            })
+          ) : (
+            <p>Активных долгов нет.</p>
+          )}
         </div>
         <div>
           <h2>Свободные окна</h2>
-          {availableWindows.length ? availableWindows.map((slot) => <div className="print-list-row" key={slot.id}><span>{dateText(slot.datetime).split(" ")[0]}</span><strong>{dateText(slot.datetime).slice(11)}</strong></div>) : <p>Свободных окон нет.</p>}
+          {availableWindows.length ? (
+            availableWindows.map((slot) => (
+              <div className="print-list-row" key={slot.id}>
+                <span>{dateText(slot.datetime).split(" ")[0]}</span>
+                <strong>{dateText(slot.datetime).slice(11)}</strong>
+              </div>
+            ))
+          ) : (
+            <p>Свободных окон нет.</p>
+          )}
         </div>
       </div>
     </section>

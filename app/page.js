@@ -542,9 +542,7 @@ export default function Home() {
           </div>
           <span className="sync-status">{sync}</span>
         </header>
-        <div className="page-container">
-          {pageContent}
-        </div>
+        <div className="page-container">{pageContent}</div>
       </main>
       {modal && (
         <ModalContent

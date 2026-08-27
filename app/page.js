@@ -748,7 +748,16 @@ function PageContent({
   return <Logs db={db} sort={sort} sortBy={sortBy} />;
 }
 
-function Dashboard({ db, totals, monthly, reload, exportData, importData, navigate, openModal }) {
+function Dashboard({
+  db,
+  totals,
+  monthly,
+  reload,
+  exportData,
+  importData,
+  navigate,
+  openModal,
+}) {
   const today = new Date();
   const appointments = db.clients
     .map((client) => ({ ...client, parsedDate: parseDate(client.datetime) }))
@@ -768,38 +777,81 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData, naviga
     ["Баланс кассы", totals.cash, "cyan", Wallet],
     ["Доходы всего", totals.income, "success", TrendingUp],
     ["Затраты всего", totals.commonExpenses, "warning", Receipt],
-    ["Активные долги", db.debts.filter((debt) => !debt.paid).reduce((sum, debt) => sum + Number(debt.amount || 0), 0), "danger", Bell],
+    [
+      "Активные долги",
+      db.debts
+        .filter((debt) => !debt.paid)
+        .reduce((sum, debt) => sum + Number(debt.amount || 0), 0),
+      "danger",
+      Bell,
+    ],
   ];
   return (
     <>
       <section className="dashboard-welcome">
         <div className="dashboard-hero-heading">
           <div>
-            <span className="dashboard-kicker">ANGEL DETAILING · CONTROL CENTER</span>
+            <span className="dashboard-kicker">
+              ANGEL DETAILING · CONTROL CENTER
+            </span>
             <h2>Главная панель</h2>
             <p>Ключевые цифры и ближайшие действия на одном экране.</p>
           </div>
-          <div className="dashboard-live"><span /> Данные синхронизированы</div>
+          <div className="dashboard-live">
+            <span /> Данные синхронизированы
+          </div>
         </div>
         <div className="dashboard-actions">
-          <Button variant="secondary" icon={RefreshCw} onClick={reload}>Обновить</Button>
-          <Button variant="secondary" icon={FileText} onClick={() => window.print()}>PDF</Button>
-          <Button variant="secondary" icon={Save} onClick={exportData}>Бэкап</Button>
-          <label className="action-btn btn-secondary file-btn"><Save size={16} /> Импорт <input type="file" accept="application/json,.json" onChange={importData} /></label>
+          <Button variant="secondary" icon={RefreshCw} onClick={reload}>
+            Обновить
+          </Button>
+          <Button
+            variant="secondary"
+            icon={FileText}
+            onClick={() => window.print()}
+          >
+            PDF
+          </Button>
+          <Button variant="secondary" icon={Save} onClick={exportData}>
+            Бэкап
+          </Button>
+          <label className="action-btn btn-secondary file-btn">
+            <Save size={16} /> Импорт{" "}
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={importData}
+            />
+          </label>
         </div>
       </section>
       <section className="dashboard-metrics">
         {dashboardMetrics.map(([label, value, color, Icon]) => (
           <div className={`dashboard-metric ${color}`} key={label}>
-            <div className="dashboard-metric-top"><span>{label}</span><Icon size={17} /></div>
+            <div className="dashboard-metric-top">
+              <span>{label}</span>
+              <Icon size={17} />
+            </div>
             <strong>{money(value)}</strong>
-            <small>{label === "Баланс кассы" ? "после расходов и выводов" : label === "Активные долги" ? "ожидается к погашению" : "за всё время"}</small>
+            <small>
+              {label === "Баланс кассы"
+                ? "после расходов и выводов"
+                : label === "Активные долги"
+                  ? "ожидается к погашению"
+                  : "за всё время"}
+            </small>
           </div>
         ))}
       </section>
       {totals.lowStock.length > 0 && (
         <div className="low-stock-alert dashboard-alert">
-          <Package size={18} /><span><strong>Мало товара:</strong> {totals.lowStock.map((item) => `${item.name} (${item.qty})`).join(", ")}</span>
+          <Package size={18} />
+          <span>
+            <strong>Мало товара:</strong>{" "}
+            {totals.lowStock
+              .map((item) => `${item.name} (${item.qty})`)
+              .join(", ")}
+          </span>
         </div>
       )}
       <AvailableWindows db={db} openModal={openModal} navigate={navigate} />
@@ -857,29 +909,87 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData, naviga
 
 function DebtorsPreview({ db, navigate }) {
   const activeDebts = db.debts.filter((debt) => !debt.paid);
-  const total = activeDebts.reduce((sum, debt) => sum + Number(debt.amount || 0), 0);
+  const total = activeDebts.reduce(
+    (sum, debt) => sum + Number(debt.amount || 0),
+    0,
+  );
   return activeDebts.length ? (
     <>
-      <div className="debt-preview-total"><span>Ожидается к погашению</span><strong>{money(total)}</strong></div>
+      <div className="debt-preview-total">
+        <span>Ожидается к погашению</span>
+        <strong>{money(total)}</strong>
+      </div>
       <div className="debt-preview-list">
         {activeDebts.slice(0, 4).map((debt) => {
-          const client = db.clients.find((row) => String(row.id) === String(debt.clientId));
-          return <div className="debt-preview-row" key={debt.id}><span>{client?.car || "Удаленный клиент"}</span><strong>{money(debt.amount)}</strong></div>;
+          const client = db.clients.find(
+            (row) => String(row.id) === String(debt.clientId),
+          );
+          return (
+            <div className="debt-preview-row" key={debt.id}>
+              <span>{client?.car || "Удаленный клиент"}</span>
+              <strong>{money(debt.amount)}</strong>
+            </div>
+          );
         })}
       </div>
-      <button className="text-action" type="button" onClick={() => navigate("debts")}>Открыть всех должников <ArrowRight size={14} /></button>
+      <button
+        className="text-action"
+        type="button"
+        onClick={() => navigate("debts")}
+      >
+        Открыть всех должников <ArrowRight size={14} />
+      </button>
     </>
-  ) : <div className="empty-reminder">Активных долгов нет</div>;
+  ) : (
+    <div className="empty-reminder">Активных долгов нет</div>
+  );
 }
 
 function AvailableWindows({ db, openModal, navigate }) {
   const windows = [...db.windows]
     .filter((slot) => parseDate(slot.datetime))
-    .sort((first, second) => parseDate(first.datetime) - parseDate(second.datetime));
+    .sort(
+      (first, second) => parseDate(first.datetime) - parseDate(second.datetime),
+    );
   return (
     <section className="card windows-panel">
-      <div className="card-header"><span>Свободные окна</span><Button variant="secondary" icon={CalendarPlus} onClick={() => navigate("windows")}>Управление</Button></div>
-      {windows.length ? <div className="window-grid">{windows.slice(0, 8).map((slot) => <button className="window-slot" type="button" key={slot.id} onClick={() => openModal({ type: "client", preset: { datetime: slot.datetime, windowId: slot.id } })}><span>{dateText(slot.datetime).split(" ")[0]}</span><strong>{dateText(slot.datetime).slice(11)}</strong><small>Записать клиента <ArrowRight size={13} /></small></button>)}</div> : <div className="empty-reminder">Добавьте свободные даты и время в разделе управления.</div>}
+      <div className="card-header">
+        <span>Свободные окна</span>
+        <Button
+          variant="secondary"
+          icon={CalendarPlus}
+          onClick={() => navigate("windows")}
+        >
+          Управление
+        </Button>
+      </div>
+      {windows.length ? (
+        <div className="window-grid">
+          {windows.slice(0, 8).map((slot) => (
+            <button
+              className="window-slot"
+              type="button"
+              key={slot.id}
+              onClick={() =>
+                openModal({
+                  type: "client",
+                  preset: { datetime: slot.datetime, windowId: slot.id },
+                })
+              }
+            >
+              <span>{dateText(slot.datetime).split(" ")[0]}</span>
+              <strong>{dateText(slot.datetime).slice(11)}</strong>
+              <small>
+                Записать клиента <ArrowRight size={13} />
+              </small>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-reminder">
+          Добавьте свободные даты и время в разделе управления.
+        </div>
+      )}
     </section>
   );
 }
@@ -887,10 +997,44 @@ function AvailableWindows({ db, openModal, navigate }) {
 function Windows({ db, sort, sortBy, openModal, mutate }) {
   return (
     <section className="card">
-      <div className="card-header"><span>Свободные окна</span><Button icon={CalendarPlus} onClick={() => openModal({ type: "window" })}>Добавить окно</Button></div>
-      <Table sortBy={sortBy} headers={["Дата и время", "Комментарий", "Действия"].map((label, index) => [label, ["datetime", "comment"][index]])}>
-        {sort(db.windows, "datetime").map((slot) => <tr key={slot.id}><td><strong>{dateText(slot.datetime)}</strong></td><td>{slot.comment || "-"}</td><td><Actions onEdit={() => openModal({ type: "window", item: slot })} onDelete={() => confirm("Удалить свободное окно?") && mutate({ windows: db.windows.filter((row) => row.id !== slot.id) }, `Удалено свободное окно: ${dateText(slot.datetime)}`)} /></td></tr>)}
-        {!db.windows.length && <EmptyRow colSpan={3}>Свободных окон нет</EmptyRow>}
+      <div className="card-header">
+        <span>Свободные окна</span>
+        <Button
+          icon={CalendarPlus}
+          onClick={() => openModal({ type: "window" })}
+        >
+          Добавить окно
+        </Button>
+      </div>
+      <Table
+        sortBy={sortBy}
+        headers={["Дата и время", "Комментарий", "Действия"].map(
+          (label, index) => [label, ["datetime", "comment"][index]],
+        )}
+      >
+        {sort(db.windows, "datetime").map((slot) => (
+          <tr key={slot.id}>
+            <td>
+              <strong>{dateText(slot.datetime)}</strong>
+            </td>
+            <td>{slot.comment || "-"}</td>
+            <td>
+              <Actions
+                onEdit={() => openModal({ type: "window", item: slot })}
+                onDelete={() =>
+                  confirm("Удалить свободное окно?") &&
+                  mutate(
+                    { windows: db.windows.filter((row) => row.id !== slot.id) },
+                    `Удалено свободное окно: ${dateText(slot.datetime)}`,
+                  )
+                }
+              />
+            </td>
+          </tr>
+        ))}
+        {!db.windows.length && (
+          <EmptyRow colSpan={3}>Свободных окон нет</EmptyRow>
+        )}
       </Table>
     </section>
   );
@@ -898,25 +1042,90 @@ function Windows({ db, sort, sortBy, openModal, mutate }) {
 
 function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
   const activeDebts = db.debts.filter((debt) => !debt.paid);
-  const total = activeDebts.reduce((sum, debt) => sum + Number(debt.amount || 0), 0);
+  const total = activeDebts.reduce(
+    (sum, debt) => sum + Number(debt.amount || 0),
+    0,
+  );
   return (
     <>
       <section className="card debt-summary-card">
-        <div className="card-header"><span>Учет долгов</span><Button icon={Plus} onClick={() => openModal({ type: "debt" })}>Добавить долг</Button></div>
+        <div className="card-header">
+          <span>Учет долгов</span>
+          <Button icon={Plus} onClick={() => openModal({ type: "debt" })}>
+            Добавить долг
+          </Button>
+        </div>
         <div className="stats-grid">
-          <div className="stat-card warning"><span className="stat-label">Активных должников</span><strong>{activeDebts.length}</strong></div>
+          <div className="stat-card warning">
+            <span className="stat-label">Активных должников</span>
+            <strong>{activeDebts.length}</strong>
+          </div>
           <Stat label="Общая сумма долга" value={total} color="danger" />
-          <div className="stat-card success"><span className="stat-label">Погашено долгов</span><strong>{db.debts.filter((debt) => debt.paid).length}</strong></div>
+          <div className="stat-card success">
+            <span className="stat-label">Погашено долгов</span>
+            <strong>{db.debts.filter((debt) => debt.paid).length}</strong>
+          </div>
         </div>
       </section>
       <section className="card">
-        <div className="card-header"><span>Все долги</span></div>
-        <Table sortBy={sortBy} headers={["Клиент", "Сумма", "Статус", "Комментарий", "Автор", "Дата", "Действия"].map((label, index) => [label, ["clientId", "amount", "paid", "comment", "author", "date"][index]])}>
+        <div className="card-header">
+          <span>Все долги</span>
+        </div>
+        <Table
+          sortBy={sortBy}
+          headers={[
+            "Клиент",
+            "Сумма",
+            "Статус",
+            "Комментарий",
+            "Автор",
+            "Дата",
+            "Действия",
+          ].map((label, index) => [
+            label,
+            ["clientId", "amount", "paid", "comment", "author", "date"][index],
+          ])}
+        >
           {sort(db.debts, "date", -1).map((debt) => {
-            const client = db.clients.find((row) => String(row.id) === String(debt.clientId));
-            return <tr key={debt.id}><td><strong>{client?.car || "Удаленный клиент"}</strong></td><td className={debt.paid ? "positive" : "warning"}>{money(debt.amount)}</td><td><Badge status={debt.paid ? "done" : "waiting"}>{debt.paid ? "Погашен" : "Не погашен"}</Badge></td><td>{debt.comment || "-"}</td><td><Badge>{debt.author || user}</Badge></td><td>{debt.date}</td><td><Actions onEdit={() => openModal({ type: "debt", item: debt })} onDelete={() => confirm("Удалить долг?") && mutate({ debts: db.debts.filter((row) => row.id !== debt.id) }, `Удален долг: ${client?.car || debt.clientId}`)} /></td></tr>;
+            const client = db.clients.find(
+              (row) => String(row.id) === String(debt.clientId),
+            );
+            return (
+              <tr key={debt.id}>
+                <td>
+                  <strong>{client?.car || "Удаленный клиент"}</strong>
+                </td>
+                <td className={debt.paid ? "positive" : "warning"}>
+                  {money(debt.amount)}
+                </td>
+                <td>
+                  <Badge status={debt.paid ? "done" : "waiting"}>
+                    {debt.paid ? "Погашен" : "Не погашен"}
+                  </Badge>
+                </td>
+                <td>{debt.comment || "-"}</td>
+                <td>
+                  <Badge>{debt.author || user}</Badge>
+                </td>
+                <td>{debt.date}</td>
+                <td>
+                  <Actions
+                    onEdit={() => openModal({ type: "debt", item: debt })}
+                    onDelete={() =>
+                      confirm("Удалить долг?") &&
+                      mutate(
+                        { debts: db.debts.filter((row) => row.id !== debt.id) },
+                        `Удален долг: ${client?.car || debt.clientId}`,
+                      )
+                    }
+                  />
+                </td>
+              </tr>
+            );
           })}
-          {!db.debts.length && <EmptyRow colSpan={7}>Должников пока нет</EmptyRow>}
+          {!db.debts.length && (
+            <EmptyRow colSpan={7}>Должников пока нет</EmptyRow>
+          )}
         </Table>
       </section>
     </>
@@ -933,23 +1142,62 @@ function FinancialInsights({ db, totals, monthly }) {
   return (
     <section className="card financial-insights finance-board">
       <div className="finance-board-heading">
-        <div><span className="dashboard-kicker">Финансовый обзор · {currentMonth()}</span><h3>Доходы и прибыль</h3><p>Сравнение ключевых показателей за всё время</p></div>
+        <div>
+          <span className="dashboard-kicker">
+            Финансовый обзор · {currentMonth()}
+          </span>
+          <h3>Доходы и прибыль</h3>
+          <p>Сравнение ключевых показателей за всё время</p>
+        </div>
         <TrendingUp size={20} className="red-icon" />
       </div>
       <div className="finance-board-grid">
         <div className="finance-main-chart">
           <div className="finance-chart-label">Сравнение показателей</div>
           <div className="comparison-chart">
-            {values.map(([label, value, type]) => <div className="comparison-column" key={label}><div className={`comparison-value ${type}`}>{money(value)}</div><div className="comparison-bar-area"><i className={type} style={{ height: `${Math.max(5, (Math.abs(value) / maximum) * 100)}%` }} /></div><span>{label}</span></div>)}
+            {values.map(([label, value, type]) => (
+              <div className="comparison-column" key={label}>
+                <div className={`comparison-value ${type}`}>{money(value)}</div>
+                <div className="comparison-bar-area">
+                  <i
+                    className={type}
+                    style={{
+                      height: `${Math.max(5, (Math.abs(value) / maximum) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <span>{label}</span>
+              </div>
+            ))}
           </div>
         </div>
         <div className="finance-side">
-          <div className="finance-side-total"><span>Чистая прибыль</span><strong className={totals.profit >= 0 ? "positive" : "negative"}>{money(totals.profit)}</strong><small>Доходы − затраты из кассы</small></div>
+          <div className="finance-side-total">
+            <span>Чистая прибыль</span>
+            <strong className={totals.profit >= 0 ? "positive" : "negative"}>
+              {money(totals.profit)}
+            </strong>
+            <small>Доходы − затраты из кассы</small>
+          </div>
           <div className="finance-side-list">
-            <div><span>Касса</span><strong className="cyan-text">{money(totals.cash)}</strong></div>
-            <div><span>Клиенты</span><strong>{db.clients.length}</strong></div>
-            <div><span>Личные средства</span><strong className="info-text">{money(totals.personal)}</strong></div>
-            <div><span>Выведено</span><strong className="warning-text">{money(totals.withdrawals)}</strong></div>
+            <div>
+              <span>Касса</span>
+              <strong className="cyan-text">{money(totals.cash)}</strong>
+            </div>
+            <div>
+              <span>Клиенты</span>
+              <strong>{db.clients.length}</strong>
+            </div>
+            <div>
+              <span>Личные средства</span>
+              <strong className="info-text">{money(totals.personal)}</strong>
+            </div>
+            <div>
+              <span>Выведено</span>
+              <strong className="warning-text">
+                {money(totals.withdrawals)}
+              </strong>
+            </div>
           </div>
         </div>
       </div>
@@ -1012,7 +1260,9 @@ function MonthlyChart({ data, embedded = false }) {
     1,
   );
   return (
-    <section className={`${embedded ? "" : "card "}chart-card ${embedded ? "embedded-chart" : ""}`}>
+    <section
+      className={`${embedded ? "" : "card "}chart-card ${embedded ? "embedded-chart" : ""}`}
+    >
       <div className="card-header">
         <span>Динамика по месяцам</span>
         <TrendingUp size={18} className="red-icon" />
@@ -1069,26 +1319,51 @@ function Table({ headers, children, sortBy }) {
   const [currentPage, setCurrentPage] = useState(1);
   const rows = Children.toArray(children);
   const totalPages = Math.max(1, Math.ceil(rows.length / 20));
-  useEffect(() => setCurrentPage((page) => Math.min(page, totalPages)), [totalPages]);
+  useEffect(
+    () => setCurrentPage((page) => Math.min(page, totalPages)),
+    [totalPages],
+  );
   const visibleRows = rows.slice((currentPage - 1) * 20, currentPage * 20);
   return (
     <>
       <div className="table-responsive">
-      <table>
-        <thead>
-          <tr>
-            {headers.map(([label, key]) => (
-              <th key={label} onClick={() => key && sortBy(key)}>
-                {label}
-                {key && " ⇳"}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{visibleRows}</tbody>
-      </table>
+        <table>
+          <thead>
+            <tr>
+              {headers.map(([label, key]) => (
+                <th key={label} onClick={() => key && sortBy(key)}>
+                  {label}
+                  {key && " ⇳"}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>{visibleRows}</tbody>
+        </table>
       </div>
-      {totalPages > 1 && <div className="pagination" aria-label="Пагинация"><button className="btn-sm btn-qty" type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>←</button><span>Страница {currentPage} из {totalPages} · 20 записей</span><button className="btn-sm btn-qty" type="button" disabled={currentPage === totalPages} onClick={() => setCurrentPage((page) => page + 1)}>→</button></div>}
+      {totalPages > 1 && (
+        <div className="pagination" aria-label="Пагинация">
+          <button
+            className="btn-sm btn-qty"
+            type="button"
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((page) => page - 1)}
+          >
+            ←
+          </button>
+          <span>
+            Страница {currentPage} из {totalPages} · 20 записей
+          </span>
+          <button
+            className="btn-sm btn-qty"
+            type="button"
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage((page) => page + 1)}
+          >
+            →
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -1744,7 +2019,12 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         : isWarehouse
           ? { name: "", qty: "" }
           : isDebt
-            ? { clientId: db.clients[0]?.id || "", amount: "", paid: false, comment: "" }
+            ? {
+                clientId: db.clients[0]?.id || "",
+                amount: "",
+                paid: false,
+                comment: "",
+              }
             : isWindow
               ? { datetime: "", comment: "" }
               : { clientId: db.clients[0]?.id || "", amount: "" },
@@ -1775,7 +2055,9 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
             ? db.clients.map((row) => (row.id === item.id ? value : row))
             : [value, ...db.clients],
           ...(form.windowId
-            ? { windows: db.windows.filter((slot) => slot.id !== form.windowId) }
+            ? {
+                windows: db.windows.filter((slot) => slot.id !== form.windowId),
+              }
             : {}),
         },
         `${item ? "Изменена запись" : "Добавлен клиент"}: ${form.car}`,
@@ -1815,13 +2097,37 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
       );
     }
     if (isDebt) {
-      const client = db.clients.find((row) => String(row.id) === String(form.clientId));
-      const value = { ...form, id: item?.id || Date.now(), clientId: Number(form.clientId), amount: Number(form.amount), paid: Boolean(form.paid), date: item?.date || nowText(), author: item?.author || user };
-      mutate({ debts: item ? db.debts.map((row) => (row.id === item.id ? value : row)) : [value, ...db.debts] }, `${item ? "Изменен долг" : "Добавлен долг"}: ${client?.car || form.clientId}`);
+      const client = db.clients.find(
+        (row) => String(row.id) === String(form.clientId),
+      );
+      const value = {
+        ...form,
+        id: item?.id || Date.now(),
+        clientId: Number(form.clientId),
+        amount: Number(form.amount),
+        paid: Boolean(form.paid),
+        date: item?.date || nowText(),
+        author: item?.author || user,
+      };
+      mutate(
+        {
+          debts: item
+            ? db.debts.map((row) => (row.id === item.id ? value : row))
+            : [value, ...db.debts],
+        },
+        `${item ? "Изменен долг" : "Добавлен долг"}: ${client?.car || form.clientId}`,
+      );
     }
     if (isWindow) {
       const value = { ...form, id: item?.id || Date.now() };
-      mutate({ windows: item ? db.windows.map((row) => (row.id === item.id ? value : row)) : [value, ...db.windows] }, `${item ? "Изменено" : "Добавлено"} свободное окно: ${dateText(form.datetime)}`);
+      mutate(
+        {
+          windows: item
+            ? db.windows.map((row) => (row.id === item.id ? value : row))
+            : [value, ...db.windows],
+        },
+        `${item ? "Изменено" : "Добавлено"} свободное окно: ${dateText(form.datetime)}`,
+      );
     }
     onClose();
   };
@@ -1840,11 +2146,11 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
               ? item
                 ? "Редактировать долг"
                 : "Новый долг"
-                : isWindow
-                  ? item
-                    ? "Редактировать окно"
-                    : "Новое свободное окно"
-              : "Добавить доход"
+              : isWindow
+                ? item
+                  ? "Редактировать окно"
+                  : "Новое свободное окно"
+                : "Добавить доход"
       }
       onClose={onClose}
     >
@@ -1868,7 +2174,11 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
               />
             </Field>
             <Field label="Тип сидений">
-              <select name="seatType" value={form.seatType || ""} onChange={update}>
+              <select
+                name="seatType"
+                value={form.seatType || ""}
+                onChange={update}
+              >
                 <option value="">Не указано</option>
                 <option>Ткань</option>
                 <option>Кожа</option>
@@ -1958,18 +2268,68 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
           <>
             <Field label="Выберите клиента">
               <select name="clientId" value={form.clientId} onChange={update}>
-                {db.clients.length ? db.clients.map((client) => <option key={client.id} value={client.id}>{client.car}{client.phone ? ` (${client.phone})` : ""}</option>) : <option value="">Сначала добавьте клиентов</option>}
+                {db.clients.length ? (
+                  db.clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.car}
+                      {client.phone ? ` (${client.phone})` : ""}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">Сначала добавьте клиентов</option>
+                )}
               </select>
             </Field>
-            <Field label="Сумма долга (MDL)"><input name="amount" type="number" min="0.01" step="0.01" value={form.amount} onChange={update} placeholder="450" /></Field>
-            <Field label="Комментарий"><textarea name="comment" value={form.comment} onChange={update} placeholder="Что осталось оплатить..." /></Field>
-            <label className="checkbox-field"><input name="paid" type="checkbox" checked={Boolean(form.paid)} onChange={(event) => setForm({ ...form, paid: event.target.checked })} /><span>Долг погашен</span></label>
+            <Field label="Сумма долга (MDL)">
+              <input
+                name="amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.amount}
+                onChange={update}
+                placeholder="450"
+              />
+            </Field>
+            <Field label="Комментарий">
+              <textarea
+                name="comment"
+                value={form.comment}
+                onChange={update}
+                placeholder="Что осталось оплатить..."
+              />
+            </Field>
+            <label className="checkbox-field">
+              <input
+                name="paid"
+                type="checkbox"
+                checked={Boolean(form.paid)}
+                onChange={(event) =>
+                  setForm({ ...form, paid: event.target.checked })
+                }
+              />
+              <span>Долг погашен</span>
+            </label>
           </>
         )}
         {isWindow && (
           <>
-            <Field label="Дата и время"><input name="datetime" type="datetime-local" value={form.datetime} onChange={update} /></Field>
-            <Field label="Комментарий"><textarea name="comment" value={form.comment} onChange={update} placeholder="Например: большое окно" /></Field>
+            <Field label="Дата и время">
+              <input
+                name="datetime"
+                type="datetime-local"
+                value={form.datetime}
+                onChange={update}
+              />
+            </Field>
+            <Field label="Комментарий">
+              <textarea
+                name="comment"
+                value={form.comment}
+                onChange={update}
+                placeholder="Например: большое окно"
+              />
+            </Field>
           </>
         )}
         <div className="modal-actions">

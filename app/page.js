@@ -748,22 +748,6 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData, naviga
           </div>
           <div className="dashboard-live"><span /> Сейчас онлайн</div>
         </div>
-        <div className="card-header dashboard-section-label">
-          <span>Финансовые показатели</span>
-          <Activity size={18} className="red-icon" />
-        </div>
-        <div className="stats-grid">
-          {cards.map(([label, value, color], index) => (
-            <div className={`stat-card metric-card ${color}`} key={label}>
-              <span className="stat-label">
-                {index === 0 || index === 2
-                  ? `${label.replace("текущий месяц", "")} (${month})`
-                  : label}
-              </span>
-              <strong>{money(value)}</strong>
-            </div>
-          ))}
-        </div>
         {totals.lowStock.length > 0 && (
           <div className="low-stock-alert">
             <Package size={18} />

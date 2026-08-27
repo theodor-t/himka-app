@@ -307,6 +307,7 @@ h1 {
   background:
     linear-gradient(115deg, rgba(255, 0, 60, 0.12), transparent 34%),
     var(--bg-card);
+  padding: 24px;
 }
 .dashboard-hero:after {
   content: "";
@@ -349,6 +350,54 @@ h1 {
   margin: 10px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+.windows-panel {
+  max-width: 1100px;
+  margin: 0 auto 20px;
+  background: linear-gradient(115deg, #38bdf812, transparent 42%), var(--bg-card);
+}
+.windows-panel .card-header {
+  margin-bottom: 16px;
+}
+.window-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.window-slot {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  color: #fff;
+  background: #101013b8;
+  border: 1px solid #38bdf844;
+  border-radius: 9px;
+  text-align: left;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.window-slot:hover,
+.window-slot:focus-visible {
+  border-color: var(--cyan);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px #38bdf322;
+  outline: none;
+}
+.window-slot span {
+  color: var(--muted);
+  font: 10px monospace;
+  text-transform: uppercase;
+}
+.window-slot strong {
+  color: var(--cyan);
+  font: 700 18px monospace;
+}
+.window-slot small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
 }
 .dashboard-live {
   display: inline-flex;
@@ -406,6 +455,12 @@ h1 {
 }
 .finance-unified {
   display: block;
+  max-width: 1100px;
+  margin: 0 auto 20px;
+  background:
+    linear-gradient(135deg, #ff003c12, transparent 32%),
+    var(--bg-card);
+  box-shadow: 0 14px 36px #00000044, 0 0 0 1px #ff003c10;
 }
 .finance-unified-kicker {
   margin: -8px 0 14px;
@@ -1280,6 +1335,22 @@ tr:last-child td {
     grid-template-columns: 1fr;
     gap: 0;
   }
+  .dashboard-hero {
+    padding: 17px;
+  }
+  .windows-panel {
+    margin-bottom: 12px;
+  }
+  .window-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .window-slot {
+    min-height: 104px;
+    padding: 12px;
+  }
+  .window-slot strong {
+    font-size: 16px;
+  }
   .dashboard-grid .card {
     margin-bottom: 12px;
   }
@@ -1420,5 +1491,8 @@ tr:last-child td {
   }
   .button-row {
     flex-direction: column;
+  }
+  .window-grid {
+    grid-template-columns: 1fr;
   }
 }

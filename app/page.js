@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Bell,
   CalendarDays,
+  CalendarPlus,
   FileText,
   History,
   LayoutDashboard,
@@ -50,6 +51,7 @@ const EMPTY_DB = {
   warehouse: [],
   withdrawals: [],
   debts: [],
+  windows: [],
   logs: [],
 };
 const NAV = [
@@ -60,7 +62,8 @@ const NAV = [
   ["warehouse", "4. Склад", Package],
   ["withdrawals", "5. Вывод денег", Wallet],
   ["debts", "6. Должники", Wallet],
-  ["logs", "7. Журнал логов", History],
+  ["windows", "7. Свободные окна", CalendarPlus],
+  ["logs", "8. Журнал логов", History],
 ];
 const RU_COLLATOR = new Intl.Collator("ru", { numeric: true });
 
@@ -90,6 +93,7 @@ const normalizeDb = (data) => ({
   ...EMPTY_DB,
   ...(data || {}),
   debts: data?.debts || [],
+  windows: data?.windows || [],
   logs: data?.logs || [],
 });
 
@@ -563,6 +567,7 @@ export default function Home() {
         <ModalContent
           type={modal.type}
           item={modal.item}
+          preset={modal.preset}
           db={db}
           user={user}
           onClose={() => setModal(null)}
@@ -648,6 +653,7 @@ function PageContent({
         exportData={exportData}
         importData={importData}
         navigate={navigate}
+        openModal={openModal}
       />
     );
   if (page === "clients")
@@ -718,10 +724,20 @@ function PageContent({
         user={user}
       />
     );
+  if (page === "windows")
+    return (
+      <Windows
+        db={db}
+        sort={sort}
+        sortBy={sortBy}
+        openModal={openModal}
+        mutate={mutate}
+      />
+    );
   return <Logs db={db} sort={sort} sortBy={sortBy} />;
 }
 
-function Dashboard({ db, totals, monthly, reload, exportData, importData, navigate }) {
+function Dashboard({ db, totals, monthly, reload, exportData, importData, navigate, openModal }) {
   const today = new Date();
   const appointments = db.clients
     .map((client) => ({ ...client, parsedDate: parseDate(client.datetime) }))
@@ -787,6 +803,7 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData, naviga
           <ShieldCheck size={15} /> Автоматическая резервная копия включена
         </div>
       </section>
+      <AvailableWindows db={db} openModal={openModal} navigate={navigate} />
       <section className="dashboard-grid">
         <div className="card reminder-card">
           <div className="card-header">
@@ -854,6 +871,30 @@ function DebtorsPreview({ db, navigate }) {
       <button className="text-action" type="button" onClick={() => navigate("debts")}>Открыть всех должников <ArrowRight size={14} /></button>
     </>
   ) : <div className="empty-reminder">Активных долгов нет</div>;
+}
+
+function AvailableWindows({ db, openModal, navigate }) {
+  const windows = [...db.windows]
+    .filter((slot) => parseDate(slot.datetime))
+    .sort((first, second) => parseDate(first.datetime) - parseDate(second.datetime));
+  return (
+    <section className="card windows-panel">
+      <div className="card-header"><span>Свободные окна</span><Button variant="secondary" icon={CalendarPlus} onClick={() => navigate("windows")}>Управление</Button></div>
+      {windows.length ? <div className="window-grid">{windows.slice(0, 8).map((slot) => <button className="window-slot" type="button" key={slot.id} onClick={() => openModal({ type: "client", preset: { datetime: slot.datetime, windowId: slot.id } })}><span>{dateText(slot.datetime).split(" ")[0]}</span><strong>{dateText(slot.datetime).slice(11)}</strong><small>Записать клиента <ArrowRight size={13} /></small></button>)}</div> : <div className="empty-reminder">Добавьте свободные даты и время в разделе управления.</div>}
+    </section>
+  );
+}
+
+function Windows({ db, sort, sortBy, openModal, mutate }) {
+  return (
+    <section className="card">
+      <div className="card-header"><span>Свободные окна</span><Button icon={CalendarPlus} onClick={() => openModal({ type: "window" })}>Добавить окно</Button></div>
+      <Table sortBy={sortBy} headers={["Дата и время", "Комментарий", "Действия"].map((label, index) => [label, ["datetime", "comment"][index]])}>
+        {sort(db.windows, "datetime").map((slot) => <tr key={slot.id}><td><strong>{dateText(slot.datetime)}</strong></td><td>{slot.comment || "-"}</td><td><Actions onEdit={() => openModal({ type: "window", item: slot })} onDelete={() => confirm("Удалить свободное окно?") && mutate({ windows: db.windows.filter((row) => row.id !== slot.id) }, `Удалено свободное окно: ${dateText(slot.datetime)}`)} /></td></tr>)}
+        {!db.windows.length && <EmptyRow colSpan={3}>Свободных окон нет</EmptyRow>}
+      </Table>
+    </section>
+  );
 }
 
 function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
@@ -1692,10 +1733,11 @@ function Logs({ db, sort, sortBy }) {
   );
 }
 
-function ModalContent({ type, item, db, user, onClose, mutate }) {
+function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
   const isClient = type === "client";
   const isWarehouse = type === "warehouse";
   const isDebt = type === "debt";
+  const isWindow = type === "window";
   const [form, setForm] = useState(
     item
       ? { ...item }
@@ -1705,7 +1747,8 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
             phone: "",
             seatType: "",
             service: "",
-            datetime: "",
+            datetime: preset?.datetime || "",
+            windowId: preset?.windowId || "",
             status: "В ожидании",
             comment: "",
           }
@@ -1713,7 +1756,9 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
           ? { name: "", qty: "" }
           : isDebt
             ? { clientId: db.clients[0]?.id || "", amount: "", paid: false, comment: "" }
-            : { clientId: db.clients[0]?.id || "", amount: "" },
+            : isWindow
+              ? { datetime: "", comment: "" }
+              : { clientId: db.clients[0]?.id || "", amount: "" },
   );
   const update = (event) =>
     setForm({ ...form, [event.target.name]: event.target.value });
@@ -1727,6 +1772,8 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
       return alert("Выберите клиента и сумму!");
     if (isDebt && (!form.clientId || Number(form.amount) <= 0))
       return alert("Выберите клиента и укажите сумму долга!");
+    if (isWindow && !form.datetime)
+      return alert("Укажите дату и время свободного окна!");
     if (isClient) {
       const value = {
         ...form,
@@ -1738,6 +1785,9 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
           clients: item
             ? db.clients.map((row) => (row.id === item.id ? value : row))
             : [value, ...db.clients],
+          ...(form.windowId
+            ? { windows: db.windows.filter((slot) => slot.id !== form.windowId) }
+            : {}),
         },
         `${item ? "Изменена запись" : "Добавлен клиент"}: ${form.car}`,
       );
@@ -1780,6 +1830,10 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
       const value = { ...form, id: item?.id || Date.now(), clientId: Number(form.clientId), amount: Number(form.amount), paid: Boolean(form.paid), date: item?.date || nowText(), author: item?.author || user };
       mutate({ debts: item ? db.debts.map((row) => (row.id === item.id ? value : row)) : [value, ...db.debts] }, `${item ? "Изменен долг" : "Добавлен долг"}: ${client?.car || form.clientId}`);
     }
+    if (isWindow) {
+      const value = { ...form, id: item?.id || Date.now() };
+      mutate({ windows: item ? db.windows.map((row) => (row.id === item.id ? value : row)) : [value, ...db.windows] }, `${item ? "Изменено" : "Добавлено"} свободное окно: ${dateText(form.datetime)}`);
+    }
     onClose();
   };
   return (
@@ -1797,6 +1851,10 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
               ? item
                 ? "Редактировать долг"
                 : "Новый долг"
+                : isWindow
+                  ? item
+                    ? "Редактировать окно"
+                    : "Новое свободное окно"
               : "Добавить доход"
       }
       onClose={onClose}
@@ -1917,6 +1975,12 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
             <Field label="Сумма долга (MDL)"><input name="amount" type="number" min="0.01" step="0.01" value={form.amount} onChange={update} placeholder="450" /></Field>
             <Field label="Комментарий"><textarea name="comment" value={form.comment} onChange={update} placeholder="Что осталось оплатить..." /></Field>
             <label className="checkbox-field"><input name="paid" type="checkbox" checked={Boolean(form.paid)} onChange={(event) => setForm({ ...form, paid: event.target.checked })} /><span>Долг погашен</span></label>
+          </>
+        )}
+        {isWindow && (
+          <>
+            <Field label="Дата и время"><input name="datetime" type="datetime-local" value={form.datetime} onChange={update} /></Field>
+            <Field label="Комментарий"><textarea name="comment" value={form.comment} onChange={update} placeholder="Например: большое окно" /></Field>
           </>
         )}
         <div className="modal-actions">

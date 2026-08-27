@@ -512,7 +512,7 @@ export default function Home() {
         <div className="sidebar-header">
           <div className="brand">
             <span className="brand-icon">
-              <img src="/angel-logo.png" alt="ANGEL DETAILING" />
+              <img src="/angel-logo.webp" alt="ANGEL DETAILING" />
             </span>
             <span className="brand-text">
               ANGEL <small>DETAILING</small>
@@ -602,7 +602,7 @@ function Auth({
     <div className={`auth-screen ${loading ? "session-loading" : ""}`}>
       <form className="auth-card" onSubmit={onSubmit}>
         <div className="auth-icon">
-          <img src="/angel-logo.png" alt="ANGEL DETAILING" />
+          <img src="/angel-logo.webp" alt="ANGEL DETAILING" />
         </div>
         <h2>ANGEL DETAILING</h2>
         <p>Система учета и управления</p>

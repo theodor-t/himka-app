@@ -231,6 +231,7 @@ export default function Home() {
   };
   const persist = async (next) => {
     setSync("Сохранение...");
+    const serialized = JSON.stringify(next);
     localStorage.setItem(
       BACKUP_KEY,
       JSON.stringify({ savedAt: new Date().toISOString(), data: next }),
@@ -240,16 +241,16 @@ export default function Home() {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(next),
+        body: serialized,
       });
-      localStorage.setItem("angel-detailing-db", JSON.stringify(next));
+      localStorage.setItem("angel-detailing-db", serialized);
       setSync("✓ Сохранено");
     } catch {
       setSync("⚠ Ошибка сохранения");
     }
   };
   const loadData = async () => {
-    if (syncInFlight.current) return;
+    if (syncInFlight.current || document.visibilityState === "hidden") return;
     syncInFlight.current = true;
     setSync("Синхронизация...");
     try {
@@ -280,7 +281,14 @@ export default function Home() {
     }
     loadData();
     const timer = window.setInterval(loadData, 30000);
-    return () => window.clearInterval(timer);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") loadData();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [user]);
 
   const login = (event) => {

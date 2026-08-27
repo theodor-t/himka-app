@@ -856,21 +856,12 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
         todayAppointments={todayAppointments}
       />
       <MonthlyChart data={monthly} />
-      <DashboardInsights db={db} />
+      <FinancialInsights db={db} totals={totals} />
     </>
   );
 }
 
-function DashboardInsights({ db }) {
-  const serviceTotals = Object.entries(
-    db.clients.reduce((totals, client) => {
-      const service = client.service?.trim() || "Без услуги";
-      totals[service] = (totals[service] || 0) + 1;
-      return totals;
-    }, {}),
-  )
-    .sort(([, first], [, second]) => second - first)
-    .slice(0, 5);
+function FinancialInsights({ db, totals }) {
   const expenseTotals = Object.entries(
     db.expenses.reduce((totals, expense) => {
       const category = expense.category?.trim() || "Без категории";
@@ -880,37 +871,51 @@ function DashboardInsights({ db }) {
   )
     .sort(([, first], [, second]) => second - first)
     .slice(0, 5);
-  const maxService = Math.max(...serviceTotals.map(([, value]) => value), 1);
-  const maxExpense = Math.max(...expenseTotals.map(([, value]) => value), 1);
+  const expenseColors = ["#ff003c", "#ff9f1c", "#38bdf8", "#10b981", "#a855f7"];
+  const totalExpenses = expenseTotals.reduce((sum, [, value]) => sum + value, 0);
+  let offset = 0;
+  const gradient = expenseTotals.length
+    ? expenseTotals
+        .map(([, value], index) => {
+          const start = offset;
+          offset += (value / totalExpenses) * 360;
+          return `${expenseColors[index]} ${start}deg ${offset}deg`;
+        })
+        .join(", ")
+    : "#27272a 0deg 360deg";
 
   return (
-    <section className="dashboard-insights">
-      <div className="card insight-card">
+    <section className="financial-insights">
+      <div className="card finance-breakdown">
         <div className="card-header">
-          <span>Популярные услуги</span>
-          <Users size={18} className="cyan-icon" />
-        </div>
-        <div className="insight-list">
-          {serviceTotals.length ? serviceTotals.map(([label, value]) => (
-            <div className="insight-row" key={label}>
-              <div className="insight-row-heading"><span>{label}</span><strong>{value}</strong></div>
-              <div className="insight-track"><i style={{ width: `${(value / maxService) * 100}%` }} /></div>
-            </div>
-          )) : <div className="empty-reminder">Нет данных по услугам</div>}
-        </div>
-      </div>
-      <div className="card insight-card">
-        <div className="card-header">
-          <span>Структура затрат</span>
+          <span>Распределение затрат</span>
           <Receipt size={18} className="warning-icon" />
         </div>
-        <div className="insight-list">
-          {expenseTotals.length ? expenseTotals.map(([label, value]) => (
-            <div className="insight-row" key={label}>
-              <div className="insight-row-heading"><span>{label}</span><strong>{money(value)}</strong></div>
-              <div className="insight-track expense"><i style={{ width: `${(value / maxExpense) * 100}%` }} /></div>
-            </div>
-          )) : <div className="empty-reminder">Нет расходов</div>}
+        <div className="donut-layout">
+          <div className="donut-chart" style={{ background: `conic-gradient(${gradient})` }}>
+            <div className="donut-hole"><strong>{money(totalExpenses)}</strong><span>всего затрат</span></div>
+          </div>
+          <div className="donut-legend">
+            {expenseTotals.length ? expenseTotals.map(([label, value], index) => (
+              <div className="donut-legend-row" key={label}>
+                <span><i style={{ background: expenseColors[index] }} />{label}</span>
+                <strong>{money(value)}</strong>
+              </div>
+            )) : <div className="empty-reminder">Нет расходов</div>}
+          </div>
+        </div>
+      </div>
+      <div className="card finance-summary">
+        <div className="card-header">
+          <span>Финансовый итог</span>
+          <TrendingUp size={18} className="red-icon" />
+        </div>
+        <div className="finance-total"><span>Чистая прибыль</span><strong>{money(totals.profit)}</strong></div>
+        <div className="finance-mini-grid">
+          <div><span>Доходы</span><strong className="positive">+{money(totals.income)}</strong></div>
+          <div><span>Затраты</span><strong className="negative">-{money(totals.commonExpenses)}</strong></div>
+          <div><span>Касса</span><strong className="cyan-text">{money(totals.cash)}</strong></div>
+          <div><span>Клиенты</span><strong>{db.clients.length}</strong></div>
         </div>
       </div>
     </section>

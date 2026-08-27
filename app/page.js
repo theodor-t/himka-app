@@ -787,7 +787,7 @@ function Dashboard({
     ],
   ];
   return (
-    <>
+    <div className="dashboard-shell">
       <section className="dashboard-welcome">
         <div className="dashboard-hero-heading">
           <div>
@@ -903,7 +903,7 @@ function Dashboard({
         todayAppointments={todayAppointments}
       />
       <FinancialInsights db={db} totals={totals} monthly={monthly} />
-    </>
+    </div>
   );
 }
 

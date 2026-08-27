@@ -1726,6 +1726,12 @@ tr:last-child td {
   .dashboard-shell > *:not(.print-report) {
     display: none !important;
   }
+  .dashboard-shell > * {
+    display: none !important;
+  }
+  .dashboard-shell > .print-report {
+    display: block !important;
+  }
   .app-container,
   .main-content,
   .page-container {
@@ -1745,6 +1751,9 @@ tr:last-child td {
   }
   .print-report {
     display: block !important;
+    width: 100%;
+    min-height: 245mm;
+    box-sizing: border-box;
     color: #f4f4f5;
     font-family: "Space Grotesk", sans-serif;
   }

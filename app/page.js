@@ -874,7 +874,6 @@ function DebtorsPreview({ db, navigate }) {
   return activeDebts.length ? (
     <>
       <div className="debt-preview-total"><span>Ожидается к погашению</span><strong>{money(total)}</strong></div>
-      <div className="debt-preview-profit"><span>Чистая прибыль</span><strong>{money(db.incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0) - db.expenses.filter((item) => item.source !== "Личные средства").reduce((sum, item) => sum + Number(item.amount || 0), 0))}</strong></div>
       <div className="debt-preview-list">
         {activeDebts.slice(0, 4).map((debt) => {
           const client = db.clients.find((row) => String(row.id) === String(debt.clientId));
@@ -938,44 +937,30 @@ function FinancialInsights({ db, totals }) {
 
   return (
     <section className="financial-insights">
-      <div className="card finance-breakdown">
+      <div className="card finance-breakdown finance-comparison">
+        <div className="card-header">
+          <span>Доходы, затраты и прибыль</span>
+          <TrendingUp size={18} className="red-icon" />
+        </div>
+        <div className="comparison-chart">
+          {[
+            ["Доходы", totals.income, "income"],
+            ["Затраты", totals.commonExpenses, "expenses"],
+            ["Прибыль", totals.profit, "profit"],
+          ].map(([label, value, type]) => {
+            const maximum = Math.max(totals.income, totals.commonExpenses, Math.abs(totals.profit), 1);
+            return <div className="comparison-column" key={label}><div className={`comparison-value ${type}`}>{money(value)}</div><div className="comparison-bar-area"><i className={type} style={{ height: `${Math.max(5, (Math.abs(value) / maximum) * 100)}%` }} /></div><span>{label}</span></div>;
+          })}
+        </div>
+      </div>
+      <div className="card finance-summary finance-breakdown">
         <div className="card-header">
           <span>Распределение затрат</span>
           <Receipt size={18} className="warning-icon" />
         </div>
         <div className="donut-layout">
-          <div className="donut-chart" style={{ background: `conic-gradient(${gradient})` }}>
-            <div className="donut-hole"><strong>{money(totalExpenses)}</strong><span>всего затрат</span></div>
-          </div>
-          <div className="donut-legend">
-            {expenseTotals.length ? expenseTotals.map(([label, value], index) => (
-              <div className="donut-legend-row" key={label}>
-                <span><i style={{ background: expenseColors[index] }} />{label}</span>
-                <strong>{money(value)}</strong>
-              </div>
-            )) : <div className="empty-reminder">Нет расходов</div>}
-          </div>
-        </div>
-      </div>
-      <div className="card finance-summary">
-        <div className="card-header">
-          <span>Затраты и прибыль</span>
-          <TrendingUp size={18} className="red-icon" />
-        </div>
-        <div className="finance-bars">
-          {[
-            ["Доходы", totals.income, "income"],
-            ["Затраты", totals.commonExpenses, "expenses"],
-            ["Прибыль", Math.max(0, totals.profit), "profit"],
-          ].map(([label, value, type]) => {
-            const maximum = Math.max(totals.income, totals.commonExpenses, Math.abs(totals.profit), 1);
-            return (
-              <div className="finance-bar-row" key={label}>
-                <div><span>{label}</span><strong>{money(value)}</strong></div>
-                <i className={type} style={{ width: `${(value / maximum) * 100}%` }} />
-              </div>
-            );
-          })}
+          <div className="donut-chart" style={{ background: `conic-gradient(${gradient})` }}><div className="donut-hole"><strong>{money(totalExpenses)}</strong><span>всего затрат</span></div></div>
+          <div className="donut-legend">{expenseTotals.length ? expenseTotals.map(([label, value], index) => <div className="donut-legend-row" key={label}><span><i style={{ background: expenseColors[index] }} />{label}</span><strong>{money(value)}</strong></div>) : <div className="empty-reminder">Нет расходов</div>}</div>
         </div>
         <div className="finance-total"><span>Чистая прибыль</span><strong>{money(totals.profit)}</strong></div>
         <div className="finance-mini-grid">

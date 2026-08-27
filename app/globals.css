@@ -404,6 +404,58 @@ h1 {
   align-items: center;
   gap: 22px;
 }
+.comparison-chart {
+  height: 245px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 18px;
+  padding: 10px 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.comparison-column {
+  min-width: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-items: end;
+  gap: 9px;
+  text-align: center;
+}
+.comparison-value {
+  overflow: hidden;
+  color: #fff;
+  font: 700 11px monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comparison-value.income { color: var(--success); }
+.comparison-value.expenses { color: var(--warning); }
+.comparison-value.profit { color: var(--red); }
+.comparison-bar-area {
+  height: 170px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 12px;
+  border-bottom: 1px solid #3f3f4655;
+  background: repeating-linear-gradient(to top, transparent 0 41px, #3f3f4620 42px);
+}
+.comparison-bar-area i {
+  display: block;
+  width: min(48px, 70%);
+  min-height: 7px;
+  border-radius: 7px 7px 0 0;
+  box-shadow: 0 0 18px currentColor;
+}
+.comparison-bar-area i.income { background: var(--success); color: #10b98166; }
+.comparison-bar-area i.expenses { background: var(--warning); color: #f59e0b66; }
+.comparison-bar-area i.profit { background: var(--red); color: #ff003c66; }
+.comparison-column > span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
 .donut-chart {
   width: 180px;
   aspect-ratio: 1;
@@ -1169,6 +1221,13 @@ tr:last-child td {
   .donut-layout {
     grid-template-columns: 1fr;
     justify-items: center;
+  }
+  .comparison-chart {
+    gap: 8px;
+    padding-inline: 0;
+  }
+  .comparison-bar-area {
+    padding-inline: 3px;
   }
   .donut-legend {
     width: 100%;

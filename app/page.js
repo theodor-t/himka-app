@@ -508,7 +508,7 @@ export default function Home() {
         <div className="sidebar-header">
           <div className="brand">
             <span className="brand-icon">
-              <img src="/logo.svg" alt="ANGEL DETAILING" />
+              <img src="/angel-logo.png" alt="ANGEL DETAILING" />
             </span>
             <span className="brand-text">
               ANGEL <small>DETAILING</small>
@@ -586,7 +586,7 @@ function Auth({
     <div className={`auth-screen ${loading ? "session-loading" : ""}`}>
       <form className="auth-card" onSubmit={onSubmit}>
         <div className="auth-icon">
-          <img src="/logo.svg" alt="ANGEL DETAILING" />
+          <img src="/angel-logo.png" alt="ANGEL DETAILING" />
         </div>
         <h2>ANGEL DETAILING</h2>
         <p>Система учета и управления</p>
@@ -924,6 +924,7 @@ function FinancialInsights({ db, totals }) {
         <span>Финансы: доходы, затраты и прибыль</span>
         <TrendingUp size={18} className="red-icon" />
       </div>
+      <div className="finance-formula">Прибыль = доходы − затраты из кассы</div>
       <div className="finance-unified-summary">
         {values.map(([label, value, type]) => (
           <div key={label}>

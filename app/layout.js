@@ -61,7 +61,7 @@ export const metadata = {
   },
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/logo.svg",
+    icon: "/angel-logo.png",
     apple: "/angel-logo.png",
   },
   appleWebApp: {

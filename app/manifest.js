@@ -12,13 +12,13 @@ export default function manifest() {
       {
         src: "/angel-logo.png",
         sizes: "192x192",
-        type: "image/svg+xml",
+        type: "image/png",
         purpose: "any maskable",
       },
       {
         src: "/angel-logo.png",
         sizes: "512x512",
-        type: "image/svg+xml",
+        type: "image/png",
         purpose: "any maskable",
       },
     ],

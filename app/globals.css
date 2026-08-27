@@ -84,6 +84,9 @@ button {
   object-fit: cover;
   border-radius: inherit;
 }
+.auth-icon img {
+  object-fit: cover;
+}
 .auth-card h2 {
   margin: 0;
   font-size: 22px;
@@ -409,6 +412,11 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 18px;
+}
+.finance-formula {
+  margin: -8px 0 16px;
+  color: var(--muted);
+  font: 11px monospace;
 }
 .finance-unified-summary > div {
   display: grid;

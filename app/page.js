@@ -722,7 +722,6 @@ function PageContent({
 }
 
 function Dashboard({ db, totals, monthly, reload, exportData, importData, navigate }) {
-  const month = currentMonth();
   const today = new Date();
   const appointments = db.clients
     .map((client) => ({ ...client, parsedDate: parseDate(client.datetime) }))
@@ -738,16 +737,6 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData, naviga
   const todayAppointments = appointments.filter((client) =>
     isSameDay(client.datetime, today),
   );
-  const cards = [
-    ["Доходы текущий месяц", totals.incomeMonth, "success"],
-    ["Доходы за всё время", totals.income, "success"],
-    ["Затраты текущий месяц", totals.expensesMonth, "danger"],
-    ["Затраты за всё время", totals.commonExpenses, "danger"],
-    ["Личные средства", totals.personalMonth, "info"],
-    ["Выведено за всё время", totals.withdrawals, "warning"],
-    ["Чистая прибыль", totals.profit, "red"],
-    ["Общая касса", totals.cash, "cyan"],
-  ];
   return (
     <>
       <section className="card dashboard-hero">
@@ -861,8 +850,7 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData, naviga
         totals={totals}
         todayAppointments={todayAppointments}
       />
-      <MonthlyChart data={monthly} />
-      <FinancialInsights db={db} totals={totals} />
+      <FinancialInsights db={db} totals={totals} monthly={monthly} />
     </>
   );
 }
@@ -911,7 +899,7 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
   );
 }
 
-function FinancialInsights({ db, totals }) {
+function FinancialInsights({ db, totals, monthly }) {
   const values = [
     ["Доходы", totals.income, "income"],
     ["Затраты", totals.commonExpenses, "expenses"],
@@ -925,6 +913,7 @@ function FinancialInsights({ db, totals }) {
         <TrendingUp size={18} className="red-icon" />
       </div>
       <div className="finance-formula">Прибыль = доходы − затраты из кассы</div>
+      <div className="finance-unified-kicker">Главные показатели · {currentMonth()}</div>
       <div className="finance-unified-summary">
         {values.map(([label, value, type]) => (
           <div key={label}>
@@ -947,7 +936,10 @@ function FinancialInsights({ db, totals }) {
       <div className="finance-mini-grid">
         <div><span>Касса</span><strong className="cyan-text">{money(totals.cash)}</strong></div>
         <div><span>Клиенты</span><strong>{db.clients.length}</strong></div>
+        <div><span>Личные средства</span><strong className="info-text">{money(totals.personal)}</strong></div>
+        <div><span>Выведено</span><strong className="warning-text">{money(totals.withdrawals)}</strong></div>
       </div>
+      <MonthlyChart data={monthly} embedded />
     </section>
   );
 }
@@ -998,7 +990,7 @@ function PrintReport({ db, totals, todayAppointments }) {
   );
 }
 
-function MonthlyChart({ data }) {
+function MonthlyChart({ data, embedded = false }) {
   const maxValue = Math.max(
     ...data.map((item) =>
       Math.max(item.income, item.expenses, Math.abs(item.profit)),
@@ -1006,7 +998,7 @@ function MonthlyChart({ data }) {
     1,
   );
   return (
-    <section className="card chart-card">
+    <section className={`${embedded ? "" : "card "}chart-card ${embedded ? "embedded-chart" : ""}`}>
       <div className="card-header">
         <span>Динамика по месяцам</span>
         <TrendingUp size={18} className="red-icon" />

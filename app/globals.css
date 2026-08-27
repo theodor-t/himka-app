@@ -407,6 +407,13 @@ h1 {
 .finance-unified {
   display: block;
 }
+.finance-unified-kicker {
+  margin: -8px 0 14px;
+  color: var(--muted);
+  font: 10px monospace;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
 .finance-unified-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -437,6 +444,21 @@ h1 {
 .finance-unified-summary strong.income { color: var(--success); }
 .finance-unified-summary strong.expenses { color: var(--warning); }
 .finance-unified-summary strong.profit { color: var(--red); }
+.finance-unified .finance-mini-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 16px;
+}
+.embedded-chart {
+  max-width: none;
+  margin: 22px 0 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--border);
+}
+.embedded-chart .card-header {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .financial-insights .card {
   max-width: none;
   margin: 0;
@@ -1267,6 +1289,9 @@ tr:last-child td {
   }
   .finance-unified-summary {
     grid-template-columns: 1fr;
+  }
+  .finance-unified .finance-mini-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .financial-insights .card {
     margin-bottom: 0;

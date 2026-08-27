@@ -10,15 +10,15 @@ export default function manifest() {
     theme_color: "#0a0a0c",
     icons: [
       {
-        src: "/angel-logo.png",
+        src: "/angel-logo.webp",
         sizes: "192x192",
-        type: "image/png",
+        type: "image/webp",
         purpose: "any maskable",
       },
       {
-        src: "/angel-logo.png",
+        src: "/angel-logo.webp",
         sizes: "512x512",
-        type: "image/png",
+        type: "image/webp",
         purpose: "any maskable",
       },
     ],

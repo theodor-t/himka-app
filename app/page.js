@@ -733,14 +733,22 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
   ];
   return (
     <>
-      <section className="card">
-        <div className="card-header">
+      <section className="card dashboard-hero">
+        <div className="dashboard-hero-heading">
+          <div>
+            <span className="dashboard-kicker">Операционная панель</span>
+            <h2>Состояние бизнеса</h2>
+            <p>Финансы, загрузка и запас материалов в одном ритме.</p>
+          </div>
+          <div className="dashboard-live"><span /> Сейчас онлайн</div>
+        </div>
+        <div className="card-header dashboard-section-label">
           <span>Финансовые показатели</span>
           <Activity size={18} className="red-icon" />
         </div>
         <div className="stats-grid">
           {cards.map(([label, value, color], index) => (
-            <div className={`stat-card ${color}`} key={label}>
+            <div className={`stat-card metric-card ${color}`} key={label}>
               <span className="stat-label">
                 {index === 0 || index === 2
                   ? `${label.replace("текущий месяц", "")} (${month})`
@@ -848,7 +856,64 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
         todayAppointments={todayAppointments}
       />
       <MonthlyChart data={monthly} />
+      <DashboardInsights db={db} />
     </>
+  );
+}
+
+function DashboardInsights({ db }) {
+  const serviceTotals = Object.entries(
+    db.clients.reduce((totals, client) => {
+      const service = client.service?.trim() || "Без услуги";
+      totals[service] = (totals[service] || 0) + 1;
+      return totals;
+    }, {}),
+  )
+    .sort(([, first], [, second]) => second - first)
+    .slice(0, 5);
+  const expenseTotals = Object.entries(
+    db.expenses.reduce((totals, expense) => {
+      const category = expense.category?.trim() || "Без категории";
+      totals[category] = (totals[category] || 0) + Number(expense.amount || 0);
+      return totals;
+    }, {}),
+  )
+    .sort(([, first], [, second]) => second - first)
+    .slice(0, 5);
+  const maxService = Math.max(...serviceTotals.map(([, value]) => value), 1);
+  const maxExpense = Math.max(...expenseTotals.map(([, value]) => value), 1);
+
+  return (
+    <section className="dashboard-insights">
+      <div className="card insight-card">
+        <div className="card-header">
+          <span>Популярные услуги</span>
+          <Users size={18} className="cyan-icon" />
+        </div>
+        <div className="insight-list">
+          {serviceTotals.length ? serviceTotals.map(([label, value]) => (
+            <div className="insight-row" key={label}>
+              <div className="insight-row-heading"><span>{label}</span><strong>{value}</strong></div>
+              <div className="insight-track"><i style={{ width: `${(value / maxService) * 100}%` }} /></div>
+            </div>
+          )) : <div className="empty-reminder">Нет данных по услугам</div>}
+        </div>
+      </div>
+      <div className="card insight-card">
+        <div className="card-header">
+          <span>Структура затрат</span>
+          <Receipt size={18} className="warning-icon" />
+        </div>
+        <div className="insight-list">
+          {expenseTotals.length ? expenseTotals.map(([label, value]) => (
+            <div className="insight-row" key={label}>
+              <div className="insight-row-heading"><span>{label}</span><strong>{money(value)}</strong></div>
+              <div className="insight-track expense"><i style={{ width: `${(value / maxExpense) * 100}%` }} /></div>
+            </div>
+          )) : <div className="empty-reminder">Нет расходов</div>}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1796,7 +1861,7 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
           </>
         )}
         <div className="modal-actions">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" type="button" onClick={onClose}>
             Отмена
           </Button>
           <Button icon={Save}>Сохранить</Button>

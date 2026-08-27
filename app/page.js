@@ -267,10 +267,9 @@ export default function Home() {
       setLoadingMessage(null);
     }
   };
-  const loadData = async ({ showIndicator = false } = {}) => {
+  const loadData = async () => {
     if (syncInFlight.current || document.visibilityState === "hidden") return;
     syncInFlight.current = true;
-    if (showIndicator) setLoadingMessage("Загрузка данных...");
     setSync("Синхронизация...");
     try {
       const response = await fetch(SCRIPT_URL, { cache: "no-store" });
@@ -284,7 +283,6 @@ export default function Home() {
       setSync("⚠ Ошибка Google");
     } finally {
       syncInFlight.current = false;
-      if (showIndicator) setLoadingMessage(null);
     }
   };
   useEffect(() => {
@@ -299,7 +297,7 @@ export default function Home() {
     } catch {
       localStorage.removeItem("angel-detailing-db");
     }
-    loadData({ showIndicator: true });
+    loadData();
     const timer = window.setInterval(() => loadData(), 30000);
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") loadData();

@@ -10,6 +10,7 @@ import {
   FileText,
   History,
   LayoutDashboard,
+  LoaderCircle,
   LogOut,
   Menu,
   Minus,
@@ -173,12 +174,22 @@ function DeleteButton({ onClick, label = "Удалить" }) {
   );
 }
 
+function LoadingOverlay({ message }) {
+  return (
+    <div className="loading-overlay" role="status" aria-live="polite">
+      <LoaderCircle className="loading-spinner" size={30} />
+      <strong>{message}</strong>
+    </div>
+  );
+}
+
 export default function Home() {
   const [user, setUser] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [selectedUser, setSelectedUser] = useState("TUDOR");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState(null);
   const [db, setDb] = useState(EMPTY_DB);
   const [page, setPage] = useState("home");
   const [sync, setSync] = useState("Загрузка...");
@@ -235,6 +246,7 @@ export default function Home() {
     persist(next);
   };
   const persist = async (next) => {
+    setLoadingMessage("Сохранение данных...");
     setSync("Сохранение...");
     const serialized = JSON.stringify(next);
     localStorage.setItem(
@@ -251,11 +263,14 @@ export default function Home() {
       setSync("✓ Сохранено");
     } catch {
       setSync("⚠ Ошибка сохранения");
+    } finally {
+      setLoadingMessage(null);
     }
   };
-  const loadData = async () => {
+  const loadData = async ({ showIndicator = false } = {}) => {
     if (syncInFlight.current || document.visibilityState === "hidden") return;
     syncInFlight.current = true;
+    if (showIndicator) setLoadingMessage("Загрузка данных...");
     setSync("Синхронизация...");
     try {
       const response = await fetch(SCRIPT_URL, { cache: "no-store" });
@@ -269,6 +284,7 @@ export default function Home() {
       setSync("⚠ Ошибка Google");
     } finally {
       syncInFlight.current = false;
+      if (showIndicator) setLoadingMessage(null);
     }
   };
   useEffect(() => {
@@ -283,8 +299,8 @@ export default function Home() {
     } catch {
       localStorage.removeItem("angel-detailing-db");
     }
-    loadData();
-    const timer = window.setInterval(loadData, 30000);
+    loadData({ showIndicator: true });
+    const timer = window.setInterval(() => loadData(), 30000);
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") loadData();
     };
@@ -297,6 +313,7 @@ export default function Home() {
 
   const login = async (event) => {
     event.preventDefault();
+    setLoadingMessage("Выполняется вход...");
     try {
       const response = await fetch("/api/auth", {
         method: "POST",
@@ -309,14 +326,21 @@ export default function Home() {
     } catch {
       setAuthError(true);
       setPassword("");
+    } finally {
+      setLoadingMessage(null);
     }
   };
   const logout = async () => {
-    await fetch("/api/auth", { method: "DELETE" });
-    setUser(null);
-    setPage("home");
-    dbRef.current = EMPTY_DB;
-    setDb(EMPTY_DB);
+    setLoadingMessage("Выход из системы...");
+    try {
+      await fetch("/api/auth", { method: "DELETE" });
+      setUser(null);
+      setPage("home");
+      dbRef.current = EMPTY_DB;
+      setDb(EMPTY_DB);
+    } finally {
+      setLoadingMessage(null);
+    }
   };
   const navigate = (next) => {
     setPage(next);
@@ -492,18 +516,26 @@ export default function Home() {
 
   if (!user)
     return (
-      <Auth
-        selectedUser={selectedUser}
-        setSelectedUser={setSelectedUser}
-        password={password}
-        setPassword={setPassword}
-        error={authError}
-        onSubmit={login}
-        loading={!sessionChecked}
-      />
+      <>
+        <Auth
+          selectedUser={selectedUser}
+          setSelectedUser={setSelectedUser}
+          password={password}
+          setPassword={setPassword}
+          error={authError}
+          onSubmit={login}
+          loading={!sessionChecked}
+        />
+        {(!sessionChecked || loadingMessage) && (
+          <LoadingOverlay
+            message={loadingMessage || "Проверка сессии..."}
+          />
+        )}
+      </>
     );
   return (
-    <div className="app-container">
+    <>
+      <div className="app-container">
       <div
         className={`overlay ${menuOpen ? "active" : ""}`}
         onClick={() => setMenuOpen(false)}
@@ -585,7 +617,9 @@ export default function Home() {
           mutate={mutate}
         />
       )}
-    </div>
+      </div>
+      {loadingMessage && <LoadingOverlay message={loadingMessage} />}
+    </>
   );
 }
 

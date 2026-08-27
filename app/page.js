@@ -559,7 +559,18 @@ export default function Home() {
             </button>
             <h1>{NAV.find((item) => item[0] === page)?.[1] || "Панель"}</h1>
           </div>
-          <span className="sync-status">{sync}</span>
+          <div className="top-bar-actions">
+            <span className="sync-status">{sync}</span>
+            <button
+              className="page-reload-btn"
+              type="button"
+              onClick={() => window.location.reload()}
+              title="Перезагрузить страницу"
+              aria-label="Перезагрузить страницу"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
         </header>
         <div className="page-container">{pageContent}</div>
       </main>
@@ -753,56 +764,44 @@ function Dashboard({ db, totals, monthly, reload, exportData, importData, naviga
   const todayAppointments = appointments.filter((client) =>
     isSameDay(client.datetime, today),
   );
+  const dashboardMetrics = [
+    ["Баланс кассы", totals.cash, "cyan", Wallet],
+    ["Доходы всего", totals.income, "success", TrendingUp],
+    ["Затраты всего", totals.commonExpenses, "warning", Receipt],
+    ["Активные долги", db.debts.filter((debt) => !debt.paid).reduce((sum, debt) => sum + Number(debt.amount || 0), 0), "danger", Bell],
+  ];
   return (
     <>
-      <section className="card dashboard-hero">
+      <section className="dashboard-welcome">
         <div className="dashboard-hero-heading">
           <div>
-            <span className="dashboard-kicker">Операционная панель</span>
-            <h2>Состояние бизнеса</h2>
-            <p>Финансы, загрузка и запас материалов в одном ритме.</p>
+            <span className="dashboard-kicker">ANGEL DETAILING · CONTROL CENTER</span>
+            <h2>Главная панель</h2>
+            <p>Ключевые цифры и ближайшие действия на одном экране.</p>
           </div>
-          <div className="dashboard-live"><span /> Сейчас онлайн</div>
+          <div className="dashboard-live"><span /> Данные синхронизированы</div>
         </div>
-        {totals.lowStock.length > 0 && (
-          <div className="low-stock-alert">
-            <Package size={18} />
-            <span>
-              <strong>Мало товара:</strong>{" "}
-              {totals.lowStock
-                .map((item) => `${item.name} (${item.qty})`)
-                .join(", ")}
-            </span>
-          </div>
-        )}
-        <div className="button-row">
-          <Button
-            variant="secondary"
-            icon={FileText}
-            onClick={() => window.print()}
-          >
-            PDF-отчёт
-          </Button>
-          <Button variant="secondary" icon={Save} onClick={exportData}>
-            Бэкап
-          </Button>
-          <label className="action-btn btn-secondary file-btn">
-            <Save size={16} />
-            Импортировать
-            <input
-              type="file"
-              accept="application/json,.json"
-              onChange={importData}
-            />
-          </label>
-          <Button variant="secondary" icon={RefreshCw} onClick={reload}>
-            Обновить
-          </Button>
-        </div>
-        <div className="backup-note">
-          <ShieldCheck size={15} /> Автоматическая резервная копия включена
+        <div className="dashboard-actions">
+          <Button variant="secondary" icon={RefreshCw} onClick={reload}>Обновить</Button>
+          <Button variant="secondary" icon={FileText} onClick={() => window.print()}>PDF</Button>
+          <Button variant="secondary" icon={Save} onClick={exportData}>Бэкап</Button>
+          <label className="action-btn btn-secondary file-btn"><Save size={16} /> Импорт <input type="file" accept="application/json,.json" onChange={importData} /></label>
         </div>
       </section>
+      <section className="dashboard-metrics">
+        {dashboardMetrics.map(([label, value, color, Icon]) => (
+          <div className={`dashboard-metric ${color}`} key={label}>
+            <div className="dashboard-metric-top"><span>{label}</span><Icon size={17} /></div>
+            <strong>{money(value)}</strong>
+            <small>{label === "Баланс кассы" ? "после расходов и выводов" : label === "Активные долги" ? "ожидается к погашению" : "за всё время"}</small>
+          </div>
+        ))}
+      </section>
+      {totals.lowStock.length > 0 && (
+        <div className="low-stock-alert dashboard-alert">
+          <Package size={18} /><span><strong>Мало товара:</strong> {totals.lowStock.map((item) => `${item.name} (${item.qty})`).join(", ")}</span>
+        </div>
+      )}
       <AvailableWindows db={db} openModal={openModal} navigate={navigate} />
       <section className="dashboard-grid">
         <div className="card reminder-card">

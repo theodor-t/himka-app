@@ -473,6 +473,46 @@ h1 {
   border-radius: 10px;
   background: linear-gradient(120deg, #ff003c18, transparent);
 }
+.finance-bars {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.finance-bar-row {
+  display: grid;
+  gap: 7px;
+}
+.finance-bar-row > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.finance-bar-row strong {
+  color: #fff;
+  font: 700 12px monospace;
+}
+.finance-bar-row > i {
+  display: block;
+  height: 9px;
+  min-width: 3px;
+  border-radius: 99px;
+}
+.finance-bar-row > i.income {
+  background: var(--success);
+  box-shadow: 0 0 12px #10b98155;
+}
+.finance-bar-row > i.expenses {
+  background: var(--warning);
+  box-shadow: 0 0 12px #f59e0b55;
+}
+.finance-bar-row > i.profit {
+  background: var(--red);
+  box-shadow: 0 0 12px #ff003c55;
+}
 .finance-total span,
 .finance-mini-grid span {
   color: var(--muted);

@@ -907,8 +907,23 @@ function FinancialInsights({ db, totals }) {
       </div>
       <div className="card finance-summary">
         <div className="card-header">
-          <span>Финансовый итог</span>
+          <span>Затраты и прибыль</span>
           <TrendingUp size={18} className="red-icon" />
+        </div>
+        <div className="finance-bars">
+          {[
+            ["Доходы", totals.income, "income"],
+            ["Затраты", totals.commonExpenses, "expenses"],
+            ["Прибыль", Math.max(0, totals.profit), "profit"],
+          ].map(([label, value, type]) => {
+            const maximum = Math.max(totals.income, totals.commonExpenses, Math.abs(totals.profit), 1);
+            return (
+              <div className="finance-bar-row" key={label}>
+                <div><span>{label}</span><strong>{money(value)}</strong></div>
+                <i className={type} style={{ width: `${(value / maximum) * 100}%` }} />
+              </div>
+            );
+          })}
         </div>
         <div className="finance-total"><span>Чистая прибыль</span><strong>{money(totals.profit)}</strong></div>
         <div className="finance-mini-grid">

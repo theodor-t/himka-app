@@ -28,8 +28,7 @@ import {
   User,
 } from "lucide-react";
 
-const SCRIPT_URL =
-  "https://script.google.com/macros/s/AKfycbx6OpGz3BhnwS7XPA1efSINsmEBgoQ_tKGrTSkJwrl0arcP_C8bVSmDjHXrL7Zm0XyJ/exec";
+const SCRIPT_URL = "/api/db";
 const SESSION_KEY = "angel-detailing-user";
 const BACKUP_KEY = "angel-detailing-auto-backup";
 const USERS = { TUDOR: "326688", DAN: "326699" };
@@ -239,7 +238,6 @@ export default function Home() {
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
-        mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: serialized,
       });

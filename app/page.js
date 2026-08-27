@@ -931,37 +931,27 @@ function FinancialInsights({ db, totals, monthly }) {
   ];
   const maximum = Math.max(...values.map(([, value]) => Math.abs(value)), 1);
   return (
-    <section className="card financial-insights finance-unified">
-      <div className="card-header">
-        <span>Финансы: доходы, затраты и прибыль</span>
-        <TrendingUp size={18} className="red-icon" />
+    <section className="card financial-insights finance-board">
+      <div className="finance-board-heading">
+        <div><span className="dashboard-kicker">Финансовый обзор · {currentMonth()}</span><h3>Доходы и прибыль</h3><p>Сравнение ключевых показателей за всё время</p></div>
+        <TrendingUp size={20} className="red-icon" />
       </div>
-      <div className="finance-formula">Прибыль = доходы − затраты из кассы</div>
-      <div className="finance-unified-kicker">Главные показатели · {currentMonth()}</div>
-      <div className="finance-unified-summary">
-        {values.map(([label, value, type]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <strong className={type}>{money(value)}</strong>
+      <div className="finance-board-grid">
+        <div className="finance-main-chart">
+          <div className="finance-chart-label">Сравнение показателей</div>
+          <div className="comparison-chart">
+            {values.map(([label, value, type]) => <div className="comparison-column" key={label}><div className={`comparison-value ${type}`}>{money(value)}</div><div className="comparison-bar-area"><i className={type} style={{ height: `${Math.max(5, (Math.abs(value) / maximum) * 100)}%` }} /></div><span>{label}</span></div>)}
           </div>
-        ))}
-      </div>
-      <div className="comparison-chart">
-        {values.map(([label, value, type]) => (
-          <div className="comparison-column" key={label}>
-            <div className={`comparison-value ${type}`}>{money(value)}</div>
-            <div className="comparison-bar-area">
-              <i className={type} style={{ height: `${Math.max(5, (Math.abs(value) / maximum) * 100)}%` }} />
-            </div>
-            <span>{label}</span>
+        </div>
+        <div className="finance-side">
+          <div className="finance-side-total"><span>Чистая прибыль</span><strong className={totals.profit >= 0 ? "positive" : "negative"}>{money(totals.profit)}</strong><small>Доходы − затраты из кассы</small></div>
+          <div className="finance-side-list">
+            <div><span>Касса</span><strong className="cyan-text">{money(totals.cash)}</strong></div>
+            <div><span>Клиенты</span><strong>{db.clients.length}</strong></div>
+            <div><span>Личные средства</span><strong className="info-text">{money(totals.personal)}</strong></div>
+            <div><span>Выведено</span><strong className="warning-text">{money(totals.withdrawals)}</strong></div>
           </div>
-        ))}
-      </div>
-      <div className="finance-mini-grid">
-        <div><span>Касса</span><strong className="cyan-text">{money(totals.cash)}</strong></div>
-        <div><span>Клиенты</span><strong>{db.clients.length}</strong></div>
-        <div><span>Личные средства</span><strong className="info-text">{money(totals.personal)}</strong></div>
-        <div><span>Выведено</span><strong className="warning-text">{money(totals.withdrawals)}</strong></div>
+        </div>
       </div>
       <MonthlyChart data={monthly} embedded />
     </section>

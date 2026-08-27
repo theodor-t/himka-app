@@ -64,6 +64,7 @@ const NAV = [
   ["withdrawals", "5. Вывод денег", Wallet],
   ["logs", "6. Журнал логов", History],
 ];
+const RU_COLLATOR = new Intl.Collator("ru", { numeric: true });
 
 const money = (value) => `${Number(value || 0).toLocaleString("ru-RU")} MDL`;
 const dateText = (value) => {
@@ -313,10 +314,9 @@ export default function Home() {
         return (dateA - dateB) * (sort.key ? sort.direction : defaultDirection);
       }
       return (
-        String(a[activeKey] ?? "").localeCompare(
+        RU_COLLATOR.compare(
+          String(a[activeKey] ?? ""),
           String(b[activeKey] ?? ""),
-          "ru",
-          { numeric: true },
         ) * (sort.key ? sort.direction : defaultDirection)
       );
     });

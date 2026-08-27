@@ -1,0 +1,38 @@
+# Зависимости
+/node_modules
+/.pnp
+.pnp.js
+
+# Сборка и кэш Next.js
+/.next/
+/out/
+
+# Производственная сборка (если используется)
+/build
+
+# Логи тестирования и отладки
+/coverage
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Локальные переменные окружения (секреты)
+.env*.local
+.env
+!.env.example
+
+# Логи и кэш систем сборки / IDE
+.DS_Store
+*.pem
+.vscode/
+.idea/
+
+# Временные файлы Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+node_modules
+node_modules

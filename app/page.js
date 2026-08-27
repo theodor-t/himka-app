@@ -29,9 +29,7 @@ import {
 } from "lucide-react";
 
 const SCRIPT_URL = "/api/db";
-const SESSION_KEY = "angel-detailing-user";
 const BACKUP_KEY = "angel-detailing-auto-backup";
-const USERS = { TUDOR: "326688", DAN: "326699" };
 const MONTHS = [
   "Январь",
   "Февраль",
@@ -188,9 +186,11 @@ export default function Home() {
   const syncInFlight = useRef(false);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem(SESSION_KEY);
-    if (savedUser && Object.hasOwn(USERS, savedUser)) setUser(savedUser);
-    setSessionChecked(true);
+    fetch("/api/auth")
+      .then((response) => response.json())
+      .then(({ user: savedUser }) => setUser(savedUser || null))
+      .catch(() => setUser(null))
+      .finally(() => setSessionChecked(true));
   }, []);
 
   const mutate = (changes, log) => {
@@ -289,19 +289,24 @@ export default function Home() {
     };
   }, [user]);
 
-  const login = (event) => {
+  const login = async (event) => {
     event.preventDefault();
-    if (USERS[selectedUser] === password) {
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: selectedUser, password }),
+      });
+      if (!response.ok) throw new Error();
       setUser(selectedUser);
-      localStorage.setItem(SESSION_KEY, selectedUser);
       setAuthError(false);
-    } else {
+    } catch {
       setAuthError(true);
       setPassword("");
     }
   };
-  const logout = () => {
-    localStorage.removeItem(SESSION_KEY);
+  const logout = async () => {
+    await fetch("/api/auth", { method: "DELETE" });
     setUser(null);
     setPage("home");
     dbRef.current = EMPTY_DB;

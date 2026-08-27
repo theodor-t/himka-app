@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE, verifySessionToken } from "../../lib/auth";
 
 const getConfig = () => {
   const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
@@ -8,13 +10,27 @@ const getConfig = () => {
 };
 
 const forwardResponse = async (response) => {
-  const payload = await response.json();
+  const body = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return NextResponse.json(
+      {
+        error: `Google returned a non-JSON response (${response.status})`,
+        details: body.slice(0, 300),
+      },
+      { status: 502 },
+    );
+  }
   const status = payload.status >= 400 || payload.error ? payload.status || 502 : 200;
   return NextResponse.json(payload, { status });
 };
 
 export async function GET() {
   try {
+    const username = verifySessionToken((await cookies()).get(SESSION_COOKIE)?.value);
+    if (!username) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { scriptUrl, apiKey } = getConfig();
     const url = new URL(scriptUrl);
     url.searchParams.set("key", apiKey);
@@ -27,6 +43,8 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    const username = verifySessionToken((await cookies()).get(SESSION_COOKIE)?.value);
+    if (!username) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { scriptUrl, apiKey } = getConfig();
     const url = new URL(scriptUrl);
     url.searchParams.set("key", apiKey);

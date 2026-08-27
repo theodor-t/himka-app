@@ -1,1646 +1,2254 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <title>ANGEL DETAILING — Учет</title>
-    <meta name="theme-color" content="#0a0a0c">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="ANGEL DETAILING">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="icon" type="image/svg+xml" href="/icon.svg">
-    <link rel="apple-touch-icon" href="/apple-icon.svg">
-    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0a0a0c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="ANGEL DETAILING" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        /* ================= RESET & CULORI BMW M5 F90 FULL BLACK ================= */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
+      /* ================= RESET & CULORI BMW M5 F90 FULL BLACK ================= */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
 
-        :root {
-            --bg-main: #0a0a0c;
-            --bg-panel: #121214;
-            --bg-card: rgba(24, 24, 27, 0.7);
-            --border-color: rgba(63, 63, 70, 0.5);
-            --m-red: #ff003c;
-            --m-blue: #00f0ff;
-            --primary: #ff003c;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --info: #3b82f6;
-            --text-light: #f4f4f5;
-            --text-muted: #94a3b8;
-        }
+      :root {
+        --bg-main: #0a0a0c;
+        --bg-panel: #121214;
+        --bg-card: rgba(24, 24, 27, 0.7);
+        --border-color: rgba(63, 63, 70, 0.5);
+        --m-red: #ff003c;
+        --m-blue: #00f0ff;
+        --primary: #ff003c;
+        --success: #10b981;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --info: #3b82f6;
+        --text-light: #f4f4f5;
+        --text-muted: #94a3b8;
+      }
 
-        body {
-            background-color: var(--bg-main);
-            color: var(--text-light);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow-x: hidden;
-        }
+      body {
+        background-color: var(--bg-main);
+        color: var(--text-light);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow-x: hidden;
+      }
 
-        /* ================= ECRAN AUTENTIFICARE (M-POWER STEALTH) ================= */
-        #auth-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: linear-gradient(180deg, rgba(10, 10, 12, 0.92) 0%, rgba(18, 18, 20, 0.98) 100%), 
-                        url('https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=1920&q=80') no-repeat center center;
-            background-size: cover;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            padding: 20px;
-        }
+      /* ================= ECRAN AUTENTIFICARE (M-POWER STEALTH) ================= */
+      #auth-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background:
+          linear-gradient(
+            180deg,
+            rgba(10, 10, 12, 0.92) 0%,
+            rgba(18, 18, 20, 0.98) 100%
+          ),
+          url("https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=1920&q=80")
+            no-repeat center center;
+        background-size: cover;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        padding: 20px;
+      }
 
-        .auth-card {
-            background: rgba(18, 18, 20, 0.85);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border-color);
-            padding: 30px 25px;
-            border-radius: 16px;
-            width: 100%;
-            max-width: 380px;
-            text-align: center;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 15px rgba(255, 0, 60, 0.15);
-            position: relative;
-        }
+      .auth-card {
+        background: rgba(18, 18, 20, 0.85);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border-color);
+        padding: 30px 25px;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 380px;
+        text-align: center;
+        box-shadow:
+          0 20px 50px rgba(0, 0, 0, 0.8),
+          0 0 15px rgba(255, 0, 60, 0.15);
+        position: relative;
+      }
 
-        .auth-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 15%;
-            right: 15%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--m-red), transparent);
-        }
+      .auth-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 15%;
+        right: 15%;
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--m-red),
+          transparent
+        );
+      }
 
-        .auth-card h2 {
-            margin-top: 0;
-            color: #fff;
-            font-size: 22px;
-            font-weight: 800;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-        }
+      .auth-card h2 {
+        margin-top: 0;
+        color: #fff;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
 
-        .auth-card p {
-            color: var(--text-muted);
-            font-size: 13px;
-            margin-bottom: 25px;
-            margin-top: 5px;
-        }
+      .auth-card p {
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-bottom: 25px;
+        margin-top: 5px;
+      }
 
-        /* ================= LAYOUT PRINCIPAL RESPONSIV ================= */
+      /* ================= LAYOUT PRINCIPAL RESPONSIV ================= */
+      .app-container {
+        display: flex;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        position: relative;
+      }
+
+      /* SIDEBAR (NAVIGARE PENTRU DESKTOP & MOBIL) */
+      .sidebar {
+        width: 260px;
+        background-color: var(--bg-panel);
+        border-right: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 1000;
+        position: relative;
+      }
+
+      .sidebar::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: -1px;
+        width: 1px;
+        height: 100%;
+        background: linear-gradient(
+          to bottom,
+          transparent,
+          var(--m-red),
+          transparent
+        );
+        opacity: 0.5;
+      }
+
+      .sidebar-header {
+        height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 800;
+        letter-spacing: 1px;
+      }
+
+      .brand-icon {
+        background: #18181b;
+        border: 1px solid var(--border-color);
+        padding: 8px;
+        border-radius: 8px;
+        display: flex;
+        color: var(--m-red);
+      }
+
+      .brand-text {
+        font-size: 15px;
+        color: #fff;
+        text-transform: uppercase;
+        line-height: 1.2;
+      }
+
+      .brand-text span {
+        color: var(--m-red);
+        display: block;
+        font-size: 10px;
+        letter-spacing: 2px;
+      }
+
+      .nav-list {
+        list-style: none;
+        padding: 15px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        color: var(--text-muted);
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s;
+        cursor: pointer;
+        position: relative;
+      }
+
+      .nav-item:hover,
+      .nav-item:active {
+        background-color: rgba(255, 255, 255, 0.04);
+        color: var(--text-light);
+      }
+
+      .nav-item.active {
+        background-color: #18181b;
+        color: #fff;
+        border: 1px solid var(--border-color);
+      }
+
+      .nav-item.active::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 20%;
+        height: 60%;
+        width: 3px;
+        background-color: var(--m-red);
+        border-radius: 0 4px 4px 0;
+        box-shadow: 0 0 10px var(--m-red);
+      }
+
+      .user-info-sidebar {
+        padding: 15px;
+        border-top: 1px solid var(--border-color);
+        font-size: 12px;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(0, 0, 0, 0.2);
+      }
+
+      /* CONTINUT PRINCIPAL */
+      .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+        width: 100%;
+      }
+
+      /* HEADER SUS / MOBIL BAR */
+      .top-bar {
+        height: 65px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        background-color: rgba(18, 18, 20, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        z-index: 50;
+      }
+
+      .mobile-menu-btn {
+        display: none;
+        background: #18181b;
+        border: 1px solid var(--border-color);
+        color: #fff;
+        padding: 8px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .page-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        box-sizing: border-box;
+        background:
+          radial-gradient(
+            circle at top right,
+            rgba(255, 0, 60, 0.03),
+            transparent 40%
+          ),
+          linear-gradient(to bottom, #0a0a0c, #121214);
+      }
+
+      .page {
+        display: none;
+        max-width: 1100px;
+        margin: 0 auto;
+        animation: fadeIn 0.25s ease-in-out;
+      }
+
+      .page.active {
+        display: block;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ================= COMPONENTE F90 UI ================= */
+      .card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        padding: 20px;
+        border-radius: 14px;
+        backdrop-filter: blur(10px);
+        margin-bottom: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      }
+
+      .card-header {
+        font-size: 16px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 15px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      /* FORMULARE MODERNE */
+      .form-group {
+        margin-bottom: 14px;
+        display: flex;
+        flex-direction: column;
+        text-align: left;
+      }
+
+      .form-group label {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+      }
+
+      input,
+      select,
+      textarea {
+        padding: 12px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: #18181b;
+        color: #fff;
+        font-size: 15px;
+        box-sizing: border-box;
+        width: 100%;
+        outline: none;
+        transition: all 0.2s;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: var(--m-red);
+        box-shadow: 0 0 10px rgba(255, 0, 60, 0.2);
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+
+      /* BUTOANE F90 */
+      .action-btn {
+        background: linear-gradient(135deg, #ff003c, #b3002a);
+        color: #fff;
+        border: none;
+        padding: 13px 20px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 14px;
+        width: 100%;
+        cursor: pointer;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 4px 15px rgba(255, 0, 60, 0.3);
+      }
+
+      .action-btn:active {
+        transform: scale(0.98);
+      }
+
+      .btn-secondary {
+        background: #18181b;
+        border: 1px solid var(--border-color);
+        color: #fff;
+        box-shadow: none;
+      }
+
+      /* STATS GRID (HOME PAGE) */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .stat-card {
+        background: rgba(24, 24, 27, 0.5);
+        border: 1px solid var(--border-color);
+        padding: 15px;
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .stat-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+
+      .stat-value {
+        font-size: 18px;
+        font-weight: 800;
+        font-family: monospace;
+      }
+
+      /* TABELE ADAPTIVE SI SCROLLABIL PE MOBIL */
+      .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: rgba(18, 18, 20, 0.6);
+        -webkit-overflow-scrolling: touch;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 13px;
+        min-width: 650px;
+      }
+
+      th,
+      td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border-color);
+        white-space: nowrap;
+      }
+
+      th {
+        color: var(--text-muted);
+        font-weight: 700;
+        background: #18181b;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      th:hover {
+        color: #fff;
+      }
+
+      /* BADGES */
+      .status-badge {
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        display: inline-block;
+        text-transform: uppercase;
+      }
+
+      .status-waiting {
+        background: rgba(245, 158, 11, 0.15);
+        color: var(--warning);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+      }
+      .status-no-show {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--danger);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+      .status-cancelled {
+        background: rgba(148, 163, 184, 0.15);
+        color: var(--text-muted);
+        border: 1px solid rgba(148, 163, 184, 0.3);
+      }
+      .status-done {
+        background: rgba(16, 185, 129, 0.15);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+
+      .user-badge {
+        padding: 3px 7px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        background: rgba(255, 0, 60, 0.1);
+        color: var(--m-red);
+        border: 1px solid rgba(255, 0, 60, 0.2);
+        font-mono: monospace;
+      }
+
+      .btn-sm {
+        padding: 6px 10px;
+        font-size: 11px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-weight: 700;
+        transition: 0.2s;
+      }
+      .btn-edit {
+        background: var(--info);
+        color: white;
+        margin-right: 4px;
+      }
+      .btn-del {
+        background: var(--danger);
+        color: white;
+      }
+      .btn-qty {
+        background: #27272a;
+        color: white;
+        padding: 4px 10px;
+        font-size: 13px;
+        border: 1px solid var(--border-color);
+      }
+
+      /* MODALE MODERNE */
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(10px);
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        padding: 15px;
+      }
+      .modal.active {
+        display: flex;
+      }
+      .modal-content {
+        background: #121214;
+        border: 1px solid var(--border-color);
+        padding: 24px;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 480px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+        position: relative;
+      }
+
+      /* ================= ADAPTABILITATE MOBIL (RESPONSIVE) ================= */
+      @media (max-width: 768px) {
         .app-container {
-            display: flex;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
+          flex-direction: column;
         }
 
-        /* SIDEBAR (NAVIGARE PENTRU DESKTOP & MOBIL) */
         .sidebar {
-            width: 260px;
-            background-color: var(--bg-panel);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 1000;
-            position: relative;
+          position: fixed;
+          top: 0;
+          left: -280px;
+          height: 100vh;
+          width: 270px;
+          box-shadow: 10px 0 30px rgba(0, 0, 0, 0.8);
         }
 
-        .sidebar::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: -1px;
-            width: 1px;
-            height: 100%;
-            background: linear-gradient(to bottom, transparent, var(--m-red), transparent);
-            opacity: 0.5;
-        }
-
-        .sidebar-header {
-            height: 70px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 800;
-            letter-spacing: 1px;
-        }
-
-        .brand-icon {
-            background: #18181b;
-            border: 1px solid var(--border-color);
-            padding: 8px;
-            border-radius: 8px;
-            display: flex;
-            color: var(--m-red);
-        }
-
-        .brand-text {
-            font-size: 15px;
-            color: #fff;
-            text-transform: uppercase;
-            line-height: 1.2;
-        }
-
-        .brand-text span {
-            color: var(--m-red);
-            display: block;
-            font-size: 10px;
-            letter-spacing: 2px;
-        }
-
-        .nav-list {
-            list-style: none;
-            padding: 15px 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 14px;
-            color: var(--text-muted);
-            text-decoration: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s;
-            cursor: pointer;
-            position: relative;
-        }
-
-        .nav-item:hover, .nav-item:active {
-            background-color: rgba(255, 255, 255, 0.04);
-            color: var(--text-light);
-        }
-
-        .nav-item.active {
-            background-color: #18181b;
-            color: #fff;
-            border: 1px solid var(--border-color);
-        }
-
-        .nav-item.active::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 20%;
-            height: 60%;
-            width: 3px;
-            background-color: var(--m-red);
-            border-radius: 0 4px 4px 0;
-            box-shadow: 0 0 10px var(--m-red);
-        }
-
-        .user-info-sidebar {
-            padding: 15px;
-            border-top: 1px solid var(--border-color);
-            font-size: 12px;
-            color: var(--text-muted);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: rgba(0,0,0,0.2);
-        }
-
-        /* CONTINUT PRINCIPAL */
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-            width: 100%;
-        }
-
-        /* HEADER SUS / MOBIL BAR */
-        .top-bar {
-            height: 65px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-            background-color: rgba(18, 18, 20, 0.8);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            z-index: 50;
+        .sidebar.mobile-open {
+          left: 0;
         }
 
         .mobile-menu-btn {
-            display: none;
-            background: #18181b;
-            border: 1px solid var(--border-color);
-            color: #fff;
-            padding: 8px;
-            border-radius: 8px;
-            cursor: pointer;
+          display: flex;
         }
 
         .page-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            box-sizing: border-box;
-            background: radial-gradient(circle at top right, rgba(255,0,60,0.03), transparent 40%),
-                        linear-gradient(to bottom, #0a0a0c, #121214);
+          padding: 12px;
         }
 
-        .page {
-            display: none;
-            max-width: 1100px;
-            margin: 0 auto;
-            animation: fadeIn 0.25s ease-in-out;
-        }
-
-        .page.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* ================= COMPONENTE F90 UI ================= */
         .card {
-            background-color: var(--bg-card);
-            border: 1px solid var(--border-color);
-            padding: 20px;
-            border-radius: 14px;
-            backdrop-filter: blur(10px);
-            margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+          padding: 15px;
         }
 
-        .card-header {
-            font-size: 16px;
-            font-weight: 700;
-            color: #fff;
-            margin-bottom: 15px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        /* FORMULARE MODERNE */
-        .form-group {
-            margin-bottom: 14px;
-            display: flex;
-            flex-direction: column;
-            text-align: left;
-        }
-
-        .form-group label {
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-        }
-
-        input, select, textarea {
-            padding: 12px 14px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            background: #18181b;
-            color: #fff;
-            font-size: 15px;
-            box-sizing: border-box;
-            width: 100%;
-            outline: none;
-            transition: all 0.2s;
-        }
-
-        input:focus, select:focus, textarea:focus {
-            border-color: var(--m-red);
-            box-shadow: 0 0 10px rgba(255, 0, 60, 0.2);
-        }
-
-        textarea {
-            resize: vertical;
-            min-height: 80px;
-        }
-
-        /* BUTOANE F90 */
-        .action-btn {
-            background: linear-gradient(135deg, #ff003c, #b3002a);
-            color: #fff;
-            border: none;
-            padding: 13px 20px;
-            border-radius: 8px;
-            font-weight: 700;
-            font-size: 14px;
-            width: 100%;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            box-shadow: 0 4px 15px rgba(255, 0, 60, 0.3);
-        }
-
-        .action-btn:active {
-            transform: scale(0.98);
-        }
-
-        .btn-secondary {
-            background: #18181b;
-            border: 1px solid var(--border-color);
-            color: #fff;
-            box-shadow: none;
-        }
-
-        /* STATS GRID (HOME PAGE) */
         .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 12px;
-            margin-bottom: 20px;
-        }
-
-        .stat-card {
-            background: rgba(24, 24, 27, 0.5);
-            border: 1px solid var(--border-color);
-            padding: 15px;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-
-        .stat-label {
-            font-size: 11px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
         }
 
         .stat-value {
-            font-size: 18px;
-            font-weight: 800;
-            font-family: monospace;
+          font-size: 15px;
         }
 
-        /* TABELE ADAPTIVE SI SCROLLABIL PE MOBIL */
-        .table-responsive {
-            width: 100%;
-            overflow-x: auto;
-            border-radius: 10px;
-            border: 1px solid var(--border-color);
-            background: rgba(18, 18, 20, 0.6);
-            -webkit-overflow-scrolling: touch;
+        .top-bar {
+          padding: 0 15px;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-            font-size: 13px;
-            min-width: 650px;
+        .overlay {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.6);
+          z-index: 999;
         }
-
-        th, td {
-            padding: 12px 14px;
-            border-bottom: 1px solid var(--border-color);
-            white-space: nowrap;
+        .overlay.active {
+          display: block;
         }
-
-        th {
-            color: var(--text-muted);
-            font-weight: 700;
-            background: #18181b;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        th:hover {
-            color: #fff;
-        }
-
-        /* BADGES */
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 700;
-            display: inline-block;
-            text-transform: uppercase;
-        }
-
-        .status-waiting { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
-        .status-no-show { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
-        .status-cancelled { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.3); }
-        .status-done { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
-
-        .user-badge {
-            padding: 3px 7px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 700;
-            background: rgba(255, 0, 60, 0.1);
-            color: var(--m-red);
-            border: 1px solid rgba(255, 0, 60, 0.2);
-            font-mono: monospace;
-        }
-
-        .btn-sm {
-            padding: 6px 10px;
-            font-size: 11px;
-            border-radius: 6px;
-            border: none;
-            cursor: pointer;
-            font-weight: 700;
-            transition: 0.2s;
-        }
-        .btn-edit { background: var(--info); color: white; margin-right: 4px; }
-        .btn-del { background: var(--danger); color: white; }
-        .btn-qty { background: #27272a; color: white; padding: 4px 10px; font-size: 13px; border: 1px solid var(--border-color); }
-
-        /* MODALE MODERNE */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(10px);
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            padding: 15px;
-        }
-        .modal.active {
-            display: flex;
-        }
-        .modal-content {
-            background: #121214;
-            border: 1px solid var(--border-color);
-            padding: 24px;
-            border-radius: 16px;
-            width: 100%;
-            max-width: 480px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
-            position: relative;
-        }
-
-        /* ================= ADAPTABILITATE MOBIL (RESPONSIVE) ================= */
-        @media (max-width: 768px) {
-            .app-container {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                position: fixed;
-                top: 0;
-                left: -280px;
-                height: 100vh;
-                width: 270px;
-                box-shadow: 10px 0 30px rgba(0,0,0,0.8);
-            }
-
-            .sidebar.mobile-open {
-                left: 0;
-            }
-
-            .mobile-menu-btn {
-                display: flex;
-            }
-
-            .page-container {
-                padding: 12px;
-            }
-
-            .card {
-                padding: 15px;
-            }
-
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 8px;
-            }
-
-            .stat-value {
-                font-size: 15px;
-            }
-
-            .top-bar {
-                padding: 0 15px;
-            }
-
-            .overlay {
-                display: none;
-                position: fixed;
-                inset: 0;
-                background: rgba(0,0,0,0.6);
-                z-index: 999;
-            }
-            .overlay.active {
-                display: block;
-            }
-        }
+      }
     </style>
-</head>
-<body>
-
+  </head>
+  <body>
     <!-- OVERLAY PENTRU MENIU MOBIL -->
     <div class="overlay" id="mobileOverlay" onclick="closeMobileMenu()"></div>
 
     <!-- ECRAN AUTENTIFICARE -->
     <div id="auth-screen">
-        <div class="auth-card">
-            <div style="display: flex; justify-content: center; margin-bottom: 12px;">
-                <div style="background: #18181b; padding: 12px; border-radius: 12px; border: 1px solid var(--border-color); color: var(--m-red);">
-                    <i data-lucide="shield-check" style="width:32px; height:32px;"></i>
-                </div>
-            </div>
-            <h2>ANGEL DETAILING</h2>
-            <p>Система учета и управления</p>
-            
-            <div class="form-group">
-                <label>Пользователь</label>
-                <select id="userSelect">
-                    <option value="TUDOR">TUDOR</option>
-                    <option value="DAN">DAN</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Пароль</label>
-                <input type="password" id="passwordInput" placeholder="••••••" onkeypress="checkEnter(event)">
-            </div>
-            <button class="action-btn" onclick="checkPassword()" style="margin-top: 10px;">
-                Войти в систему <i data-lucide="arrow-right" style="width:16px;"></i>
-            </button>
-            <div id="error-msg" style="color: var(--danger); font-size: 12px; margin-top: 12px; display: none; font-weight: 600;">Неверный пароль!</div>
+      <div class="auth-card">
+        <div
+          style="display: flex; justify-content: center; margin-bottom: 12px"
+        >
+          <div
+            style="
+              background: #18181b;
+              padding: 12px;
+              border-radius: 12px;
+              border: 1px solid var(--border-color);
+              color: var(--m-red);
+            "
+          >
+            <i data-lucide="shield-check" style="width: 32px; height: 32px"></i>
+          </div>
         </div>
+        <h2>ANGEL DETAILING</h2>
+        <p>Система учета и управления</p>
+
+        <div class="form-group">
+          <label>Пользователь</label>
+          <select id="userSelect">
+            <option value="TUDOR">TUDOR</option>
+            <option value="DAN">DAN</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Пароль</label>
+          <input
+            type="password"
+            id="passwordInput"
+            placeholder="••••••"
+            onkeypress="checkEnter(event)"
+          />
+        </div>
+        <button
+          class="action-btn"
+          onclick="checkPassword()"
+          style="margin-top: 10px"
+        >
+          Войти в систему <i data-lucide="arrow-right" style="width: 16px"></i>
+        </button>
+        <div
+          id="error-msg"
+          style="
+            color: var(--danger);
+            font-size: 12px;
+            margin-top: 12px;
+            display: none;
+            font-weight: 600;
+          "
+        >
+          Неверный пароль!
+        </div>
+      </div>
     </div>
 
     <!-- MAIN APP WRAPPER -->
     <div class="app-container">
-
-        <!-- SIDEBAR NAVIGARE -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="brand">
-                    <div class="brand-icon"><i data-lucide="sparkles"></i></div>
-                    <div class="brand-text">ANGEL <span>DETAILING</span></div>
-                </div>
-            </div>
-
-            <ul class="nav-list">
-                <li class="nav-item active" onclick="switchPage('home')">
-                    <i data-lucide="layout-dashboard"></i>
-                    <span>Главная Панель</span>
-                </li>
-                <li class="nav-item" onclick="switchPage('clients')">
-                    <i data-lucide="users"></i>
-                    <span>1. Записи клиентов</span>
-                </li>
-                <li class="nav-item" onclick="switchPage('expenses')">
-                    <i data-lucide="receipt"></i>
-                    <span>2. Затраты</span>
-                </li>
-                <li class="nav-item" onclick="switchPage('profit')">
-                    <i data-lucide="trending-up"></i>
-                    <span>3. Прибыль</span>
-                </li>
-                <li class="nav-item" onclick="switchPage('warehouse')">
-                    <i data-lucide="package"></i>
-                    <span>4. Склад</span>
-                </li>
-                <li class="nav-item" onclick="switchPage('withdrawals')">
-                    <i data-lucide="wallet"></i>
-                    <span>5. Вывод денег</span>
-                </li>
-                <li class="nav-item" onclick="switchPage('logs')">
-                    <i data-lucide="history"></i>
-                    <span>6. Журнал логов</span>
-                </li>
-            </ul>
-
-            <div class="user-info-sidebar">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <i data-lucide="user" style="width:16px;"></i>
-                    <span id="currentUserDisplay" style="font-weight:bold; color:#fff;">-</span>
-                </div>
-                <span style="font-size: 10px; color: var(--m-red); font-weight: 800;">F90 LCI</span>
-            </div>
-        </aside>
-
-        <!-- MAIN CONTENT AREA -->
-        <div class="main-content">
-            
-            <!-- TOP BAR (HEADER) -->
-            <header class="top-bar">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
-                        <i data-lucide="menu"></i>
-                    </button>
-                    <h1 id="pageTitle" style="font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Главная Панель</h1>
-                </div>
-
-                <div id="sync-status" style="font-size: 11px; color: var(--text-muted); font-family: monospace;">
-                    Загрузка...
-                </div>
-            </header>
-
-            <!-- CONTAINER PAGINI -->
-            <div class="page-container">
-
-                <!-- 0. HOME PAGE -->
-                <div id="page-home" class="page active">
-                    <div class="card">
-                        <div class="card-header">
-                            <span>Финансовые показатели</span>
-                            <i data-lucide="activity" style="color: var(--m-red);"></i>
-                        </div>
-                        
-                        <div class="stats-grid">
-                            <div class="stat-card">
-                                <div class="stat-label" id="stat-income-month-label">Доходы текущий месяц</div>
-                                <div class="stat-value" id="stat-income-month-val" style="color:var(--success)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Доходы за всё время</div>
-                                <div class="stat-value" id="stat-income-all-val" style="color:var(--success)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label" id="stat-expense-month-label">Затраты текущий месяц</div>
-                                <div class="stat-value" id="stat-expense-month-val" style="color:var(--danger)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Затраты за всё время</div>
-                                <div class="stat-value" id="stat-expense-all-val" style="color:var(--danger)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label" id="stat-personal-month-label">Личные средства текущий месяц</div>
-                                <div class="stat-value" id="stat-personal-month-val" style="color:var(--info)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Личные средства за всё время</div>
-                                <div class="stat-value" id="stat-personal-all-val" style="color:var(--info)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label" id="stat-withdrawal-month-label">Выведено текущий месяц</div>
-                                <div class="stat-value" id="stat-withdrawal-month-val" style="color:var(--warning)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Выведено за всё время</div>
-                                <div class="stat-value" id="stat-withdrawal-all-val" style="color:var(--warning)">0 MDL</div>
-                            </div>
-                            <div class="stat-card" style="border-color: rgba(255, 0, 60, 0.4);">
-                                <div class="stat-label">Чистая прибыль</div>
-                                <div class="stat-value" id="stat-profit-val" style="color:var(--m-red)">0 MDL</div>
-                            </div>
-                            <div class="stat-card" style="border-color: rgba(56, 189, 248, 0.4);">
-                                <div class="stat-label">Общая касса</div>
-                                <div class="stat-value" id="stat-cashbox-val" style="color:#38bdf8">0 MDL</div>
-                            </div>
-                        </div>
-
-                        <div style="display: flex; gap: 10px; margin-top: 15px;">
-                            <button class="action-btn btn-secondary" onclick="exportData()" style="flex:1; font-size:12px;">💾 Бэкап</button>
-                            <button class="action-btn btn-secondary" onclick="loadDataFromCloud()" style="flex:1; font-size:12px;">🔄 Обновить</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 1. CLIENTS PAGE -->
-                <div id="page-clients" class="page">
-                    <div class="card">
-                        <div class="card-header">
-                            <span>Записи клиентов</span>
-                            <button class="action-btn" onclick="openClientModal()" style="width: auto; padding: 8px 14px; font-size: 12px;">+ Клиент</button>
-                        </div>
-
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th onclick="sortTable('clientsTableBody', 0)">Авто ⇳</th>
-                                        <th onclick="sortTable('clientsTableBody', 1)">Телефон ⇳</th>
-                                        <th onclick="sortTable('clientsTableBody', 2)">Услуга ⇳</th>
-                                        <th onclick="sortTable('clientsTableBody', 3)">Дата ⇳</th>
-                                        <th onclick="sortTable('clientsTableBody', 4)">Статус ⇳</th>
-                                        <th onclick="sortTable('clientsTableBody', 5)">Автор ⇳</th>
-                                        <th onclick="sortTable('clientsTableBody', 6)">Инфо ⇳</th>
-                                        <th>Действия</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="clientsTableBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 2. EXPENSES PAGE -->
-                <div id="page-expenses" class="page">
-                    <div class="card">
-                        <div class="card-header">Добавить затрату</div>
-                        <div class="form-group">
-                            <label>Категория расхода</label>
-                            <input type="text" id="expenseCategory" placeholder="Автохимия / Аренда">
-                        </div>
-                        <div class="form-group">
-                            <label>Сумма (MDL)</label>
-                            <input type="number" id="expenseAmount" placeholder="1500">
-                        </div>
-                        <div class="form-group">
-                            <label>Месяц</label>
-                            <select id="expenseMonth">
-                                <option value="Январь">Январь</option><option value="Февраль">Февраль</option><option value="Март">Март</option><option value="Апрель">Апрель</option><option value="Май">Май</option><option value="Июнь">Июнь</option><option value="Июль">Июль</option><option value="Август">Август</option><option value="Сентябрь">Сентябрь</option><option value="Октябрь">Октябрь</option><option value="Ноябрь">Ноябрь</option><option value="Декабрь">Декабрь</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Источник средств</label>
-                            <select id="expenseSource">
-                                <option value="Общие">Общие (из кассы)</option>
-                                <option value="Личные средства">Личные средства</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Комментарий</label>
-                            <textarea id="expenseComment" placeholder="Детали..."></textarea>
-                        </div>
-                        <button class="action-btn" onclick="addExpenseRecord()" style="background: var(--danger);">Сохранить расход</button>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-header">История затрат</div>
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th onclick="sortTable('expensesTableBody', 0)">Дата ⇳</th>
-                                        <th onclick="sortTable('expensesTableBody', 1)">Месяц ⇳</th>
-                                        <th onclick="sortTable('expensesTableBody', 2)">Категория ⇳</th>
-                                        <th onclick="sortTable('expensesTableBody', 3)">Сумма ⇳</th>
-                                        <th onclick="sortTable('expensesTableBody', 4)">Источник ⇳</th>
-                                        <th onclick="sortTable('expensesTableBody', 5)">Автор ⇳</th>
-                                        <th onclick="sortTable('expensesTableBody', 6)">Заметка ⇳</th>
-                                        <th>Удалить</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="expensesTableBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 3. PROFIT PAGE -->
-                <div id="page-profit" class="page">
-                    <div class="card">
-                        <div class="card-header">
-                            <span>Прибыль и Аналитика</span>
-                            <button class="action-btn" onclick="openIncomeModal()" style="width: auto; padding: 8px 14px; font-size: 12px;">+ Доход</button>
-                        </div>
-
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label>Выберите период</label>
-                            <select id="profitMonthSelect" onchange="updateUI()">
-                                <option value="all">За всё время</option>
-                            </select>
-                        </div>
-
-                        <div class="stats-grid">
-                            <div class="stat-card">
-                                <div class="stat-label">Выручка</div>
-                                <div class="stat-value" id="profit-inc" style="color:var(--success)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Затраты (из кассы)</div>
-                                <div class="stat-value" id="profit-exp" style="color:var(--danger)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Личные средства</div>
-                                <div class="stat-value" id="profit-personal" style="color:var(--info)">0 MDL</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Выведено из кассы</div>
-                                <div class="stat-value" id="profit-withdrawal" style="color:var(--warning)">0 MDL</div>
-                            </div>
-                            <div class="stat-card" style="border-color: var(--m-red); grid-column: 1 / -1;">
-                                <div class="stat-label">Чистая прибыль за период</div>
-                                <div class="stat-value" id="profit-tot" style="color:var(--m-red); font-size: 22px;">0 MDL</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-header">Список доходов</div>
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th onclick="sortTable('incomesTableBody', 0)">Дата ⇳</th>
-                                        <th onclick="sortTable('incomesTableBody', 1)">Клиент ⇳</th>
-                                        <th onclick="sortTable('incomesTableBody', 2)">Сумма ⇳</th>
-                                        <th onclick="sortTable('incomesTableBody', 3)">Статус ⇳</th>
-                                        <th onclick="sortTable('incomesTableBody', 4)">Автор ⇳</th>
-                                        <th>Действия</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="incomesTableBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 4. WAREHOUSE PAGE -->
-                <div id="page-warehouse" class="page">
-                    <div class="card">
-                        <div class="card-header">
-                            <span>Учет расходников (Склад)</span>
-                            <button class="action-btn" onclick="openWarehouseModal()" style="width: auto; padding: 8px 14px; font-size: 12px;">+ Товар</button>
-                        </div>
-
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th onclick="sortTable('warehouseTableBody', 0)">Расходник ⇳</th>
-                                        <th onclick="sortTable('warehouseTableBody', 1)">Кол-во ⇳</th>
-                                        <th onclick="sortTable('warehouseTableBody', 2)">Автор ⇳</th>
-                                        <th>Изменить</th>
-                                        <th>Управление</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="warehouseTableBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 5. WITHDRAWALS PAGE -->
-                <div id="page-withdrawals" class="page">
-                    <div class="card">
-                        <div class="card-header">Вывод денег из кассы</div>
-                        <div class="form-group">
-                            <label>Сумма вывода (MDL)</label>
-                            <input type="number" id="wthAmount" placeholder="2000">
-                        </div>
-                        <div class="form-group">
-                            <label>Месяц</label>
-                            <select id="wthMonth">
-                                <option value="Январь">Январь</option><option value="Февраль">Февраль</option><option value="Март">Март</option><option value="Апрель">Апрель</option><option value="Май">Май</option><option value="Июнь">Июнь</option><option value="Июль">Июль</option><option value="Август">Август</option><option value="Сентябрь">Сентябрь</option><option value="Октябрь">Октябрь</option><option value="Ноябрь">Ноябрь</option><option value="Декабрь">Декабрь</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Комментарий / На что выведено</label>
-                            <textarea id="wthComment" placeholder="Зарплата / Личные нужды..."></textarea>
-                        </div>
-                        <button class="action-btn" onclick="addWithdrawalRecord()" style="background: var(--warning); color:#000;">Зафиксировать вывод</button>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-header">История выводов</div>
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th onclick="sortTable('withdrawalsTableBody', 0)">Дата ⇳</th>
-                                        <th onclick="sortTable('withdrawalsTableBody', 1)">Месяц ⇳</th>
-                                        <th onclick="sortTable('withdrawalsTableBody', 2)">Сумма ⇳</th>
-                                        <th onclick="sortTable('withdrawalsTableBody', 3)">Автор ⇳</th>
-                                        <th onclick="sortTable('withdrawalsTableBody', 4)">Детали ⇳</th>
-                                        <th>Удалить</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="withdrawalsTableBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 6. LOGS PAGE -->
-                <div id="page-logs" class="page">
-                    <div class="card">
-                        <div class="card-header">Журнал действий</div>
-                        <div class="table-responsive">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th onclick="sortTable('logsTableBody', 0)">Дата ⇳</th>
-                                        <th onclick="sortTable('logsTableBody', 1)">Пользователь ⇳</th>
-                                        <th onclick="sortTable('logsTableBody', 2)">Действие ⇳</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="logsTableBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
+      <!-- SIDEBAR NAVIGARE -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-icon"><i data-lucide="sparkles"></i></div>
+            <div class="brand-text">ANGEL <span>DETAILING</span></div>
+          </div>
         </div>
+
+        <ul class="nav-list">
+          <li class="nav-item active" onclick="switchPage('home')">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Главная Панель</span>
+          </li>
+          <li class="nav-item" onclick="switchPage('clients')">
+            <i data-lucide="users"></i>
+            <span>1. Записи клиентов</span>
+          </li>
+          <li class="nav-item" onclick="switchPage('expenses')">
+            <i data-lucide="receipt"></i>
+            <span>2. Затраты</span>
+          </li>
+          <li class="nav-item" onclick="switchPage('profit')">
+            <i data-lucide="trending-up"></i>
+            <span>3. Прибыль</span>
+          </li>
+          <li class="nav-item" onclick="switchPage('warehouse')">
+            <i data-lucide="package"></i>
+            <span>4. Склад</span>
+          </li>
+          <li class="nav-item" onclick="switchPage('withdrawals')">
+            <i data-lucide="wallet"></i>
+            <span>5. Вывод денег</span>
+          </li>
+          <li class="nav-item" onclick="switchPage('logs')">
+            <i data-lucide="history"></i>
+            <span>6. Журнал логов</span>
+          </li>
+        </ul>
+
+        <div class="user-info-sidebar">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <i data-lucide="user" style="width: 16px"></i>
+            <span id="currentUserDisplay" style="font-weight: bold; color: #fff"
+              >-</span
+            >
+          </div>
+          <span style="font-size: 10px; color: var(--m-red); font-weight: 800"
+            >F90 LCI</span
+          >
+        </div>
+      </aside>
+
+      <!-- MAIN CONTENT AREA -->
+      <div class="main-content">
+        <!-- TOP BAR (HEADER) -->
+        <header class="top-bar">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+              <i data-lucide="menu"></i>
+            </button>
+            <h1
+              id="pageTitle"
+              style="
+                font-size: 16px;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+              "
+            >
+              Главная Панель
+            </h1>
+          </div>
+
+          <div
+            id="sync-status"
+            style="
+              font-size: 11px;
+              color: var(--text-muted);
+              font-family: monospace;
+            "
+          >
+            Загрузка...
+          </div>
+        </header>
+
+        <!-- CONTAINER PAGINI -->
+        <div class="page-container">
+          <!-- 0. HOME PAGE -->
+          <div id="page-home" class="page active">
+            <div class="card">
+              <div class="card-header">
+                <span>Финансовые показатели</span>
+                <i data-lucide="activity" style="color: var(--m-red)"></i>
+              </div>
+
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <div class="stat-label" id="stat-income-month-label">
+                    Доходы текущий месяц
+                  </div>
+                  <div
+                    class="stat-value"
+                    id="stat-income-month-val"
+                    style="color: var(--success)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Доходы за всё время</div>
+                  <div
+                    class="stat-value"
+                    id="stat-income-all-val"
+                    style="color: var(--success)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label" id="stat-expense-month-label">
+                    Затраты текущий месяц
+                  </div>
+                  <div
+                    class="stat-value"
+                    id="stat-expense-month-val"
+                    style="color: var(--danger)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Затраты за всё время</div>
+                  <div
+                    class="stat-value"
+                    id="stat-expense-all-val"
+                    style="color: var(--danger)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label" id="stat-personal-month-label">
+                    Личные средства текущий месяц
+                  </div>
+                  <div
+                    class="stat-value"
+                    id="stat-personal-month-val"
+                    style="color: var(--info)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Личные средства за всё время</div>
+                  <div
+                    class="stat-value"
+                    id="stat-personal-all-val"
+                    style="color: var(--info)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label" id="stat-withdrawal-month-label">
+                    Выведено текущий месяц
+                  </div>
+                  <div
+                    class="stat-value"
+                    id="stat-withdrawal-month-val"
+                    style="color: var(--warning)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Выведено за всё время</div>
+                  <div
+                    class="stat-value"
+                    id="stat-withdrawal-all-val"
+                    style="color: var(--warning)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div
+                  class="stat-card"
+                  style="border-color: rgba(255, 0, 60, 0.4)"
+                >
+                  <div class="stat-label">Чистая прибыль</div>
+                  <div
+                    class="stat-value"
+                    id="stat-profit-val"
+                    style="color: var(--m-red)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div
+                  class="stat-card"
+                  style="border-color: rgba(56, 189, 248, 0.4)"
+                >
+                  <div class="stat-label">Общая касса</div>
+                  <div
+                    class="stat-value"
+                    id="stat-cashbox-val"
+                    style="color: #38bdf8"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 10px; margin-top: 15px">
+                <button
+                  class="action-btn btn-secondary"
+                  onclick="exportData()"
+                  style="flex: 1; font-size: 12px"
+                >
+                  💾 Бэкап
+                </button>
+                <button
+                  class="action-btn btn-secondary"
+                  onclick="loadDataFromCloud()"
+                  style="flex: 1; font-size: 12px"
+                >
+                  🔄 Обновить
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. CLIENTS PAGE -->
+          <div id="page-clients" class="page">
+            <div class="card">
+              <div class="card-header">
+                <span>Записи клиентов</span>
+                <button
+                  class="action-btn"
+                  onclick="openClientModal()"
+                  style="width: auto; padding: 8px 14px; font-size: 12px"
+                >
+                  + Клиент
+                </button>
+              </div>
+
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th onclick="sortTable('clientsTableBody', 0)">Авто ⇳</th>
+                      <th onclick="sortTable('clientsTableBody', 1)">
+                        Телефон ⇳
+                      </th>
+                      <th onclick="sortTable('clientsTableBody', 2)">
+                        Услуга ⇳
+                      </th>
+                      <th onclick="sortTable('clientsTableBody', 3)">Дата ⇳</th>
+                      <th onclick="sortTable('clientsTableBody', 4)">
+                        Статус ⇳
+                      </th>
+                      <th onclick="sortTable('clientsTableBody', 5)">
+                        Автор ⇳
+                      </th>
+                      <th onclick="sortTable('clientsTableBody', 6)">Инфо ⇳</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="clientsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. EXPENSES PAGE -->
+          <div id="page-expenses" class="page">
+            <div class="card">
+              <div class="card-header">Добавить затрату</div>
+              <div class="form-group">
+                <label>Категория расхода</label>
+                <input
+                  type="text"
+                  id="expenseCategory"
+                  placeholder="Автохимия / Аренда"
+                />
+              </div>
+              <div class="form-group">
+                <label>Сумма (MDL)</label>
+                <input type="number" id="expenseAmount" placeholder="1500" />
+              </div>
+              <div class="form-group">
+                <label>Месяц</label>
+                <select id="expenseMonth">
+                  <option value="Январь">Январь</option>
+                  <option value="Февраль">Февраль</option>
+                  <option value="Март">Март</option>
+                  <option value="Апрель">Апрель</option>
+                  <option value="Май">Май</option>
+                  <option value="Июнь">Июнь</option>
+                  <option value="Июль">Июль</option>
+                  <option value="Август">Август</option>
+                  <option value="Сентябрь">Сентябрь</option>
+                  <option value="Октябрь">Октябрь</option>
+                  <option value="Ноябрь">Ноябрь</option>
+                  <option value="Декабрь">Декабрь</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Источник средств</label>
+                <select id="expenseSource">
+                  <option value="Общие">Общие (из кассы)</option>
+                  <option value="Личные средства">Личные средства</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Комментарий</label>
+                <textarea
+                  id="expenseComment"
+                  placeholder="Детали..."
+                ></textarea>
+              </div>
+              <button
+                class="action-btn"
+                onclick="addExpenseRecord()"
+                style="background: var(--danger)"
+              >
+                Сохранить расход
+              </button>
+            </div>
+
+            <div class="card">
+              <div class="card-header">История затрат</div>
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th onclick="sortTable('expensesTableBody', 0)">
+                        Дата ⇳
+                      </th>
+                      <th onclick="sortTable('expensesTableBody', 1)">
+                        Месяц ⇳
+                      </th>
+                      <th onclick="sortTable('expensesTableBody', 2)">
+                        Категория ⇳
+                      </th>
+                      <th onclick="sortTable('expensesTableBody', 3)">
+                        Сумма ⇳
+                      </th>
+                      <th onclick="sortTable('expensesTableBody', 4)">
+                        Источник ⇳
+                      </th>
+                      <th onclick="sortTable('expensesTableBody', 5)">
+                        Автор ⇳
+                      </th>
+                      <th onclick="sortTable('expensesTableBody', 6)">
+                        Заметка ⇳
+                      </th>
+                      <th>Удалить</th>
+                    </tr>
+                  </thead>
+                  <tbody id="expensesTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. PROFIT PAGE -->
+          <div id="page-profit" class="page">
+            <div class="card">
+              <div class="card-header">
+                <span>Прибыль и Аналитика</span>
+                <button
+                  class="action-btn"
+                  onclick="openIncomeModal()"
+                  style="width: auto; padding: 8px 14px; font-size: 12px"
+                >
+                  + Доход
+                </button>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 20px">
+                <label>Выберите период</label>
+                <select id="profitMonthSelect" onchange="updateUI()">
+                  <option value="all">За всё время</option>
+                </select>
+              </div>
+
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <div class="stat-label">Выручка</div>
+                  <div
+                    class="stat-value"
+                    id="profit-inc"
+                    style="color: var(--success)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Затраты (из кассы)</div>
+                  <div
+                    class="stat-value"
+                    id="profit-exp"
+                    style="color: var(--danger)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Личные средства</div>
+                  <div
+                    class="stat-value"
+                    id="profit-personal"
+                    style="color: var(--info)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-label">Выведено из кассы</div>
+                  <div
+                    class="stat-value"
+                    id="profit-withdrawal"
+                    style="color: var(--warning)"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+                <div
+                  class="stat-card"
+                  style="border-color: var(--m-red); grid-column: 1 / -1"
+                >
+                  <div class="stat-label">Чистая прибыль за период</div>
+                  <div
+                    class="stat-value"
+                    id="profit-tot"
+                    style="color: var(--m-red); font-size: 22px"
+                  >
+                    0 MDL
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">Список доходов</div>
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th onclick="sortTable('incomesTableBody', 0)">Дата ⇳</th>
+                      <th onclick="sortTable('incomesTableBody', 1)">
+                        Клиент ⇳
+                      </th>
+                      <th onclick="sortTable('incomesTableBody', 2)">
+                        Сумма ⇳
+                      </th>
+                      <th onclick="sortTable('incomesTableBody', 3)">
+                        Статус ⇳
+                      </th>
+                      <th onclick="sortTable('incomesTableBody', 4)">
+                        Автор ⇳
+                      </th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="incomesTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. WAREHOUSE PAGE -->
+          <div id="page-warehouse" class="page">
+            <div class="card">
+              <div class="card-header">
+                <span>Учет расходников (Склад)</span>
+                <button
+                  class="action-btn"
+                  onclick="openWarehouseModal()"
+                  style="width: auto; padding: 8px 14px; font-size: 12px"
+                >
+                  + Товар
+                </button>
+              </div>
+
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th onclick="sortTable('warehouseTableBody', 0)">
+                        Расходник ⇳
+                      </th>
+                      <th onclick="sortTable('warehouseTableBody', 1)">
+                        Кол-во ⇳
+                      </th>
+                      <th onclick="sortTable('warehouseTableBody', 2)">
+                        Автор ⇳
+                      </th>
+                      <th>Изменить</th>
+                      <th>Управление</th>
+                    </tr>
+                  </thead>
+                  <tbody id="warehouseTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. WITHDRAWALS PAGE -->
+          <div id="page-withdrawals" class="page">
+            <div class="card">
+              <div class="card-header">Вывод денег из кассы</div>
+              <div class="form-group">
+                <label>Сумма вывода (MDL)</label>
+                <input type="number" id="wthAmount" placeholder="2000" />
+              </div>
+              <div class="form-group">
+                <label>Месяц</label>
+                <select id="wthMonth">
+                  <option value="Январь">Январь</option>
+                  <option value="Февраль">Февраль</option>
+                  <option value="Март">Март</option>
+                  <option value="Апрель">Апрель</option>
+                  <option value="Май">Май</option>
+                  <option value="Июнь">Июнь</option>
+                  <option value="Июль">Июль</option>
+                  <option value="Август">Август</option>
+                  <option value="Сентябрь">Сентябрь</option>
+                  <option value="Октябрь">Октябрь</option>
+                  <option value="Ноябрь">Ноябрь</option>
+                  <option value="Декабрь">Декабрь</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Комментарий / На что выведено</label>
+                <textarea
+                  id="wthComment"
+                  placeholder="Зарплата / Личные нужды..."
+                ></textarea>
+              </div>
+              <button
+                class="action-btn"
+                onclick="addWithdrawalRecord()"
+                style="background: var(--warning); color: #000"
+              >
+                Зафиксировать вывод
+              </button>
+            </div>
+
+            <div class="card">
+              <div class="card-header">История выводов</div>
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th onclick="sortTable('withdrawalsTableBody', 0)">
+                        Дата ⇳
+                      </th>
+                      <th onclick="sortTable('withdrawalsTableBody', 1)">
+                        Месяц ⇳
+                      </th>
+                      <th onclick="sortTable('withdrawalsTableBody', 2)">
+                        Сумма ⇳
+                      </th>
+                      <th onclick="sortTable('withdrawalsTableBody', 3)">
+                        Автор ⇳
+                      </th>
+                      <th onclick="sortTable('withdrawalsTableBody', 4)">
+                        Детали ⇳
+                      </th>
+                      <th>Удалить</th>
+                    </tr>
+                  </thead>
+                  <tbody id="withdrawalsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 6. LOGS PAGE -->
+          <div id="page-logs" class="page">
+            <div class="card">
+              <div class="card-header">Журнал действий</div>
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th onclick="sortTable('logsTableBody', 0)">Дата ⇳</th>
+                      <th onclick="sortTable('logsTableBody', 1)">
+                        Пользователь ⇳
+                      </th>
+                      <th onclick="sortTable('logsTableBody', 2)">
+                        Действие ⇳
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="logsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- MODALE -->
     <div id="clientModal" class="modal">
-        <div class="modal-content">
-            <h3 id="modalTitle" style="margin-top:0; color:#fff; font-size:18px; margin-bottom:15px;">Новый клиент</h3>
-            <input type="hidden" id="editClientId">
-            <div class="form-group"><label>Марка авто / Имя</label><input type="text" id="cCar" placeholder="BMW M5 / Иван"></div>
-            <div class="form-group"><label>Телефон</label><input type="text" id="cPhone" placeholder="+373 ..."></div>
-            <div class="form-group"><label>Услуга</label><input type="text" id="cService" placeholder="Детейлинг / Химчистка"></div>
-            <div class="form-group"><label>Дата и время</label><input type="datetime-local" id="cDateTime"></div>
-            <div class="form-group">
-                <label>Статус</label>
-                <select id="cStatus">
-                    <option value="В ожидании">В ожидании</option>
-                    <option value="Не пришел">Не пришел</option>
-                    <option value="Отменен">Отменен</option>
-                    <option value="Выполнено">Выполнено</option>
-                </select>
-            </div>
-            <div class="form-group"><label>Комментарий</label><textarea id="cComment" placeholder="Детали..."></textarea></div>
-            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button class="action-btn btn-secondary" onclick="closeClientModal()">Отмена</button>
-                <button class="action-btn" onclick="saveClientRecord()">Сохранить</button>
-            </div>
+      <div class="modal-content">
+        <h3
+          id="modalTitle"
+          style="
+            margin-top: 0;
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 15px;
+          "
+        >
+          Новый клиент
+        </h3>
+        <input type="hidden" id="editClientId" />
+        <div class="form-group">
+          <label>Марка авто / Имя</label
+          ><input type="text" id="cCar" placeholder="BMW M5 / Иван" />
         </div>
+        <div class="form-group">
+          <label>Телефон</label
+          ><input type="text" id="cPhone" placeholder="+373 ..." />
+        </div>
+        <div class="form-group">
+          <label>Услуга</label
+          ><input
+            type="text"
+            id="cService"
+            placeholder="Детейлинг / Химчистка"
+          />
+        </div>
+        <div class="form-group">
+          <label>Дата и время</label
+          ><input type="datetime-local" id="cDateTime" />
+        </div>
+        <div class="form-group">
+          <label>Статус</label>
+          <select id="cStatus">
+            <option value="В ожидании">В ожидании</option>
+            <option value="Не пришел">Не пришел</option>
+            <option value="Отменен">Отменен</option>
+            <option value="Выполнено">Выполнено</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Комментарий</label
+          ><textarea id="cComment" placeholder="Детали..."></textarea>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 15px">
+          <button class="action-btn btn-secondary" onclick="closeClientModal()">
+            Отмена
+          </button>
+          <button class="action-btn" onclick="saveClientRecord()">
+            Сохранить
+          </button>
+        </div>
+      </div>
     </div>
 
     <div id="incomeModal" class="modal">
-        <div class="modal-content">
-            <h3 style="margin-top:0; color:#fff; font-size:18px; margin-bottom:15px;">Добавить доход</h3>
-            <div class="form-group"><label>Выберите клиента</label><select id="incClientSelect"></select></div>
-            <div class="form-group"><label>Сумма (MDL)</label><input type="number" id="incAmount" placeholder="1000"></div>
-            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button class="action-btn btn-secondary" onclick="closeIncomeModal()">Отмена</button>
-                <button class="action-btn" onclick="saveIncomeRecord()">Добавить</button>
-            </div>
+      <div class="modal-content">
+        <h3
+          style="
+            margin-top: 0;
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 15px;
+          "
+        >
+          Добавить доход
+        </h3>
+        <div class="form-group">
+          <label>Выберите клиента</label
+          ><select id="incClientSelect"></select>
         </div>
+        <div class="form-group">
+          <label>Сумма (MDL)</label
+          ><input type="number" id="incAmount" placeholder="1000" />
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 15px">
+          <button class="action-btn btn-secondary" onclick="closeIncomeModal()">
+            Отмена
+          </button>
+          <button class="action-btn" onclick="saveIncomeRecord()">
+            Добавить
+          </button>
+        </div>
+      </div>
     </div>
 
     <div id="warehouseModal" class="modal">
-        <div class="modal-content">
-            <h3 id="warehouseModalTitle" style="margin-top:0; color:#fff; font-size:18px; margin-bottom:15px;">Новый товар</h3>
-            <input type="hidden" id="editWarehouseId">
-            <div class="form-group"><label>Название</label><input type="text" id="wName" placeholder="Шампунь / Керамика"></div>
-            <div class="form-group"><label>Количество</label><input type="number" id="wQty" placeholder="10"></div>
-            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button class="action-btn btn-secondary" onclick="closeWarehouseModal()">Отмена</button>
-                <button class="action-btn" onclick="saveWarehouseRecord()">Сохранить</button>
-            </div>
+      <div class="modal-content">
+        <h3
+          id="warehouseModalTitle"
+          style="
+            margin-top: 0;
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 15px;
+          "
+        >
+          Новый товар
+        </h3>
+        <input type="hidden" id="editWarehouseId" />
+        <div class="form-group">
+          <label>Название</label
+          ><input type="text" id="wName" placeholder="Шампунь / Керамика" />
         </div>
+        <div class="form-group">
+          <label>Количество</label
+          ><input type="number" id="wQty" placeholder="10" />
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 15px">
+          <button
+            class="action-btn btn-secondary"
+            onclick="closeWarehouseModal()"
+          >
+            Отмена
+          </button>
+          <button class="action-btn" onclick="saveWarehouseRecord()">
+            Сохранить
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- LOGICA SCRIPT - PASTREAZA APLICATIA EXACTA -->
     <script>
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx6OpGz3BhnwS7XPA1efSINsmEBgoQ_tKGrTSkJwrl0arcP_C8bVSmDjHXrL7Zm0XyJ/exec';
+      const SCRIPT_URL =
+        "https://script.google.com/macros/s/AKfycbx6OpGz3BhnwS7XPA1efSINsmEBgoQ_tKGrTSkJwrl0arcP_C8bVSmDjHXrL7Zm0XyJ/exec";
 
-        const USERS = {
-            "TUDOR": "326688",
-            "DAN": "326699"
+      const USERS = {
+        TUDOR: "326688",
+        DAN: "326699",
+      };
+
+      let currentUser = null;
+      const MONTH_NAMES = [
+        "Январь",
+        "Февраль",
+        "Март",
+        "Апрель",
+        "Май",
+        "Июнь",
+        "Июль",
+        "Август",
+        "Сентябрь",
+        "Октябрь",
+        "Ноябрь",
+        "Декабрь",
+      ];
+      let db = {
+        clients: [],
+        expenses: [],
+        incomes: [],
+        warehouse: [],
+        withdrawals: [],
+        logs: [],
+      };
+
+      // Mobil Menu Controls
+      function toggleMobileMenu() {
+        document.getElementById("sidebar").classList.toggle("mobile-open");
+        document.getElementById("mobileOverlay").classList.toggle("active");
+      }
+
+      function closeMobileMenu() {
+        document.getElementById("sidebar").classList.remove("mobile-open");
+        document.getElementById("mobileOverlay").classList.remove("active");
+      }
+
+      function formatDateTime(dateObj) {
+        if (!(dateObj instanceof Date) || isNaN(dateObj)) return "";
+        const day = String(dateObj.getDate()).padStart(2, "0");
+        const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+        const year = dateObj.getFullYear();
+        const hours = String(dateObj.getHours()).padStart(2, "0");
+        const minutes = String(dateObj.getMinutes()).padStart(2, "0");
+        return `${day}.${month}.${year} ${hours}:${minutes}`;
+      }
+
+      function formatIsoToCustom(isoStr) {
+        if (!isoStr) return "";
+        const d = new Date(isoStr);
+        if (isNaN(d)) return isoStr;
+        return formatDateTime(d);
+      }
+
+      function addLog(actionText) {
+        if (!db.logs) db.logs = [];
+        db.logs.unshift({
+          id: Date.now(),
+          datetime: formatDateTime(new Date()),
+          user: currentUser || "Система",
+          action: actionText,
+        });
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        lucide.createIcons();
+        const currentMonthName = MONTH_NAMES[new Date().getMonth()];
+        if (document.getElementById("expenseMonth"))
+          document.getElementById("expenseMonth").value = currentMonthName;
+        if (document.getElementById("wthMonth"))
+          document.getElementById("wthMonth").value = currentMonthName;
+
+        loadDataFromCloud();
+        setInterval(loadDataFromCloud, 30000);
+      });
+
+      function checkPassword() {
+        const selectedUser = document.getElementById("userSelect").value;
+        const inputVal = document.getElementById("passwordInput").value;
+        const errorMsg = document.getElementById("error-msg");
+
+        if (USERS[selectedUser] && inputVal === USERS[selectedUser]) {
+          currentUser = selectedUser;
+          document.getElementById("currentUserDisplay").innerText = currentUser;
+          document.getElementById("auth-screen").style.display = "none";
+          initRouter();
+        } else {
+          errorMsg.style.display = "block";
+          document.getElementById("passwordInput").value = "";
+        }
+      }
+
+      function checkEnter(e) {
+        if (e.key === "Enter") checkPassword();
+      }
+
+      async function loadDataFromCloud() {
+        const statusEl = document.getElementById("sync-status");
+        if (statusEl) statusEl.innerText = "Синхронизация...";
+
+        try {
+          const response = await fetch(SCRIPT_URL);
+          if (!response.ok) throw new Error("Ошибка связи");
+
+          const data = await response.json();
+          db = data || {
+            clients: [],
+            expenses: [],
+            incomes: [],
+            warehouse: [],
+            withdrawals: [],
+            logs: [],
+          };
+          if (!db.logs) db.logs = [];
+
+          if (statusEl) statusEl.innerText = "✓ Google OK";
+          updateUI();
+        } catch (err) {
+          console.error(err);
+          if (statusEl) statusEl.innerText = "⚠ Ошибка Google";
+        }
+      }
+
+      async function saveData() {
+        const statusEl = document.getElementById("sync-status");
+        if (statusEl) statusEl.innerText = "Сохранение...";
+
+        updateUI();
+
+        try {
+          await fetch(SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(db),
+          });
+
+          if (statusEl) statusEl.innerText = "✓ Сохранено";
+          setTimeout(loadDataFromCloud, 1500);
+        } catch (err) {
+          console.error(err);
+          if (statusEl) statusEl.innerText = "⚠ Ошибка сохранения";
+          alert("Не удалось сохранить данные!");
+        }
+      }
+
+      function switchPage(pageName) {
+        closeMobileMenu();
+        document
+          .querySelectorAll(".page")
+          .forEach((p) => p.classList.remove("active"));
+        document
+          .querySelectorAll(".nav-item")
+          .forEach((i) => i.classList.remove("active"));
+
+        const titles = {
+          home: "Главная Панель",
+          clients: "1. Записи клиентов",
+          expenses: "2. Затраты",
+          profit: "3. Прибыль",
+          warehouse: "4. Склад",
+          withdrawals: "5. Вывод денег",
+          logs: "6. Логи",
         };
 
-        let currentUser = null;
-        const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-        let db = { clients: [], expenses: [], incomes: [], warehouse: [], withdrawals: [], logs: [] };
+        document.getElementById("pageTitle").innerText =
+          titles[pageName] || "Панель";
 
-        // Mobil Menu Controls
-        function toggleMobileMenu() {
-            document.getElementById('sidebar').classList.toggle('mobile-open');
-            document.getElementById('mobileOverlay').classList.toggle('active');
+        const target = document.getElementById("page-" + pageName);
+        if (target) target.classList.add("active");
+
+        // Set nav active
+        const navIndex = [
+          "home",
+          "clients",
+          "expenses",
+          "profit",
+          "warehouse",
+          "withdrawals",
+          "logs",
+        ].indexOf(pageName);
+        if (navIndex !== -1) {
+          document
+            .querySelectorAll(".nav-item")
+            [navIndex].classList.add("active");
         }
 
-        function closeMobileMenu() {
-            document.getElementById('sidebar').classList.remove('mobile-open');
-            document.getElementById('mobileOverlay').classList.remove('active');
+        updateUI();
+      }
+
+      function initRouter() {
+        switchPage("home");
+      }
+
+      function openClientModal(id = null) {
+        const modal = document.getElementById("clientModal");
+        document.getElementById("editClientId").value = "";
+        document.getElementById("cCar").value = "";
+        document.getElementById("cPhone").value = "";
+        document.getElementById("cService").value = "";
+        document.getElementById("cDateTime").value = "";
+        document.getElementById("cStatus").value = "В ожидании";
+        document.getElementById("cComment").value = "";
+
+        if (id) {
+          document.getElementById("modalTitle").innerText =
+            "Редактировать запись";
+          const client = db.clients.find((c) => c.id === id);
+          if (client) {
+            document.getElementById("editClientId").value = client.id;
+            document.getElementById("cCar").value = client.car || "";
+            document.getElementById("cPhone").value = client.phone || "";
+            document.getElementById("cService").value = client.service || "";
+            document.getElementById("cDateTime").value = client.datetime || "";
+            document.getElementById("cStatus").value =
+              client.status || "В ожидании";
+            document.getElementById("cComment").value = client.comment || "";
+          }
+        } else {
+          document.getElementById("modalTitle").innerText = "Новый клиент";
+        }
+        modal.classList.add("active");
+      }
+
+      function closeClientModal() {
+        document.getElementById("clientModal").classList.remove("active");
+      }
+
+      function saveClientRecord() {
+        const id = document.getElementById("editClientId").value;
+        const car = document.getElementById("cCar").value;
+        const phone = document.getElementById("cPhone").value;
+        const service = document.getElementById("cService").value;
+        const datetime = document.getElementById("cDateTime").value;
+        const status = document.getElementById("cStatus").value;
+        const comment = document.getElementById("cComment").value;
+
+        if (!car || !datetime) {
+          alert("Заполните марку авто и дату/время!");
+          return;
         }
 
-        function formatDateTime(dateObj) {
-            if (!(dateObj instanceof Date) || isNaN(dateObj)) return '';
-            const day = String(dateObj.getDate()).padStart(2, '0');
-            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const year = dateObj.getFullYear();
-            const hours = String(dateObj.getHours()).padStart(2, '0');
-            const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-            return `${day}.${month}.${year} ${hours}:${minutes}`;
+        if (id) {
+          db.clients = db.clients.map((c) =>
+            c.id == id
+              ? { ...c, car, phone, service, datetime, status, comment }
+              : c,
+          );
+          addLog(`Изменена запись: ${car}`);
+        } else {
+          db.clients.unshift({
+            id: Date.now(),
+            car,
+            phone,
+            service,
+            datetime,
+            status,
+            comment,
+            author: currentUser,
+          });
+          addLog(`Добавлен клиент: ${car}`);
         }
 
-        function formatIsoToCustom(isoStr) {
-            if (!isoStr) return '';
-            const d = new Date(isoStr);
-            if (isNaN(d)) return isoStr;
-            return formatDateTime(d);
+        saveData();
+        closeClientModal();
+      }
+
+      function deleteClient(id) {
+        const client = db.clients.find((c) => c.id === id);
+        if (confirm("Удалить эту запись?")) {
+          db.clients = db.clients.filter((c) => c.id !== id);
+          addLog(`Удален клиент: ${client ? client.car : id}`);
+          saveData();
+        }
+      }
+
+      function addExpenseRecord() {
+        const category = document.getElementById("expenseCategory").value;
+        const amount = parseFloat(
+          document.getElementById("expenseAmount").value,
+        );
+        const month = document.getElementById("expenseMonth").value;
+        const source = document.getElementById("expenseSource").value;
+        const comment = document.getElementById("expenseComment").value;
+
+        if (!category || !amount) {
+          alert("Заполните категорию и сумму!");
+          return;
         }
 
-        function addLog(actionText) {
-            if (!db.logs) db.logs = [];
-            db.logs.unshift({
-                id: Date.now(),
-                datetime: formatDateTime(new Date()),
-                user: currentUser || 'Система',
-                action: actionText
-            });
-        }
+        const formattedDate = formatDateTime(new Date());
 
-        window.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
-            const currentMonthName = MONTH_NAMES[new Date().getMonth()];
-            if (document.getElementById('expenseMonth')) document.getElementById('expenseMonth').value = currentMonthName;
-            if (document.getElementById('wthMonth')) document.getElementById('wthMonth').value = currentMonthName;
-            
-            loadDataFromCloud();
-            setInterval(loadDataFromCloud, 30000);
+        db.expenses.unshift({
+          id: Date.now(),
+          category,
+          amount,
+          month,
+          source,
+          comment,
+          date: formattedDate,
+          author: currentUser,
         });
 
-        function checkPassword() {
-            const selectedUser = document.getElementById('userSelect').value;
-            const inputVal = document.getElementById('passwordInput').value;
-            const errorMsg = document.getElementById('error-msg');
+        addLog(`Затрата: ${category} - ${amount} MDL (${source})`);
+        document.getElementById("expenseCategory").value = "";
+        document.getElementById("expenseAmount").value = "";
+        document.getElementById("expenseComment").value = "";
+        saveData();
+      }
 
-            if (USERS[selectedUser] && inputVal === USERS[selectedUser]) {
-                currentUser = selectedUser;
-                document.getElementById('currentUserDisplay').innerText = currentUser;
-                document.getElementById('auth-screen').style.display = 'none';
-                initRouter();
-            } else {
-                errorMsg.style.display = 'block';
-                document.getElementById('passwordInput').value = '';
-            }
+      function deleteExpense(id) {
+        const exp = db.expenses.find((e) => e.id === id);
+        if (confirm("Удалить затрату?")) {
+          db.expenses = db.expenses.filter((e) => e.id !== id);
+          addLog(`Удалена затрата: ${exp ? exp.category : id}`);
+          saveData();
+        }
+      }
+
+      function openIncomeModal() {
+        const select = document.getElementById("incClientSelect");
+        select.innerHTML = "";
+
+        if (db.clients.length === 0) {
+          select.innerHTML =
+            '<option value="">Сначала добавьте клиентов</option>';
+        } else {
+          db.clients.forEach((c) => {
+            const opt = document.createElement("option");
+            opt.value = c.id;
+            opt.innerText = c.car + (c.service ? " (" + c.service + ")" : "");
+            select.appendChild(opt);
+          });
         }
 
-        function checkEnter(e) {
-            if (e.key === 'Enter') checkPassword();
+        document.getElementById("incAmount").value = "";
+        document.getElementById("incomeModal").classList.add("active");
+      }
+
+      function closeIncomeModal() {
+        document.getElementById("incomeModal").classList.remove("active");
+      }
+
+      function saveIncomeRecord() {
+        const clientId = document.getElementById("incClientSelect").value;
+        const amount = parseFloat(document.getElementById("incAmount").value);
+
+        if (!clientId || !amount) {
+          alert("Выберите клиента и сумму!");
+          return;
         }
 
-        async function loadDataFromCloud() {
-            const statusEl = document.getElementById('sync-status');
-            if(statusEl) statusEl.innerText = "Синхронизация...";
-            
-            try {
-                const response = await fetch(SCRIPT_URL);
-                if (!response.ok) throw new Error('Ошибка связи');
-                
-                const data = await response.json();
-                db = data || { clients: [], expenses: [], incomes: [], warehouse: [], withdrawals: [], logs: [] };
-                if (!db.logs) db.logs = [];
-                
-                if(statusEl) statusEl.innerText = "✓ Google OK";
-                updateUI();
-            } catch (err) {
-                console.error(err);
-                if(statusEl) statusEl.innerText = "⚠ Ошибка Google";
-            }
+        const now = new Date();
+        const client = db.clients.find((c) => c.id == clientId);
+
+        db.incomes.unshift({
+          id: Date.now(),
+          clientId: Number(clientId),
+          amount,
+          date: formatDateTime(now),
+          month: MONTH_NAMES[now.getMonth()],
+          author: currentUser,
+        });
+
+        addLog(`Доход: +${amount} MDL (${client ? client.car : clientId})`);
+        saveData();
+        closeIncomeModal();
+      }
+
+      function deleteIncome(id) {
+        const inc = db.incomes.find((i) => i.id === id);
+        if (confirm("Удалить доход?")) {
+          db.incomes = db.incomes.filter((i) => i.id !== id);
+          addLog(`Удален доход: ${inc ? inc.amount : id} MDL`);
+          saveData();
+        }
+      }
+
+      function changeIncomeStatus(clientId, newStatus) {
+        const client = db.clients.find((c) => c.id === clientId);
+        const oldStatus = client ? client.status : "";
+        db.clients = db.clients.map((c) =>
+          c.id === clientId ? { ...c, status: newStatus } : c,
+        );
+        addLog(
+          `Статус ${client ? client.car : clientId}: "${oldStatus}" ➔ "${newStatus}"`,
+        );
+        saveData();
+      }
+
+      function addWithdrawalRecord() {
+        const amount = parseFloat(document.getElementById("wthAmount").value);
+        const month = document.getElementById("wthMonth").value;
+        const comment = document.getElementById("wthComment").value;
+
+        if (!amount) {
+          alert("Введите сумму вывода!");
+          return;
         }
 
-        async function saveData() {
-            const statusEl = document.getElementById('sync-status');
-            if(statusEl) statusEl.innerText = "Сохранение...";
-            
-            updateUI();
+        db.withdrawals.unshift({
+          id: Date.now(),
+          amount,
+          month,
+          comment,
+          date: formatDateTime(new Date()),
+          author: currentUser,
+        });
 
-            try {
-                await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(db)
-                });
+        addLog(`Вывод средств: -${amount} MDL`);
+        document.getElementById("wthAmount").value = "";
+        document.getElementById("wthComment").value = "";
+        saveData();
+      }
 
-                if(statusEl) statusEl.innerText = "✓ Сохранено";
-                setTimeout(loadDataFromCloud, 1500);
-            } catch (err) {
-                console.error(err);
-                if(statusEl) statusEl.innerText = "⚠ Ошибка сохранения";
-                alert('Не удалось сохранить данные!');
-            }
+      function deleteWithdrawal(id) {
+        const wth = db.withdrawals.find((w) => w.id === id);
+        if (confirm("Удалить вывод?")) {
+          db.withdrawals = db.withdrawals.filter((w) => w.id !== id);
+          addLog(`Удален вывод: ${wth ? wth.amount : id} MDL`);
+          saveData();
+        }
+      }
+
+      function openWarehouseModal(id = null) {
+        const modal = document.getElementById("warehouseModal");
+        document.getElementById("editWarehouseId").value = "";
+        document.getElementById("wName").value = "";
+        document.getElementById("wQty").value = "";
+
+        if (id) {
+          document.getElementById("warehouseModalTitle").innerText =
+            "Редактировать товар";
+          const item = db.warehouse.find((w) => w.id === id);
+          if (item) {
+            document.getElementById("editWarehouseId").value = item.id;
+            document.getElementById("wName").value = item.name || "";
+            document.getElementById("wQty").value = item.qty || 0;
+          }
+        } else {
+          document.getElementById("warehouseModalTitle").innerText =
+            "Новый товар";
+        }
+        modal.classList.add("active");
+      }
+
+      function closeWarehouseModal() {
+        document.getElementById("warehouseModal").classList.remove("active");
+      }
+
+      function saveWarehouseRecord() {
+        const id = document.getElementById("editWarehouseId").value;
+        const name = document.getElementById("wName").value;
+        const qty = parseInt(document.getElementById("wQty").value);
+
+        if (!name || isNaN(qty)) {
+          alert("Заполните название и количество!");
+          return;
         }
 
-        function switchPage(pageName) {
-            closeMobileMenu();
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-
-            const titles = {
-                'home': 'Главная Панель',
-                'clients': '1. Записи клиентов',
-                'expenses': '2. Затраты',
-                'profit': '3. Прибыль',
-                'warehouse': '4. Склад',
-                'withdrawals': '5. Вывод денег',
-                'logs': '6. Логи'
-            };
-
-            document.getElementById('pageTitle').innerText = titles[pageName] || 'Панель';
-
-            const target = document.getElementById('page-' + pageName);
-            if(target) target.classList.add('active');
-
-            // Set nav active
-            const navIndex = ['home', 'clients', 'expenses', 'profit', 'warehouse', 'withdrawals', 'logs'].indexOf(pageName);
-            if(navIndex !== -1) {
-                document.querySelectorAll('.nav-item')[navIndex].classList.add('active');
-            }
-
-            updateUI();
+        if (id) {
+          db.warehouse = db.warehouse.map((w) =>
+            w.id == id ? { ...w, name, qty } : w,
+          );
+          addLog(`Склад обновлен: ${name} (${qty})`);
+        } else {
+          db.warehouse.unshift({
+            id: Date.now(),
+            name,
+            qty,
+            author: currentUser,
+          });
+          addLog(`Склад добавлено: ${name} (${qty})`);
         }
 
-        function initRouter() {
-            switchPage('home');
+        saveData();
+        closeWarehouseModal();
+      }
+
+      function changeWarehouseQty(id, delta) {
+        let item = db.warehouse.find((w) => w.id === id);
+        db.warehouse = db.warehouse.map((w) => {
+          if (w.id === id) {
+            let newQty = (w.qty || 0) + delta;
+            if (newQty < 0) newQty = 0;
+            return { ...w, qty: newQty };
+          }
+          return w;
+        });
+        addLog(
+          `Кол-во ${item ? item.name : id}: ${delta > 0 ? "+" + delta : delta}`,
+        );
+        saveData();
+      }
+
+      function deleteWarehouse(id) {
+        let item = db.warehouse.find((w) => w.id === id);
+        if (confirm("Удалить товар?")) {
+          db.warehouse = db.warehouse.filter((w) => w.id !== id);
+          addLog(`Удален товар: ${item ? item.name : id}`);
+          saveData();
+        }
+      }
+
+      function sortTable(tbodyId, colIndex) {
+        const tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+        if (rows.length <= 1) return;
+
+        const isAsc =
+          tbody.getAttribute("data-sort-col") == colIndex
+            ? tbody.getAttribute("data-sort-order") !== "asc"
+            : true;
+        tbody.setAttribute("data-sort-col", colIndex);
+        tbody.setAttribute("data-sort-order", isAsc ? "asc" : "desc");
+
+        rows.sort((a, b) => {
+          let cellA = a.children[colIndex]
+            ? a.children[colIndex].innerText.trim()
+            : "";
+          let cellB = b.children[colIndex]
+            ? b.children[colIndex].innerText.trim()
+            : "";
+
+          let numA = parseFloat(cellA.replace(/[^\d.-]/g, ""));
+          let numB = parseFloat(cellB.replace(/[^\d.-]/g, ""));
+
+          if (
+            !isNaN(numA) &&
+            !isNaN(numB) &&
+            cellA.match(/MDL|\d+$/) &&
+            cellB.match(/MDL|\d+$/)
+          ) {
+            return isAsc ? numA - numB : numB - numA;
+          }
+
+          return isAsc
+            ? cellA.localeCompare(cellB, "ru")
+            : cellB.localeCompare(cellA, "ru");
+        });
+
+        rows.forEach((r) => tbody.appendChild(r));
+      }
+
+      function updateUI() {
+        const monthSelect = document.getElementById("profitMonthSelect");
+        const currentSelectedMonth = monthSelect.value;
+
+        let availableMonths = new Set();
+        db.incomes.forEach((i) => {
+          if (i.month) availableMonths.add(i.month);
+        });
+        db.expenses.forEach((e) => {
+          if (e.month) availableMonths.add(e.month);
+        });
+        db.withdrawals.forEach((w) => {
+          if (w.month) availableMonths.add(w.month);
+        });
+
+        let monthOptionsHTML = '<option value="all">За всё время</option>';
+        MONTH_NAMES.forEach((m) => {
+          if (
+            availableMonths.has(m) ||
+            m === MONTH_NAMES[new Date().getMonth()]
+          ) {
+            monthOptionsHTML += `<option value="${m}">${m}</option>`;
+          }
+        });
+        monthSelect.innerHTML = monthOptionsHTML;
+        if (
+          [...monthSelect.options].some((o) => o.value === currentSelectedMonth)
+        ) {
+          monthSelect.value = currentSelectedMonth;
+        } else {
+          monthSelect.value = "all";
         }
 
-        function openClientModal(id = null) {
-            const modal = document.getElementById('clientModal');
-            document.getElementById('editClientId').value = '';
-            document.getElementById('cCar').value = '';
-            document.getElementById('cPhone').value = '';
-            document.getElementById('cService').value = '';
-            document.getElementById('cDateTime').value = '';
-            document.getElementById('cStatus').value = 'В ожидании';
-            document.getElementById('cComment').value = '';
+        const selectedMonthFilter = monthSelect.value;
+        const currentRealMonthName = MONTH_NAMES[new Date().getMonth()];
 
-            if (id) {
-                document.getElementById('modalTitle').innerText = 'Редактировать запись';
-                const client = db.clients.find(c => c.id === id);
-                if (client) {
-                    document.getElementById('editClientId').value = client.id;
-                    document.getElementById('cCar').value = client.car || '';
-                    document.getElementById('cPhone').value = client.phone || '';
-                    document.getElementById('cService').value = client.service || '';
-                    document.getElementById('cDateTime').value = client.datetime || '';
-                    document.getElementById('cStatus').value = client.status || 'В ожидании';
-                    document.getElementById('cComment').value = client.comment || '';
-                }
-            } else {
-                document.getElementById('modalTitle').innerText = 'Новый клиент';
-            }
-            modal.classList.add('active');
+        document.getElementById("stat-income-month-label").innerText =
+          `Доходы (${currentRealMonthName})`;
+        document.getElementById("stat-expense-month-label").innerText =
+          `Затраты (${currentRealMonthName})`;
+        document.getElementById("stat-personal-month-label").innerText =
+          `Личные (${currentRealMonthName})`;
+        document.getElementById("stat-withdrawal-month-label").innerText =
+          `Выведено (${currentRealMonthName})`;
+
+        let totalIncomeMonth = db.incomes
+          .filter((i) => i.month === currentRealMonthName)
+          .reduce((sum, item) => sum + item.amount, 0);
+        let totalIncomeAll = db.incomes.reduce(
+          (sum, item) => sum + item.amount,
+          0,
+        );
+
+        let totalExpenseMonth = db.expenses
+          .filter(
+            (e) =>
+              e.month === currentRealMonthName &&
+              e.source !== "Личные средства",
+          )
+          .reduce((sum, item) => sum + item.amount, 0);
+        let totalExpenseAll = db.expenses
+          .filter((e) => e.source !== "Личные средства")
+          .reduce((sum, item) => sum + item.amount, 0);
+
+        let totalPersonalMonth = db.expenses
+          .filter(
+            (e) =>
+              e.month === currentRealMonthName &&
+              e.source === "Личные средства",
+          )
+          .reduce((sum, item) => sum + item.amount, 0);
+        let totalPersonalAll = db.expenses
+          .filter((e) => e.source === "Личные средства")
+          .reduce((sum, item) => sum + item.amount, 0);
+
+        let totalWithdrawalMonth = db.withdrawals
+          .filter((w) => w.month === currentRealMonthName)
+          .reduce((sum, item) => sum + item.amount, 0);
+        let totalWithdrawalsAll = db.withdrawals.reduce(
+          (sum, item) => sum + item.amount,
+          0,
+        );
+
+        let totalProfitAll = totalIncomeAll - totalExpenseAll;
+        let totalCashbox =
+          totalIncomeAll - totalExpenseAll - totalWithdrawalsAll;
+
+        document.getElementById("stat-income-month-val").innerText =
+          totalIncomeMonth.toLocaleString() + " MDL";
+        document.getElementById("stat-income-all-val").innerText =
+          totalIncomeAll.toLocaleString() + " MDL";
+        document.getElementById("stat-expense-month-val").innerText =
+          totalExpenseMonth.toLocaleString() + " MDL";
+        document.getElementById("stat-expense-all-val").innerText =
+          totalExpenseAll.toLocaleString() + " MDL";
+        document.getElementById("stat-personal-month-val").innerText =
+          totalPersonalMonth.toLocaleString() + " MDL";
+        document.getElementById("stat-personal-all-val").innerText =
+          totalPersonalAll.toLocaleString() + " MDL";
+        document.getElementById("stat-withdrawal-month-val").innerText =
+          totalWithdrawalMonth.toLocaleString() + " MDL";
+        document.getElementById("stat-withdrawal-all-val").innerText =
+          totalWithdrawalsAll.toLocaleString() + " MDL";
+        document.getElementById("stat-profit-val").innerText =
+          totalProfitAll.toLocaleString() + " MDL";
+        document.getElementById("stat-cashbox-val").innerText =
+          totalCashbox.toLocaleString() + " MDL";
+
+        let filteredIncomes = db.incomes;
+        let filteredExpenses = db.expenses;
+        let filteredWithdrawals = db.withdrawals;
+
+        if (selectedMonthFilter !== "all") {
+          filteredIncomes = db.incomes.filter(
+            (i) => i.month === selectedMonthFilter,
+          );
+          filteredExpenses = db.expenses.filter(
+            (e) => e.month === selectedMonthFilter,
+          );
+          filteredWithdrawals = db.withdrawals.filter(
+            (w) => w.month === selectedMonthFilter,
+          );
         }
 
-        function closeClientModal() {
-            document.getElementById('clientModal').classList.remove('active');
-        }
+        let periodIncome = filteredIncomes.reduce(
+          (sum, item) => sum + item.amount,
+          0,
+        );
+        let periodExpense = filteredExpenses
+          .filter((e) => e.source !== "Личные средства")
+          .reduce((sum, item) => sum + item.amount, 0);
+        let periodPersonal = filteredExpenses
+          .filter((e) => e.source === "Личные средства")
+          .reduce((sum, item) => sum + item.amount, 0);
+        let periodWithdrawal = filteredWithdrawals.reduce(
+          (sum, item) => sum + item.amount,
+          0,
+        );
+        let periodProfit = periodIncome - periodExpense;
 
-        function saveClientRecord() {
-            const id = document.getElementById('editClientId').value;
-            const car = document.getElementById('cCar').value;
-            const phone = document.getElementById('cPhone').value;
-            const service = document.getElementById('cService').value;
-            const datetime = document.getElementById('cDateTime').value;
-            const status = document.getElementById('cStatus').value;
-            const comment = document.getElementById('cComment').value;
+        document.getElementById("profit-inc").innerText =
+          periodIncome.toLocaleString() + " MDL";
+        document.getElementById("profit-exp").innerText =
+          periodExpense.toLocaleString() + " MDL";
+        document.getElementById("profit-personal").innerText =
+          periodPersonal.toLocaleString() + " MDL";
+        document.getElementById("profit-withdrawal").innerText =
+          periodWithdrawal.toLocaleString() + " MDL";
+        document.getElementById("profit-tot").innerText =
+          periodProfit.toLocaleString() + " MDL";
 
-            if (!car || !datetime) {
-                alert('Заполните марку авто и дату/время!');
-                return;
-            }
+        // CLIENTS TABLE
+        let clientsHTML = "";
+        db.clients.forEach((c) => {
+          let statusClass = "status-waiting";
+          if (c.status === "Не пришел") statusClass = "status-no-show";
+          if (c.status === "Отменен") statusClass = "status-cancelled";
+          if (c.status === "Выполнено") statusClass = "status-done";
 
-            if (id) {
-                db.clients = db.clients.map(c => c.id == id ? { ...c, car, phone, service, datetime, status, comment } : c);
-                addLog(`Изменена запись: ${car}`);
-            } else {
-                db.clients.unshift({ id: Date.now(), car, phone, service, datetime, status, comment, author: currentUser });
-                addLog(`Добавлен клиент: ${car}`);
-            }
-
-            saveData();
-            closeClientModal();
-        }
-
-        function deleteClient(id) {
-            const client = db.clients.find(c => c.id === id);
-            if (confirm('Удалить эту запись?')) {
-                db.clients = db.clients.filter(c => c.id !== id);
-                addLog(`Удален клиент: ${client ? client.car : id}`);
-                saveData();
-            }
-        }
-
-        function addExpenseRecord() {
-            const category = document.getElementById('expenseCategory').value;
-            const amount = parseFloat(document.getElementById('expenseAmount').value);
-            const month = document.getElementById('expenseMonth').value;
-            const source = document.getElementById('expenseSource').value;
-            const comment = document.getElementById('expenseComment').value;
-
-            if (!category || !amount) {
-                alert('Заполните категорию и сумму!');
-                return;
-            }
-
-            const formattedDate = formatDateTime(new Date());
-
-            db.expenses.unshift({ 
-                id: Date.now(), category, amount, month, source, comment, date: formattedDate, author: currentUser
-            });
-
-            addLog(`Затрата: ${category} - ${amount} MDL (${source})`);
-            document.getElementById('expenseCategory').value = '';
-            document.getElementById('expenseAmount').value = '';
-            document.getElementById('expenseComment').value = '';
-            saveData();
-        }
-
-        function deleteExpense(id) {
-            const exp = db.expenses.find(e => e.id === id);
-            if (confirm('Удалить затрату?')) {
-                db.expenses = db.expenses.filter(e => e.id !== id);
-                addLog(`Удалена затрата: ${exp ? exp.category : id}`);
-                saveData();
-            }
-        }
-
-        function openIncomeModal() {
-            const select = document.getElementById('incClientSelect');
-            select.innerHTML = '';
-            
-            if (db.clients.length === 0) {
-                select.innerHTML = '<option value="">Сначала добавьте клиентов</option>';
-            } else {
-                db.clients.forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.id;
-                    opt.innerText = c.car + (c.service ? ' (' + c.service + ')' : '');
-                    select.appendChild(opt);
-                });
-            }
-
-            document.getElementById('incAmount').value = '';
-            document.getElementById('incomeModal').classList.add('active');
-        }
-
-        function closeIncomeModal() {
-            document.getElementById('incomeModal').classList.remove('active');
-        }
-
-        function saveIncomeRecord() {
-            const clientId = document.getElementById('incClientSelect').value;
-            const amount = parseFloat(document.getElementById('incAmount').value);
-
-            if (!clientId || !amount) {
-                alert('Выберите клиента и сумму!');
-                return;
-            }
-
-            const now = new Date();
-            const client = db.clients.find(c => c.id == clientId);
-
-            db.incomes.unshift({
-                id: Date.now(),
-                clientId: Number(clientId),
-                amount,
-                date: formatDateTime(now),
-                month: MONTH_NAMES[now.getMonth()],
-                author: currentUser
-            });
-
-            addLog(`Доход: +${amount} MDL (${client ? client.car : clientId})`);
-            saveData();
-            closeIncomeModal();
-        }
-
-        function deleteIncome(id) {
-            const inc = db.incomes.find(i => i.id === id);
-            if (confirm('Удалить доход?')) {
-                db.incomes = db.incomes.filter(i => i.id !== id);
-                addLog(`Удален доход: ${inc ? inc.amount : id} MDL`);
-                saveData();
-            }
-        }
-
-        function changeIncomeStatus(clientId, newStatus) {
-            const client = db.clients.find(c => c.id === clientId);
-            const oldStatus = client ? client.status : '';
-            db.clients = db.clients.map(c => c.id === clientId ? { ...c, status: newStatus } : c);
-            addLog(`Статус ${client ? client.car : clientId}: "${oldStatus}" ➔ "${newStatus}"`);
-            saveData();
-        }
-
-        function addWithdrawalRecord() {
-            const amount = parseFloat(document.getElementById('wthAmount').value);
-            const month = document.getElementById('wthMonth').value;
-            const comment = document.getElementById('wthComment').value;
-
-            if (!amount) {
-                alert('Введите сумму вывода!');
-                return;
-            }
-
-            db.withdrawals.unshift({
-                id: Date.now(), amount, month, comment, date: formatDateTime(new Date()), author: currentUser
-            });
-
-            addLog(`Вывод средств: -${amount} MDL`);
-            document.getElementById('wthAmount').value = '';
-            document.getElementById('wthComment').value = '';
-            saveData();
-        }
-
-        function deleteWithdrawal(id) {
-            const wth = db.withdrawals.find(w => w.id === id);
-            if (confirm('Удалить вывод?')) {
-                db.withdrawals = db.withdrawals.filter(w => w.id !== id);
-                addLog(`Удален вывод: ${wth ? wth.amount : id} MDL`);
-                saveData();
-            }
-        }
-
-        function openWarehouseModal(id = null) {
-            const modal = document.getElementById('warehouseModal');
-            document.getElementById('editWarehouseId').value = '';
-            document.getElementById('wName').value = '';
-            document.getElementById('wQty').value = '';
-
-            if (id) {
-                document.getElementById('warehouseModalTitle').innerText = 'Редактировать товар';
-                const item = db.warehouse.find(w => w.id === id);
-                if (item) {
-                    document.getElementById('editWarehouseId').value = item.id;
-                    document.getElementById('wName').value = item.name || '';
-                    document.getElementById('wQty').value = item.qty || 0;
-                }
-            } else {
-                document.getElementById('warehouseModalTitle').innerText = 'Новый товар';
-            }
-            modal.classList.add('active');
-        }
-
-        function closeWarehouseModal() {
-            document.getElementById('warehouseModal').classList.remove('active');
-        }
-
-        function saveWarehouseRecord() {
-            const id = document.getElementById('editWarehouseId').value;
-            const name = document.getElementById('wName').value;
-            const qty = parseInt(document.getElementById('wQty').value);
-
-            if (!name || isNaN(qty)) {
-                alert('Заполните название и количество!');
-                return;
-            }
-
-            if (id) {
-                db.warehouse = db.warehouse.map(w => w.id == id ? { ...w, name, qty } : w);
-                addLog(`Склад обновлен: ${name} (${qty})`);
-            } else {
-                db.warehouse.unshift({ id: Date.now(), name, qty, author: currentUser });
-                addLog(`Склад добавлено: ${name} (${qty})`);
-            }
-
-            saveData();
-            closeWarehouseModal();
-        }
-
-        function changeWarehouseQty(id, delta) {
-            let item = db.warehouse.find(w => w.id === id);
-            db.warehouse = db.warehouse.map(w => {
-                if (w.id === id) {
-                    let newQty = (w.qty || 0) + delta;
-                    if (newQty < 0) newQty = 0;
-                    return { ...w, qty: newQty };
-                }
-                return w;
-            });
-            addLog(`Кол-во ${item ? item.name : id}: ${delta > 0 ? '+' + delta : delta}`);
-            saveData();
-        }
-
-        function deleteWarehouse(id) {
-            let item = db.warehouse.find(w => w.id === id);
-            if (confirm('Удалить товар?')) {
-                db.warehouse = db.warehouse.filter(w => w.id !== id);
-                addLog(`Удален товар: ${item ? item.name : id}`);
-                saveData();
-            }
-        }
-
-        function sortTable(tbodyId, colIndex) {
-            const tbody = document.getElementById(tbodyId);
-            if (!tbody) return;
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            if (rows.length <= 1) return;
-
-            const isAsc = tbody.getAttribute('data-sort-col') == colIndex ? tbody.getAttribute('data-sort-order') !== 'asc' : true;
-            tbody.setAttribute('data-sort-col', colIndex);
-            tbody.setAttribute('data-sort-order', isAsc ? 'asc' : 'desc');
-
-            rows.sort((a, b) => {
-                let cellA = a.children[colIndex] ? a.children[colIndex].innerText.trim() : '';
-                let cellB = b.children[colIndex] ? b.children[colIndex].innerText.trim() : '';
-
-                let numA = parseFloat(cellA.replace(/[^\d.-]/g, ''));
-                let numB = parseFloat(cellB.replace(/[^\d.-]/g, ''));
-
-                if (!isNaN(numA) && !isNaN(numB) && cellA.match(/MDL|\d+$/) && cellB.match(/MDL|\d+$/)) {
-                    return isAsc ? numA - numB : numB - numA;
-                }
-
-                return isAsc ? cellA.localeCompare(cellB, 'ru') : cellB.localeCompare(cellA, 'ru');
-            });
-
-            rows.forEach(r => tbody.appendChild(r));
-        }
-
-        function updateUI() {
-            const monthSelect = document.getElementById('profitMonthSelect');
-            const currentSelectedMonth = monthSelect.value;
-            
-            let availableMonths = new Set();
-            db.incomes.forEach(i => { if(i.month) availableMonths.add(i.month); });
-            db.expenses.forEach(e => { if(e.month) availableMonths.add(e.month); });
-            db.withdrawals.forEach(w => { if(w.month) availableMonths.add(w.month); });
-            
-            let monthOptionsHTML = '<option value="all">За всё время</option>';
-            MONTH_NAMES.forEach(m => {
-                if (availableMonths.has(m) || m === MONTH_NAMES[new Date().getMonth()]) {
-                    monthOptionsHTML += `<option value="${m}">${m}</option>`;
-                }
-            });
-            monthSelect.innerHTML = monthOptionsHTML;
-            if ([...monthSelect.options].some(o => o.value === currentSelectedMonth)) {
-                monthSelect.value = currentSelectedMonth;
-            } else {
-                monthSelect.value = 'all';
-            }
-
-            const selectedMonthFilter = monthSelect.value;
-            const currentRealMonthName = MONTH_NAMES[new Date().getMonth()];
-
-            document.getElementById('stat-income-month-label').innerText = `Доходы (${currentRealMonthName})`;
-            document.getElementById('stat-expense-month-label').innerText = `Затраты (${currentRealMonthName})`;
-            document.getElementById('stat-personal-month-label').innerText = `Личные (${currentRealMonthName})`;
-            document.getElementById('stat-withdrawal-month-label').innerText = `Выведено (${currentRealMonthName})`;
-
-            let totalIncomeMonth = db.incomes.filter(i => i.month === currentRealMonthName).reduce((sum, item) => sum + item.amount, 0);
-            let totalIncomeAll = db.incomes.reduce((sum, item) => sum + item.amount, 0);
-
-            let totalExpenseMonth = db.expenses.filter(e => e.month === currentRealMonthName && e.source !== 'Личные средства').reduce((sum, item) => sum + item.amount, 0);
-            let totalExpenseAll = db.expenses.filter(e => e.source !== 'Личные средства').reduce((sum, item) => sum + item.amount, 0);
-
-            let totalPersonalMonth = db.expenses.filter(e => e.month === currentRealMonthName && e.source === 'Личные средства').reduce((sum, item) => sum + item.amount, 0);
-            let totalPersonalAll = db.expenses.filter(e => e.source === 'Личные средства').reduce((sum, item) => sum + item.amount, 0);
-
-            let totalWithdrawalMonth = db.withdrawals.filter(w => w.month === currentRealMonthName).reduce((sum, item) => sum + item.amount, 0);
-            let totalWithdrawalsAll = db.withdrawals.reduce((sum, item) => sum + item.amount, 0);
-            
-            let totalProfitAll = totalIncomeAll - totalExpenseAll;
-            let totalCashbox = totalIncomeAll - totalExpenseAll - totalWithdrawalsAll;
-
-            document.getElementById('stat-income-month-val').innerText = totalIncomeMonth.toLocaleString() + ' MDL';
-            document.getElementById('stat-income-all-val').innerText = totalIncomeAll.toLocaleString() + ' MDL';
-            document.getElementById('stat-expense-month-val').innerText = totalExpenseMonth.toLocaleString() + ' MDL';
-            document.getElementById('stat-expense-all-val').innerText = totalExpenseAll.toLocaleString() + ' MDL';
-            document.getElementById('stat-personal-month-val').innerText = totalPersonalMonth.toLocaleString() + ' MDL';
-            document.getElementById('stat-personal-all-val').innerText = totalPersonalAll.toLocaleString() + ' MDL';
-            document.getElementById('stat-withdrawal-month-val').innerText = totalWithdrawalMonth.toLocaleString() + ' MDL';
-            document.getElementById('stat-withdrawal-all-val').innerText = totalWithdrawalsAll.toLocaleString() + ' MDL';
-            document.getElementById('stat-profit-val').innerText = totalProfitAll.toLocaleString() + ' MDL';
-            document.getElementById('stat-cashbox-val').innerText = totalCashbox.toLocaleString() + ' MDL';
-
-            let filteredIncomes = db.incomes;
-            let filteredExpenses = db.expenses;
-            let filteredWithdrawals = db.withdrawals;
-
-            if (selectedMonthFilter !== 'all') {
-                filteredIncomes = db.incomes.filter(i => i.month === selectedMonthFilter);
-                filteredExpenses = db.expenses.filter(e => e.month === selectedMonthFilter);
-                filteredWithdrawals = db.withdrawals.filter(w => w.month === selectedMonthFilter);
-            }
-
-            let periodIncome = filteredIncomes.reduce((sum, item) => sum + item.amount, 0);
-            let periodExpense = filteredExpenses.filter(e => e.source !== 'Личные средства').reduce((sum, item) => sum + item.amount, 0);
-            let periodPersonal = filteredExpenses.filter(e => e.source === 'Личные средства').reduce((sum, item) => sum + item.amount, 0);
-            let periodWithdrawal = filteredWithdrawals.reduce((sum, item) => sum + item.amount, 0);
-            let periodProfit = periodIncome - periodExpense;
-
-            document.getElementById('profit-inc').innerText = periodIncome.toLocaleString() + ' MDL';
-            document.getElementById('profit-exp').innerText = periodExpense.toLocaleString() + ' MDL';
-            document.getElementById('profit-personal').innerText = periodPersonal.toLocaleString() + ' MDL';
-            document.getElementById('profit-withdrawal').innerText = periodWithdrawal.toLocaleString() + ' MDL';
-            document.getElementById('profit-tot').innerText = periodProfit.toLocaleString() + ' MDL';
-
-            // CLIENTS TABLE
-            let clientsHTML = '';
-            db.clients.forEach(c => {
-                let statusClass = 'status-waiting';
-                if (c.status === 'Не пришел') statusClass = 'status-no-show';
-                if (c.status === 'Отменен') statusClass = 'status-cancelled';
-                if (c.status === 'Выполнено') statusClass = 'status-done';
-
-                clientsHTML += `
+          clientsHTML += `
                     <tr>
                         <td><strong>${c.car}</strong></td>
-                        <td>${c.phone || '-'}</td>
-                        <td>${c.service || '-'}</td>
+                        <td>${c.phone || "-"}</td>
+                        <td>${c.service || "-"}</td>
                         <td>${formatIsoToCustom(c.datetime)}</td>
                         <td><span class="status-badge ${statusClass}">${c.status}</span></td>
-                        <td><span class="user-badge">${c.author || 'TUDOR'}</span></td>
-                        <td>${c.comment || '-'}</td>
+                        <td><span class="user-badge">${c.author || "TUDOR"}</span></td>
+                        <td>${c.comment || "-"}</td>
                         <td>
                             <button class="btn-sm btn-edit" onclick="openClientModal(${c.id})">Ред.</button>
                             <button class="btn-sm btn-del" onclick="deleteClient(${c.id})">🗑</button>
                         </td>
                     </tr>
                 `;
-            });
-            document.getElementById('clientsTableBody').innerHTML = clientsHTML || '<tr><td colspan="8" style="text-align:center;">Нет записей</td></tr>';
+        });
+        document.getElementById("clientsTableBody").innerHTML =
+          clientsHTML ||
+          '<tr><td colspan="8" style="text-align:center;">Нет записей</td></tr>';
 
-            // EXPENSES TABLE
-            let expensesHTML = '';
-            db.expenses.forEach(e => {
-                let amountColor = e.source === 'Личные средства' ? 'var(--info)' : 'var(--danger)';
-                expensesHTML += `
+        // EXPENSES TABLE
+        let expensesHTML = "";
+        db.expenses.forEach((e) => {
+          let amountColor =
+            e.source === "Личные средства" ? "var(--info)" : "var(--danger)";
+          expensesHTML += `
                     <tr>
                         <td>${e.date}</td>
-                        <td>${e.month || '-'}</td>
+                        <td>${e.month || "-"}</td>
                         <td>${e.category}</td>
                         <td style="color:${amountColor}; font-weight:bold;">-${e.amount.toLocaleString()} MDL</td>
-                        <td>${e.source || 'Общие'}</td>
-                        <td><span class="user-badge">${e.author || 'TUDOR'}</span></td>
-                        <td>${e.comment || '-'}</td>
+                        <td>${e.source || "Общие"}</td>
+                        <td><span class="user-badge">${e.author || "TUDOR"}</span></td>
+                        <td>${e.comment || "-"}</td>
                         <td><button class="btn-sm btn-del" onclick="deleteExpense(${e.id})">🗑</button></td>
                     </tr>
                 `;
-            });
-            document.getElementById('expensesTableBody').innerHTML = expensesHTML || '<tr><td colspan="8" style="text-align:center;">Нет затрат</td></tr>';
+        });
+        document.getElementById("expensesTableBody").innerHTML =
+          expensesHTML ||
+          '<tr><td colspan="8" style="text-align:center;">Нет затрат</td></tr>';
 
-            // INCOMES TABLE
-            let incomesHTML = '';
-            filteredIncomes.forEach(inc => {
-                const client = db.clients.find(c => c.id === inc.clientId);
-                const clientName = client ? client.car : 'Удаленный клиент';
-                const currentStatus = client ? client.status : 'Выполнено';
+        // INCOMES TABLE
+        let incomesHTML = "";
+        filteredIncomes.forEach((inc) => {
+          const client = db.clients.find((c) => c.id === inc.clientId);
+          const clientName = client ? client.car : "Удаленный клиент";
+          const currentStatus = client ? client.status : "Выполнено";
 
-                incomesHTML += `
+          incomesHTML += `
                     <tr>
                         <td>${inc.date}</td>
                         <td><strong>${clientName}</strong></td>
                         <td style="color:var(--success); font-weight:bold;">+${inc.amount.toLocaleString()} MDL</td>
                         <td>
                             <select style="background:#18181b; color:#fff; border:1px solid var(--border-color); padding:3px; border-radius:4px; font-size:11px;" onchange="changeIncomeStatus(${inc.clientId}, this.value)">
-                                <option value="В ожидании" ${currentStatus === 'В ожидании' ? 'selected' : ''}>В ожидании</option>
-                                <option value="Не пришел" ${currentStatus === 'Не пришел' ? 'selected' : ''}>Не пришел</option>
-                                <option value="Отменен" ${currentStatus === 'Отменен' ? 'selected' : ''}>Отменен</option>
-                                <option value="Выполнено" ${currentStatus === 'Выполнено' ? 'selected' : ''}>Выполнено</option>
+                                <option value="В ожидании" ${currentStatus === "В ожидании" ? "selected" : ""}>В ожидании</option>
+                                <option value="Не пришел" ${currentStatus === "Не пришел" ? "selected" : ""}>Не пришел</option>
+                                <option value="Отменен" ${currentStatus === "Отменен" ? "selected" : ""}>Отменен</option>
+                                <option value="Выполнено" ${currentStatus === "Выполнено" ? "selected" : ""}>Выполнено</option>
                             </select>
                         </td>
-                        <td><span class="user-badge">${inc.author || 'TUDOR'}</span></td>
+                        <td><span class="user-badge">${inc.author || "TUDOR"}</span></td>
                         <td><button class="btn-sm btn-del" onclick="deleteIncome(${inc.id})">🗑</button></td>
                     </tr>
                 `;
-            });
-            document.getElementById('incomesTableBody').innerHTML = incomesHTML || '<tr><td colspan="6" style="text-align:center;">Нет доходов</td></tr>';
+        });
+        document.getElementById("incomesTableBody").innerHTML =
+          incomesHTML ||
+          '<tr><td colspan="6" style="text-align:center;">Нет доходов</td></tr>';
 
-            // WAREHOUSE TABLE
-            let warehouseHTML = '';
-            db.warehouse.forEach(w => {
-                warehouseHTML += `
+        // WAREHOUSE TABLE
+        let warehouseHTML = "";
+        db.warehouse.forEach((w) => {
+          warehouseHTML += `
                     <tr>
                         <td><strong>${w.name}</strong></td>
                         <td style="font-size: 15px; font-weight: bold; color: var(--m-red);">${w.qty}</td>
-                        <td><span class="user-badge">${w.author || 'TUDOR'}</span></td>
+                        <td><span class="user-badge">${w.author || "TUDOR"}</span></td>
                         <td>
                             <button class="btn-sm btn-qty" onclick="changeWarehouseQty(${w.id}, -1)">-</button>
                             <button class="btn-sm btn-qty" onclick="changeWarehouseQty(${w.id}, 1)">+</button>
@@ -1651,50 +2259,58 @@
                         </td>
                     </tr>
                 `;
-            });
-            document.getElementById('warehouseTableBody').innerHTML = warehouseHTML || '<tr><td colspan="5" style="text-align:center;">Склад пуст</td></tr>';
+        });
+        document.getElementById("warehouseTableBody").innerHTML =
+          warehouseHTML ||
+          '<tr><td colspan="5" style="text-align:center;">Склад пуст</td></tr>';
 
-            // WITHDRAWALS TABLE
-            let withdrawalsHTML = '';
-            db.withdrawals.forEach(wth => {
-                withdrawalsHTML += `
+        // WITHDRAWALS TABLE
+        let withdrawalsHTML = "";
+        db.withdrawals.forEach((wth) => {
+          withdrawalsHTML += `
                     <tr>
                         <td>${wth.date}</td>
                         <td>${wth.month}</td>
                         <td style="color:var(--warning); font-weight:bold;">-${wth.amount.toLocaleString()} MDL</td>
-                        <td><span class="user-badge">${wth.author || 'TUDOR'}</span></td>
-                        <td>${wth.comment || '-'}</td>
+                        <td><span class="user-badge">${wth.author || "TUDOR"}</span></td>
+                        <td>${wth.comment || "-"}</td>
                         <td><button class="btn-sm btn-del" onclick="deleteWithdrawal(${wth.id})">🗑</button></td>
                     </tr>
                 `;
-            });
-            document.getElementById('withdrawalsTableBody').innerHTML = withdrawalsHTML || '<tr><td colspan="6" style="text-align:center;">Нет выводов</td></tr>';
+        });
+        document.getElementById("withdrawalsTableBody").innerHTML =
+          withdrawalsHTML ||
+          '<tr><td colspan="6" style="text-align:center;">Нет выводов</td></tr>';
 
-            // LOGS TABLE
-            let logsHTML = '';
-            (db.logs || []).forEach(log => {
-                logsHTML += `
+        // LOGS TABLE
+        let logsHTML = "";
+        (db.logs || []).forEach((log) => {
+          logsHTML += `
                     <tr>
                         <td>${log.datetime}</td>
                         <td><span class="user-badge">${log.user}</span></td>
                         <td>${log.action}</td>
                     </tr>
                 `;
-            });
-            document.getElementById('logsTableBody').innerHTML = logsHTML || '<tr><td colspan="3" style="text-align:center;">Журнал пуст</td></tr>';
-            
-            lucide.createIcons();
-        }
+        });
+        document.getElementById("logsTableBody").innerHTML =
+          logsHTML ||
+          '<tr><td colspan="3" style="text-align:center;">Журнал пуст</td></tr>';
 
-        function exportData() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db));
-            const downloadAnchor = document.createElement('a');
-            downloadAnchor.setAttribute("href", dataStr);
-            downloadAnchor.setAttribute("download", "angel_detailing_backup.json");
-            document.body.appendChild(downloadAnchor);
-            downloadAnchor.click();
-            downloadAnchor.remove();
-        }
+        lucide.createIcons();
+      }
+
+      function exportData() {
+        const dataStr =
+          "data:text/json;charset=utf-8," +
+          encodeURIComponent(JSON.stringify(db));
+        const downloadAnchor = document.createElement("a");
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", "angel_detailing_backup.json");
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+      }
     </script>
-</body>
+  </body>
 </html>

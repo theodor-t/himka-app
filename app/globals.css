@@ -278,6 +278,7 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
   gap: 20px;
+  align-items: start;
 }
 .dashboard-grid .card {
   max-width: none;
@@ -620,6 +621,61 @@ h1 {
 .backup-note svg {
   color: var(--success);
 }
+.debt-preview-total,
+.debt-preview-profit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.debt-preview-total strong {
+  color: var(--warning);
+  font: 700 15px monospace;
+}
+.debt-preview-profit strong {
+  color: var(--success);
+  font: 700 13px monospace;
+}
+.debt-preview-list {
+  display: grid;
+  gap: 0;
+  margin: 2px 0 8px;
+}
+.debt-preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid #3f3f462b;
+  color: #fff;
+  font-size: 12px;
+}
+.debt-preview-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.debt-preview-row strong {
+  flex: none;
+  color: var(--warning);
+  font: 700 12px monospace;
+}
+.text-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  color: var(--cyan);
+  background: none;
+  border: 0;
+  font-size: 11px;
+}
 .print-report {
   display: none;
 }
@@ -934,6 +990,9 @@ tr:last-child td {
   margin-top: 12px;
   color: var(--muted);
   font: 700 11px monospace;
+}
+.pagination span {
+  white-space: nowrap;
 }
 .pagination button:disabled {
   cursor: not-allowed;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Children, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -874,6 +874,7 @@ function DebtorsPreview({ db, navigate }) {
   return activeDebts.length ? (
     <>
       <div className="debt-preview-total"><span>Ожидается к погашению</span><strong>{money(total)}</strong></div>
+      <div className="debt-preview-profit"><span>Чистая прибыль</span><strong>{money(db.incomes.reduce((sum, item) => sum + Number(item.amount || 0), 0) - db.expenses.filter((item) => item.source !== "Личные средства").reduce((sum, item) => sum + Number(item.amount || 0), 0))}</strong></div>
       <div className="debt-preview-list">
         {activeDebts.slice(0, 4).map((debt) => {
           const client = db.clients.find((row) => String(row.id) === String(debt.clientId));
@@ -1097,7 +1098,7 @@ function MonthlyChart({ data }) {
 
 function Table({ headers, children, sortBy }) {
   const [currentPage, setCurrentPage] = useState(1);
-  const rows = Array.isArray(children) ? children : [children];
+  const rows = Children.toArray(children);
   const totalPages = Math.max(1, Math.ceil(rows.length / 20));
   useEffect(() => setCurrentPage((page) => Math.min(page, totalPages)), [totalPages]);
   const visibleRows = rows.slice((currentPage - 1) * 20, currentPage * 20);
@@ -1118,7 +1119,7 @@ function Table({ headers, children, sortBy }) {
         <tbody>{visibleRows}</tbody>
       </table>
       </div>
-      {totalPages > 1 && <div className="pagination" aria-label="Пагинация"><button className="btn-sm btn-qty" type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>←</button><span>Страница {currentPage} из {totalPages}</span><button className="btn-sm btn-qty" type="button" disabled={currentPage === totalPages} onClick={() => setCurrentPage((page) => page + 1)}>→</button></div>}
+      {totalPages > 1 && <div className="pagination" aria-label="Пагинация"><button className="btn-sm btn-qty" type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>←</button><span>Страница {currentPage} из {totalPages} · 20 записей</span><button className="btn-sm btn-qty" type="button" disabled={currentPage === totalPages} onClick={() => setCurrentPage((page) => page + 1)}>→</button></div>}
     </>
   );
 }

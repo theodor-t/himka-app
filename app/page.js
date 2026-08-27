@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
+  Bell,
+  CalendarDays,
+  FileText,
   History,
   LayoutDashboard,
   LogOut,
@@ -28,6 +31,7 @@ import {
 const SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbx6OpGz3BhnwS7XPA1efSINsmEBgoQ_tKGrTSkJwrl0arcP_C8bVSmDjHXrL7Zm0XyJ/exec";
 const SESSION_KEY = "angel-detailing-user";
+const BACKUP_KEY = "angel-detailing-auto-backup";
 const USERS = { TUDOR: "326688", DAN: "326699" };
 const MONTHS = [
   "Январь",
@@ -70,6 +74,19 @@ const dateText = (value) => {
 };
 const nowText = () => dateText(new Date());
 const currentMonth = () => MONTHS[new Date().getMonth()];
+const parseDate = (value) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+const isSameDay = (value, reference = new Date()) => {
+  const date = parseDate(value);
+  return (
+    date &&
+    date.getFullYear() === reference.getFullYear() &&
+    date.getMonth() === reference.getMonth() &&
+    date.getDate() === reference.getDate()
+  );
+};
 const normalizeDb = (data) => ({
   ...EMPTY_DB,
   ...(data || {}),
@@ -213,6 +230,10 @@ export default function Home() {
   };
   const persist = async (next) => {
     setSync("Сохранение...");
+    localStorage.setItem(
+      BACKUP_KEY,
+      JSON.stringify({ savedAt: new Date().toISOString(), data: next }),
+    );
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
@@ -412,7 +433,6 @@ export default function Home() {
     [db],
   );
 
-  if (!sessionChecked) return <div className="auth-screen" />;
   if (!user)
     return (
       <Auth
@@ -422,6 +442,7 @@ export default function Home() {
         setPassword={setPassword}
         error={authError}
         onSubmit={login}
+        loading={!sessionChecked}
       />
     );
   return (
@@ -529,9 +550,10 @@ function Auth({
   setPassword,
   error,
   onSubmit,
+  loading,
 }) {
   return (
-    <div className="auth-screen">
+    <div className={`auth-screen ${loading ? "session-loading" : ""}`}>
       <form className="auth-card" onSubmit={onSubmit}>
         <div className="auth-icon">
           <ShieldCheck size={32} />
@@ -588,6 +610,7 @@ function PageContent({
   if (page === "home")
     return (
       <Dashboard
+        db={db}
         totals={totals}
         monthly={monthly}
         reload={reload}
@@ -655,8 +678,22 @@ function PageContent({
   return <Logs db={db} sort={sort} sortBy={sortBy} />;
 }
 
-function Dashboard({ totals, monthly, reload, exportData, importData }) {
+function Dashboard({ db, totals, monthly, reload, exportData, importData }) {
   const month = currentMonth();
+  const today = new Date();
+  const appointments = db.clients
+    .map((client) => ({ ...client, parsedDate: parseDate(client.datetime) }))
+    .filter(({ parsedDate }) => parsedDate)
+    .filter(({ parsedDate }) => {
+      const daysFromToday =
+        (parsedDate - new Date(today.getFullYear(), today.getMonth(), today.getDate())) /
+        86400000;
+      return daysFromToday >= 0 && daysFromToday < 7;
+    })
+    .sort((a, b) => a.parsedDate - b.parsedDate);
+  const todayAppointments = appointments.filter((client) =>
+    isSameDay(client.datetime, today),
+  );
   const cards = [
     ["Доходы текущий месяц", totals.incomeMonth, "success"],
     ["Доходы за всё время", totals.income, "success"],
@@ -698,6 +735,9 @@ function Dashboard({ totals, monthly, reload, exportData, importData }) {
           </div>
         )}
         <div className="button-row">
+          <Button variant="secondary" icon={FileText} onClick={() => window.print()}>
+            PDF-отчёт
+          </Button>
           <Button variant="secondary" icon={Save} onClick={exportData}>
             Бэкап
           </Button>
@@ -714,9 +754,88 @@ function Dashboard({ totals, monthly, reload, exportData, importData }) {
             Обновить
           </Button>
         </div>
+        <div className="backup-note">
+          <ShieldCheck size={15} /> Автоматическая резервная копия включена
+        </div>
       </section>
+      <section className="dashboard-grid">
+        <div className="card reminder-card">
+          <div className="card-header">
+            <span>Напоминания</span>
+            <Bell size={18} className="red-icon" />
+          </div>
+          <div className="reminder-summary">
+            <strong>{todayAppointments.length}</strong>
+            <span>записей сегодня</span>
+          </div>
+          {appointments.length ? (
+            <div className="appointment-list">
+              {appointments.slice(0, 6).map((client) => (
+                <div className="appointment-item" key={client.id}>
+                  <CalendarDays size={16} />
+                  <div>
+                    <strong>{client.car || "Без имени"}</strong>
+                    <span>
+                      {isSameDay(client.datetime, today)
+                        ? `Сегодня, ${dateText(client.datetime).slice(11)}`
+                        : dateText(client.datetime)}
+                      {client.service ? ` · ${client.service}` : ""}
+                    </span>
+                  </div>
+                  <Badge status={statusClass(client.status)}>
+                    {client.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-reminder">Нет ближайших записей</div>
+          )}
+        </div>
+        <div className="card snapshot-card">
+          <div className="card-header">
+            <span>Сводка за месяц</span>
+            <TrendingUp size={18} className="red-icon" />
+          </div>
+          <div className="snapshot-row">
+            <span>Доходы</span>
+            <strong className="positive">+{money(totals.incomeMonth)}</strong>
+          </div>
+          <div className="snapshot-row">
+            <span>Затраты</span>
+            <strong className="negative">-{money(totals.expensesMonth)}</strong>
+          </div>
+          <div className="snapshot-row snapshot-total">
+            <span>Чистая прибыль</span>
+            <strong>{money(totals.incomeMonth - totals.expensesMonth)}</strong>
+          </div>
+        </div>
+      </section>
+      <PrintReport db={db} totals={totals} todayAppointments={todayAppointments} />
       <MonthlyChart data={monthly} />
     </>
+  );
+}
+
+function PrintReport({ db, totals, todayAppointments }) {
+  return (
+    <section className="print-report">
+      <h1>ANGEL DETAILING</h1>
+      <p>Финансовый отчёт и расписание на {dateText(new Date()).slice(0, 10)}</p>
+      <div className="print-report-grid">
+        <div><span>Доходы за месяц</span><strong>{money(totals.incomeMonth)}</strong></div>
+        <div><span>Затраты за месяц</span><strong>{money(totals.expensesMonth)}</strong></div>
+        <div><span>Чистая прибыль</span><strong>{money(totals.incomeMonth - totals.expensesMonth)}</strong></div>
+        <div><span>Клиентов всего</span><strong>{db.clients.length}</strong></div>
+      </div>
+      <h2>Записи на сегодня</h2>
+      {todayAppointments.length ? todayAppointments.map((client) => (
+        <div className="print-appointment" key={client.id}>
+          <strong>{dateText(client.datetime).slice(11)} · {client.car || "Без имени"}</strong>
+          <span>{client.service || "Услуга не указана"} · {client.phone || "Телефон не указан"}</span>
+        </div>
+      )) : <p>Записей на сегодня нет.</p>}
+    </section>
   );
 }
 

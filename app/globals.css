@@ -51,6 +51,9 @@ button {
     url("https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=1920&q=80")
       center/cover;
 }
+.auth-screen.session-loading {
+  visibility: hidden;
+}
 .auth-card {
   width: min(100%, 380px);
   padding: 30px 25px;
@@ -268,6 +271,97 @@ h1 {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+.dashboard-grid {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 20px;
+}
+.dashboard-grid .card {
+  max-width: none;
+  margin: 0;
+}
+.reminder-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0 16px;
+  color: var(--muted);
+}
+.reminder-summary strong {
+  color: var(--red);
+  font-size: 30px;
+  line-height: 1;
+}
+.appointment-list {
+  display: grid;
+  gap: 8px;
+}
+.appointment-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #18181b80;
+}
+.appointment-item > svg {
+  color: var(--cyan);
+}
+.appointment-item div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.appointment-item strong,
+.appointment-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.appointment-item span,
+.empty-reminder,
+.backup-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+.empty-reminder {
+  padding: 12px 0 4px;
+}
+.snapshot-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.snapshot-row strong {
+  color: #fff;
+}
+.snapshot-total {
+  border-bottom: 0;
+  color: #fff;
+  font-weight: 700;
+}
+.snapshot-total strong {
+  color: var(--cyan);
+}
+.backup-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.backup-note svg {
+  color: var(--success);
+}
+.print-report {
+  display: none;
 }
 .action-btn {
   width: 100%;
@@ -692,6 +786,13 @@ tr:last-child td {
   .card-header {
     font-size: 14px;
   }
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .dashboard-grid .card {
+    margin-bottom: 12px;
+  }
   .modal-content {
     padding: 18px;
   }
@@ -699,6 +800,68 @@ tr:last-child td {
   .btn-sm,
   .mobile-menu-btn {
     min-height: 44px;
+  }
+}
+@media print {
+  @page {
+    margin: 18mm;
+  }
+  body {
+    background: #fff;
+    color: #111;
+  }
+  .sidebar,
+  .top-bar,
+  .modal,
+  .overlay,
+  .page-container > *:not(.print-report) {
+    display: none !important;
+  }
+  .app-container,
+  .main-content,
+  .page-container {
+    display: block;
+    height: auto;
+    overflow: visible;
+    padding: 0;
+    background: #fff;
+  }
+  .print-report {
+    display: block;
+    color: #111;
+    font-family: Arial, sans-serif;
+  }
+  .print-report h1 {
+    color: #111;
+    font-size: 24px;
+  }
+  .print-report h2 {
+    margin: 28px 0 12px;
+    font-size: 16px;
+  }
+  .print-report p {
+    color: #555;
+  }
+  .print-report-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 24px 0;
+  }
+  .print-report-grid div,
+  .print-appointment {
+    display: grid;
+    gap: 5px;
+    padding: 12px;
+    border: 1px solid #ddd;
+  }
+  .print-report-grid span,
+  .print-appointment span {
+    color: #555;
+    font-size: 12px;
+  }
+  .print-appointment {
+    margin-bottom: 8px;
   }
 }
 @media (max-width: 380px) {

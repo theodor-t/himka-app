@@ -5,8 +5,8 @@ export const metadata = {
   description: "Система учета и управления Angel Detailing",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/icon.svg",
-    apple: "/apple-icon.svg",
+    icon: "/icon.svg?v=2",
+    apple: "/apple-icon.svg?v=2",
   },
   appleWebApp: {
     capable: true,

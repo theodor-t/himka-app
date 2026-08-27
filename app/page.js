@@ -432,6 +432,44 @@ export default function Home() {
       }),
     [db],
   );
+  const pageContent = useMemo(
+    () => (
+      <PageContent
+        page={page}
+        db={db}
+        user={user}
+        totals={totals}
+        monthly={monthly}
+        period={period}
+        month={profitMonth}
+        setMonth={setProfitMonth}
+        clientQuery={clientQuery}
+        setClientQuery={setClientQuery}
+        clientStatus={clientStatus}
+        setClientStatus={setClientStatus}
+        sort={sorted}
+        sortBy={sortBy}
+        openModal={setModal}
+        mutate={mutate}
+        addLog={addLog}
+        reload={loadData}
+        exportData={() => download(db)}
+        importData={importData}
+      />
+    ),
+    [
+      page,
+      db,
+      user,
+      totals,
+      monthly,
+      period,
+      profitMonth,
+      clientQuery,
+      clientStatus,
+      sort,
+    ],
+  );
 
   if (!user)
     return (
@@ -505,28 +543,7 @@ export default function Home() {
           <span className="sync-status">{sync}</span>
         </header>
         <div className="page-container">
-          <PageContent
-            page={page}
-            db={db}
-            user={user}
-            totals={totals}
-            monthly={monthly}
-            period={period}
-            month={profitMonth}
-            setMonth={setProfitMonth}
-            clientQuery={clientQuery}
-            setClientQuery={setClientQuery}
-            clientStatus={clientStatus}
-            setClientStatus={setClientStatus}
-            sort={sorted}
-            sortBy={sortBy}
-            openModal={setModal}
-            mutate={mutate}
-            addLog={addLog}
-            reload={loadData}
-            exportData={() => download(db)}
-            importData={importData}
-          />{" "}
+          {pageContent}
         </div>
       </main>
       {modal && (

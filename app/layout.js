@@ -61,8 +61,8 @@ export const metadata = {
   },
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/icon.svg?v=2",
-    apple: "/apple-icon.svg?v=2",
+    icon: "/logo.svg",
+    apple: "/angel-logo.png",
   },
   appleWebApp: {
     capable: true,

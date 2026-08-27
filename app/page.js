@@ -18,7 +18,6 @@ import {
   RefreshCw,
   Save,
   ShieldCheck,
-  Sparkles,
   TrendingUp,
   Users,
   Wallet,
@@ -509,7 +508,7 @@ export default function Home() {
         <div className="sidebar-header">
           <div className="brand">
             <span className="brand-icon">
-              <Sparkles size={20} />
+              <img src="/logo.svg" alt="ANGEL DETAILING" />
             </span>
             <span className="brand-text">
               ANGEL <small>DETAILING</small>
@@ -587,7 +586,7 @@ function Auth({
     <div className={`auth-screen ${loading ? "session-loading" : ""}`}>
       <form className="auth-card" onSubmit={onSubmit}>
         <div className="auth-icon">
-          <ShieldCheck size={32} />
+          <img src="/logo.svg" alt="ANGEL DETAILING" />
         </div>
         <h2>ANGEL DETAILING</h2>
         <p>Система учета и управления</p>
@@ -913,62 +912,40 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
 }
 
 function FinancialInsights({ db, totals }) {
-  const expenseTotals = Object.entries(
-    db.expenses.reduce((totals, expense) => {
-      const category = expense.category?.trim() || "Без категории";
-      totals[category] = (totals[category] || 0) + Number(expense.amount || 0);
-      return totals;
-    }, {}),
-  )
-    .sort(([, first], [, second]) => second - first)
-    .slice(0, 5);
-  const expenseColors = ["#ff003c", "#ff9f1c", "#38bdf8", "#10b981", "#a855f7"];
-  const totalExpenses = expenseTotals.reduce((sum, [, value]) => sum + value, 0);
-  let offset = 0;
-  const gradient = expenseTotals.length
-    ? expenseTotals
-        .map(([, value], index) => {
-          const start = offset;
-          offset += (value / totalExpenses) * 360;
-          return `${expenseColors[index]} ${start}deg ${offset}deg`;
-        })
-        .join(", ")
-    : "#27272a 0deg 360deg";
-
+  const values = [
+    ["Доходы", totals.income, "income"],
+    ["Затраты", totals.commonExpenses, "expenses"],
+    ["Прибыль", totals.profit, "profit"],
+  ];
+  const maximum = Math.max(...values.map(([, value]) => Math.abs(value)), 1);
   return (
-    <section className="financial-insights">
-      <div className="card finance-breakdown finance-comparison">
-        <div className="card-header">
-          <span>Доходы, затраты и прибыль</span>
-          <TrendingUp size={18} className="red-icon" />
-        </div>
-        <div className="comparison-chart">
-          {[
-            ["Доходы", totals.income, "income"],
-            ["Затраты", totals.commonExpenses, "expenses"],
-            ["Прибыль", totals.profit, "profit"],
-          ].map(([label, value, type]) => {
-            const maximum = Math.max(totals.income, totals.commonExpenses, Math.abs(totals.profit), 1);
-            return <div className="comparison-column" key={label}><div className={`comparison-value ${type}`}>{money(value)}</div><div className="comparison-bar-area"><i className={type} style={{ height: `${Math.max(5, (Math.abs(value) / maximum) * 100)}%` }} /></div><span>{label}</span></div>;
-          })}
-        </div>
+    <section className="card financial-insights finance-unified">
+      <div className="card-header">
+        <span>Финансы: доходы, затраты и прибыль</span>
+        <TrendingUp size={18} className="red-icon" />
       </div>
-      <div className="card finance-summary finance-breakdown">
-        <div className="card-header">
-          <span>Распределение затрат</span>
-          <Receipt size={18} className="warning-icon" />
-        </div>
-        <div className="donut-layout">
-          <div className="donut-chart" style={{ background: `conic-gradient(${gradient})` }}><div className="donut-hole"><strong>{money(totalExpenses)}</strong><span>всего затрат</span></div></div>
-          <div className="donut-legend">{expenseTotals.length ? expenseTotals.map(([label, value], index) => <div className="donut-legend-row" key={label}><span><i style={{ background: expenseColors[index] }} />{label}</span><strong>{money(value)}</strong></div>) : <div className="empty-reminder">Нет расходов</div>}</div>
-        </div>
-        <div className="finance-total"><span>Чистая прибыль</span><strong>{money(totals.profit)}</strong></div>
-        <div className="finance-mini-grid">
-          <div><span>Доходы</span><strong className="positive">+{money(totals.income)}</strong></div>
-          <div><span>Затраты</span><strong className="negative">-{money(totals.commonExpenses)}</strong></div>
-          <div><span>Касса</span><strong className="cyan-text">{money(totals.cash)}</strong></div>
-          <div><span>Клиенты</span><strong>{db.clients.length}</strong></div>
-        </div>
+      <div className="finance-unified-summary">
+        {values.map(([label, value, type]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong className={type}>{money(value)}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="comparison-chart">
+        {values.map(([label, value, type]) => (
+          <div className="comparison-column" key={label}>
+            <div className={`comparison-value ${type}`}>{money(value)}</div>
+            <div className="comparison-bar-area">
+              <i className={type} style={{ height: `${Math.max(5, (Math.abs(value) / maximum) * 100)}%` }} />
+            </div>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="finance-mini-grid">
+        <div><span>Касса</span><strong className="cyan-text">{money(totals.cash)}</strong></div>
+        <div><span>Клиенты</span><strong>{db.clients.length}</strong></div>
       </div>
     </section>
   );

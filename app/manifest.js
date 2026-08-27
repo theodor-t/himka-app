@@ -10,13 +10,13 @@ export default function manifest() {
     theme_color: "#0a0a0c",
     icons: [
       {
-        src: "/icon.svg?v=2",
+        src: "/angel-logo.png",
         sizes: "192x192",
         type: "image/svg+xml",
         purpose: "any maskable",
       },
       {
-        src: "/icon.svg?v=2",
+        src: "/angel-logo.png",
         sizes: "512x512",
         type: "image/svg+xml",
         purpose: "any maskable",

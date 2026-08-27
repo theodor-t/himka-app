@@ -5,6 +5,7 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default function OpenGraphImage() {
+  const logoUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/angel-logo.png`;
   return new ImageResponse(
     <div
       style={{
@@ -19,6 +20,12 @@ export default function OpenGraphImage() {
         fontFamily: "Arial",
       }}
     >
+      <img
+        src={logoUrl}
+        width="120"
+        height="120"
+        style={{ objectFit: "cover", borderRadius: 18 }}
+      />
       <div
         style={{
           display: "flex",

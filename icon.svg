@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 768">
+  <image href="/angel-logo.png" width="768" height="768" preserveAspectRatio="xMidYMid slice" />
+<!--
   <rect width="512" height="512" rx="112" fill="#0a0a0c"/>
   <rect x="24" y="24" width="464" height="464" rx="92" fill="#121214" stroke="#3f3f46" stroke-width="8"/>
   <path d="M116 304h280l-18-63c-5-18-21-31-40-33l-43-5-25-38c-6-9-16-15-27-15h-54c-11 0-21 6-27 15l-25 38-43 5c-19 2-35 15-40 33z" fill="#ff003c"/>
@@ -9,4 +11,4 @@
   <path d="M102 365h308" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
   <path d="M394 106v52M368 132h52" stroke="#f4f4f5" stroke-width="12" stroke-linecap="round"/>
   <path d="M103 125v34M86 142h34" stroke="#ff003c" stroke-width="10" stroke-linecap="round"/>
-</svg>
+--></svg>

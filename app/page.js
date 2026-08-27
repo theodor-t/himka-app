@@ -6,6 +6,7 @@ import {
   ArrowRight,
   History,
   LayoutDashboard,
+  LogOut,
   Menu,
   Minus,
   Package,
@@ -26,6 +27,7 @@ import {
 
 const SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbx6OpGz3BhnwS7XPA1efSINsmEBgoQ_tKGrTSkJwrl0arcP_C8bVSmDjHXrL7Zm0XyJ/exec";
+const SESSION_KEY = "angel-detailing-user";
 const USERS = { TUDOR: "326688", DAN: "326699" };
 const MONTHS = [
   "Январь",
@@ -152,6 +154,7 @@ function DeleteButton({ onClick, label = "Удалить" }) {
 
 export default function Home() {
   const [user, setUser] = useState(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [selectedUser, setSelectedUser] = useState("TUDOR");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState(false);
@@ -166,6 +169,12 @@ export default function Home() {
   const [sort, setSort] = useState({ key: "", direction: 1 });
   const dbRef = useRef(EMPTY_DB);
   const syncInFlight = useRef(false);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem(SESSION_KEY);
+    if (savedUser && Object.hasOwn(USERS, savedUser)) setUser(savedUser);
+    setSessionChecked(true);
+  }, []);
 
   const mutate = (changes, log) => {
     const withCurrentAuthor = (collection, values) =>
@@ -256,11 +265,19 @@ export default function Home() {
     event.preventDefault();
     if (USERS[selectedUser] === password) {
       setUser(selectedUser);
+      localStorage.setItem(SESSION_KEY, selectedUser);
       setAuthError(false);
     } else {
       setAuthError(true);
       setPassword("");
     }
+  };
+  const logout = () => {
+    localStorage.removeItem(SESSION_KEY);
+    setUser(null);
+    setPage("home");
+    dbRef.current = EMPTY_DB;
+    setDb(EMPTY_DB);
   };
   const navigate = (next) => {
     setPage(next);
@@ -298,14 +315,14 @@ export default function Home() {
         const importedDb = normalizeDb(JSON.parse(reader.result));
         if (!Object.values(importedDb).every((value) => Array.isArray(value)))
           throw new Error();
-        if (confirm("Înlocuiești datele actuale cu backup-ul selectat?")) {
+        if (confirm("Заменить текущие данные выбранной резервной копией?")) {
           dbRef.current = importedDb;
           setDb(importedDb);
           persist(importedDb);
         }
       } catch {
         alert(
-          "Backup invalid. Selectează un fișier JSON exportat din aplicație.",
+          "Недействительная резервная копия. Выберите JSON-файл, экспортированный из приложения.",
         );
       }
       event.target.value = "";
@@ -395,6 +412,7 @@ export default function Home() {
     [db],
   );
 
+  if (!sessionChecked) return <div className="auth-screen" />;
   if (!user)
     return (
       <Auth
@@ -436,10 +454,19 @@ export default function Home() {
           ))}
         </nav>
         <div className="user-info-sidebar">
-          <span>
+          <div className="user-profile">
             <User size={16} /> <strong>{user}</strong>
-          </span>
-          <b>F90 LCI</b>
+          </div>
+          <button
+            className="logout-btn"
+            type="button"
+            onClick={logout}
+            title="Выйти из системы"
+            aria-label="Выйти из системы"
+          >
+            <LogOut size={14} />
+            <span>Выйти</span>
+          </button>
         </div>
       </aside>
       <main className="main-content">
@@ -676,7 +703,7 @@ function Dashboard({ totals, monthly, reload, exportData, importData }) {
           </Button>
           <label className="action-btn btn-secondary file-btn">
             <Save size={16} />
-            Importă
+            Импортировать
             <input
               type="file"
               accept="application/json,.json"
@@ -1077,7 +1104,7 @@ function Profit({
     <>
       <section className="card">
         <div className="card-header">
-          <span>Прибыль и Аналитика</span>
+          <span>Прибыль и аналитика</span>
           <Button onClick={() => openModal({ type: "income" })}>+ Доход</Button>
         </div>
         <Field label="Выберите период">
@@ -1457,7 +1484,7 @@ function ModalContent({ type, item, db, user, onClose, mutate }) {
             ? db.warehouse.map((row) => (row.id === item.id ? value : row))
             : [value, ...db.warehouse],
         },
-        `${item ? "Склад обновлен" : "Склад добавлено"}: ${form.name}`,
+        `${item ? "Склад обновлён" : "Добавлен товар"}: ${form.name}`,
       );
     }
     if (type === "income") {

@@ -1,0 +1,25 @@
+export default function manifest() {
+  return {
+    name: "ANGEL DETAILING",
+    short_name: "ANGEL DETAILING",
+    description: "Система учета и управления Angel Detailing",
+    start_url: "/",
+    display: "standalone",
+    background_color: "#0a0a0c",
+    theme_color: "#0a0a0c",
+    icons: [
+      {
+        src: "/icon.svg",
+        sizes: "192x192",
+        type: "image/svg+xml",
+        purpose: "any maskable",
+      },
+      {
+        src: "/icon.svg",
+        sizes: "512x512",
+        type: "image/svg+xml",
+        purpose: "any maskable",
+      },
+    ],
+  };
+}

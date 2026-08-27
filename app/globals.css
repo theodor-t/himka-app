@@ -175,7 +175,7 @@ button {
   border-top: 1px solid var(--border);
   font-size: 12px;
 }
-.user-info-sidebar span {
+.user-profile {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -183,9 +183,20 @@ button {
 .user-info-sidebar strong {
   color: #fff;
 }
-.user-info-sidebar b {
+.logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+}
+.logout-btn:hover {
   color: var(--red);
-  font-size: 10px;
+  border-color: var(--red);
 }
 .main-content {
   min-width: 0;

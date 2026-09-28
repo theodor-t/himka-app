@@ -7,6 +7,13 @@ import {
   Bell,
   CalendarDays,
   CalendarPlus,
+  ChartNoAxesCombined,
+  CarFront,
+  Check,
+  ChevronDown,
+  CircleDollarSign,
+  Clock3,
+  Eye,
   FileText,
   History,
   LayoutDashboard,
@@ -18,8 +25,10 @@ import {
   Plus,
   Receipt,
   RefreshCw,
+  Search,
   Save,
   ShieldCheck,
+  Sparkles,
   TrendingUp,
   Users,
   Wallet,
@@ -57,9 +66,12 @@ const EMPTY_DB = {
   windows: [],
   logs: [],
   stockMovements: [],
+  services: [],
 };
 const NAV = [
   ["home", "Главная Панель", LayoutDashboard],
+  ["analytics", "Аналитика", ChartNoAxesCombined],
+  ["services", "Услуги и цены", Sparkles],
   ["calendar", "Календарь", CalendarDays],
   ["clients", "1. Записи клиентов", Users],
   ["expenses", "2. Затраты", Receipt],
@@ -69,6 +81,12 @@ const NAV = [
   ["debts", "6. Должники", Wallet],
   ["windows", "7. Свободные окна", CalendarPlus],
   ["logs", "8. Журнал логов", History],
+];
+const NAV_GROUPS = [
+  { title: "ОБЗОР", items: ["home", "analytics"] },
+  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "clients", "services"] },
+  { title: "ФИНАНСЫ", items: ["expenses", "profit", "withdrawals", "debts"] },
+  { title: "ОПЕРАЦИИ", items: ["warehouse", "windows", "logs"] },
 ];
 const RU_COLLATOR = new Intl.Collator("ru", { numeric: true });
 
@@ -130,6 +148,7 @@ const normalizeDb = (data) => ({
   windows: data?.windows || [],
   logs: data?.logs || [],
   stockMovements: data?.stockMovements || [],
+  services: data?.services || [],
 });
 
 function Button({
@@ -229,6 +248,7 @@ export default function Home() {
   const [sync, setSync] = useState("Загрузка...");
   const [menuOpen, setMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
+  const [globalSearch, setGlobalSearch] = useState("");
   const [profitMonth, setProfitMonth] = useState("all");
   const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
   const [clientQuery, setClientQuery] = useState("");
@@ -653,15 +673,23 @@ export default function Home() {
             </div>
           </div>
           <nav className="nav-list">
-            {NAV.map(([id, label, Icon]) => (
-              <button
-                key={id}
-                className={`nav-item ${page === id ? "active" : ""}`}
-                onClick={() => navigate(id)}
-              >
-                <Icon size={18} />
-                <span>{label}</span>
-              </button>
+            {NAV_GROUPS.map((group) => (
+              <div className="nav-section" key={group.title}>
+                <span className="nav-section-title">{group.title}</span>
+                {group.items.map((id) => {
+                  const [, label, Icon] = NAV.find((item) => item[0] === id);
+                  return (
+                    <button
+                      key={id}
+                      className={`nav-item ${page === id ? "active" : ""}`}
+                      onClick={() => navigate(id)}
+                    >
+                      <Icon size={18} />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             ))}
           </nav>
           <div className="user-info-sidebar">
@@ -692,6 +720,59 @@ export default function Home() {
               </button>
               <h1>{NAV.find((item) => item[0] === page)?.[1] || "Панель"}</h1>
             </div>
+            <div className="global-search-wrap">
+              <Search size={17} />
+              <input
+                value={globalSearch}
+                onChange={(event) => setGlobalSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setGlobalSearch("");
+                  if (event.key === "Enter" && globalSearch.trim()) {
+                    const match = db.clients.find((client) =>
+                      [client.car, client.phone, client.service].some((value) =>
+                        String(value || "").toLocaleLowerCase("ru").includes(globalSearch.trim().toLocaleLowerCase("ru")),
+                      ),
+                    );
+                    if (match) {
+                      setGlobalSearch("");
+                      setModal({ type: "client-profile", item: match });
+                    }
+                  }
+                }}
+                placeholder="Поиск клиента..."
+                aria-label="Поиск клиента по имени, авто или телефону"
+              />
+              {globalSearch.trim() && (
+                <div className="global-search-results">
+                  {db.clients
+                    .filter((client) =>
+                      [client.car, client.phone, client.service].some((value) =>
+                        String(value || "").toLocaleLowerCase("ru").includes(globalSearch.trim().toLocaleLowerCase("ru")),
+                      ),
+                    )
+                    .slice(0, 6)
+                    .map((client) => (
+                      <button
+                        type="button"
+                        key={client.id}
+                        onClick={() => {
+                          setGlobalSearch("");
+                          setModal({ type: "client-profile", item: client });
+                        }}
+                      >
+                        <CarFront size={16} />
+                        <span><strong>{client.car}</strong><small>{client.phone || client.service || "Клиент"}</small></span>
+                        <ArrowRight size={14} />
+                      </button>
+                    ))}
+                  {!db.clients.some((client) =>
+                    [client.car, client.phone, client.service].some((value) =>
+                      String(value || "").toLocaleLowerCase("ru").includes(globalSearch.trim().toLocaleLowerCase("ru")),
+                    ),
+                  ) && <p>Совпадений не найдено</p>}
+                </div>
+              )}
+            </div>
             <div className="top-bar-actions">
               <span className="sync-status">{sync}</span>
               <button
@@ -707,7 +788,16 @@ export default function Home() {
           </header>
           <div className="page-container">{pageContent}</div>
         </main>
-        {modal && (
+        {modal?.type === "client-profile" ? (
+          <ClientProfile
+            client={modal.item}
+            db={db}
+            onClose={() => setModal(null)}
+            onEdit={() => setModal({ type: "client", item: modal.item })}
+            onPayment={() => setModal({ type: "income", preset: { clientId: modal.item.id } })}
+            onDebt={() => setModal({ type: "debt", preset: { clientId: modal.item.id } })}
+          />
+        ) : modal && (
           <ModalContent
             type={modal.type}
             item={modal.item}
@@ -797,6 +887,7 @@ function PageContent({
     return (
       <Dashboard
         db={db}
+        user={user}
         totals={totals}
         monthly={monthly}
         sync={sync}
@@ -810,6 +901,18 @@ function PageContent({
         openModal={openModal}
       />
     );
+  if (page === "analytics")
+    return (
+      <AnalyticsPage
+        db={db}
+        totals={totals}
+        monthly={monthly}
+        years={years}
+        reportYear={reportYear}
+        setReportYear={setReportYear}
+      />
+    );
+  if (page === "services") return <ServicesPage db={db} mutate={mutate} user={user} />;
   if (page === "clients")
     return (
       <Clients
@@ -822,6 +925,7 @@ function PageContent({
         setStatus={setClientStatus}
         openModal={openModal}
         mutate={mutate}
+        openProfile={(client) => openModal({ type: "client-profile", item: client })}
       />
     );
   if (page === "calendar")
@@ -895,8 +999,164 @@ function PageContent({
   return <Logs db={db} sort={sort} sortBy={sortBy} />;
 }
 
+function AnalyticsPage({ db, totals, monthly, years, reportYear, setReportYear }) {
+  const annualIncome = sumAmounts(monthly, (item) => item.income);
+  const annualExpenses = sumAmounts(monthly, (item) => item.expenses);
+  const annualProfit = subtractAmounts(annualIncome, annualExpenses);
+  const previousYear = String(Number(reportYear) - 1);
+  const previousIncome = sumAmounts(
+    db.incomes.filter((item) => periodKeyFor(item).startsWith(`${previousYear}-`)),
+  );
+  const revenueDelta = previousIncome
+    ? ((annualIncome - previousIncome) / previousIncome) * 100
+    : null;
+  const averageTicket = db.incomes.length
+    ? centsToAmount(Math.round(amountToCents(annualIncome) / Math.max(
+        db.incomes.filter((item) => periodKeyFor(item).startsWith(`${reportYear}-`)).length,
+        1,
+      )))
+    : 0;
+  const completedAppointments = db.clients.filter(
+    (client) => client.status === "Выполнено" && parseDate(client.datetime)?.getFullYear() === Number(reportYear),
+  ).length;
+  const categories = Object.entries(
+    db.expenses
+      .filter((item) => periodKeyFor(item).startsWith(`${reportYear}-`) && item.source !== "Личные средства")
+      .reduce((result, item) => {
+        const key = item.category || "Без категории";
+        result[key] = (result[key] || 0) + amountToCents(item.amount);
+        return result;
+      }, {}),
+  )
+    .map(([name, cents]) => ({ name, amount: centsToAmount(cents) }))
+    .sort((first, second) => second.amount - first.amount)
+    .slice(0, 5);
+  const bestMonth = [...monthly].sort((first, second) => second.profit - first.profit)[0];
+  return (
+    <div className="analytics-page">
+      <section className="analytics-hero">
+        <div>
+          <span className="dashboard-kicker">BUSINESS INTELLIGENCE · {reportYear}</span>
+          <h2>Цифры, которые помогают расти.</h2>
+          <p>Выручка, расходы, динамика и поведение бизнеса без догадок.</p>
+        </div>
+        <label className="analytics-year-picker">
+          <span>Отчётный год</span>
+          <select value={reportYear} onChange={(event) => setReportYear(event.target.value)}>
+            {years.map((year) => <option key={year} value={year}>{year}</option>)}
+          </select>
+        </label>
+      </section>
+      <section className="analytics-kpis">
+        <article className="analytics-kpi featured">
+          <span><CircleDollarSign size={17} /> Выручка за год</span>
+          <strong>{money(annualIncome)}</strong>
+          <small>{revenueDelta === null ? "Нет данных за прошлый год" : `${revenueDelta >= 0 ? "+" : ""}${revenueDelta.toFixed(1)}% к ${previousYear}`}</small>
+        </article>
+        <article className="analytics-kpi"><span>Операционная прибыль</span><strong>{money(annualProfit)}</strong><small>Выручка минус общие расходы</small></article>
+        <article className="analytics-kpi"><span>Средняя оплата</span><strong>{money(averageTicket)}</strong><small>За одну запись об оплате</small></article>
+        <article className="analytics-kpi"><span>Выполнено услуг</span><strong>{completedAppointments}</strong><small>Записи со статусом «Выполнено»</small></article>
+      </section>
+      <section className="analytics-layout">
+        <article className="card analytics-chart-card">
+          <div className="card-header"><span>Денежный поток</span><span className="analytics-subtitle">По месяцам · {reportYear}</span></div>
+          <div className="analytics-legend"><span><i className="legend-income" />Выручка</span><span><i className="legend-expenses" />Расходы</span><span><i className="legend-profit" />Прибыль</span></div>
+          <MonthlyChart data={monthly} />
+        </article>
+        <article className="card analytics-insight-card">
+          <div className="card-header"><span>Главный результат</span><Sparkles size={18} /></div>
+          <div className="insight-highlight">
+            <small>САМЫЙ ПРИБЫЛЬНЫЙ МЕСЯЦ</small>
+            <strong>{bestMonth?.month || "—"}</strong>
+            <span>{money(bestMonth?.profit || 0)} прибыли</span>
+          </div>
+          <div className="insight-row"><span>Баланс кассы сейчас</span><strong>{money(totals.cash)}</strong></div>
+          <div className="insight-row"><span>Активные долги</span><strong>{money(sumAmounts(db.debts.filter((debt) => !debt.paid)))}</strong></div>
+          <div className="insight-row"><span>Позиции с низким запасом</span><strong>{totals.lowStock.length}</strong></div>
+        </article>
+      </section>
+      <section className="analytics-bottom-grid">
+        <article className="card">
+          <div className="card-header"><span>Куда уходят деньги</span><Receipt size={17} /></div>
+          {categories.length ? categories.map((category, index) => {
+            const share = annualExpenses ? (category.amount / annualExpenses) * 100 : 0;
+            return <div className="category-analytics" key={category.name}><div><span>{category.name}</span><strong>{money(category.amount)}</strong></div><i><b style={{ width: `${Math.min(100, share)}%` }} /></i></div>;
+          }) : <div className="empty-reminder">Расходов за этот год пока нет</div>}
+        </article>
+        <article className="card">
+          <div className="card-header"><span>Что важно сейчас</span><Activity size={17} /></div>
+          <div className="analytics-action"><span className="analytics-action-icon"><Clock3 size={16} /></span><div><strong>Записи на ближайшую неделю</strong><small>{db.clients.filter((client) => { const date = parseDate(client.datetime); return date && date >= new Date() && date < new Date(Date.now() + 7 * 86400000); }).length} запланировано</small></div></div>
+          <div className="analytics-action"><span className="analytics-action-icon"><Package size={16} /></span><div><strong>Низкий остаток на складе</strong><small>{totals.lowStock.length ? totals.lowStock.map((item) => item.name).join(", ") : "Всё в норме"}</small></div></div>
+          <div className="analytics-action"><span className="analytics-action-icon"><Check size={16} /></span><div><strong>Маржа за год</strong><small>{annualIncome ? `${((annualProfit / annualIncome) * 100).toFixed(1)}% от выручки` : "Добавьте оплаты и расходы"}</small></div></div>
+        </article>
+      </section>
+    </div>
+  );
+}
+
+function ServicesPage({ db, mutate, user }) {
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ name: "", price: "", duration: "60", description: "" });
+  const clearForm = () => {
+    setEditingId(null);
+    setForm({ name: "", price: "", duration: "60", description: "" });
+  };
+  const save = (event) => {
+    event.preventDefault();
+    if (!form.name.trim() || !validPositiveAmount(form.price)) return alert("Укажите название услуги и цену больше нуля.");
+    if (!Number.isInteger(Number(form.duration)) || Number(form.duration) <= 0) return alert("Длительность укажите в целых минутах.");
+    const service = { ...form, id: editingId || createId(), name: form.name.trim(), price: centsToAmount(amountToCents(form.price)), duration: Number(form.duration), author: user };
+    mutate({ services: editingId ? db.services.map((item) => item.id === editingId ? service : item) : [service, ...db.services] }, `${editingId ? "Изменена" : "Добавлена"} услуга: ${service.name}`);
+    clearForm();
+  };
+  return (
+    <div className="services-page">
+      <section className="services-hero"><span className="dashboard-kicker">SERVICE MENU · PRICE BOOK</span><h2>Услуги с понятной ценой.</h2><p>Единый прайс ускоряет запись и автоматически подставляет стоимость клиенту.</p><div className="services-hero-count"><Sparkles size={18} /><strong>{db.services.length}</strong><span>позиций в прайсе</span></div></section>
+      <div className="services-layout">
+        <form className="card service-form" onSubmit={save}>
+          <div className="card-header"><span>{editingId ? "Редактировать услугу" : "Новая услуга"}</span>{editingId && <button className="text-action" type="button" onClick={clearForm}>Отмена</button>}</div>
+          <Field label="Название услуги"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Например, химчистка салона" /></Field>
+          <div className="form-grid"><Field label="Цена (MDL)"><input type="number" min="0.01" step="0.01" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} placeholder="1500" /></Field><Field label="Длительность (мин.)"><input type="number" min="1" step="1" value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })} /></Field></div>
+          <Field label="Короткое описание"><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Что входит в услугу" /></Field>
+          <Button icon={Save}>{editingId ? "Сохранить изменения" : "Добавить в прайс"}</Button>
+        </form>
+        <section className="service-catalog">
+          {db.services.length ? db.services.map((service) => (
+            <article className="service-card" key={service.id}>
+              <div className="service-card-icon"><Sparkles size={18} /></div><div className="service-card-main"><div className="service-card-heading"><h3>{service.name}</h3><strong>{money(service.price)}</strong></div><p>{service.description || "Профессиональный уход за автомобилем"}</p><span><Clock3 size={13} /> {service.duration} мин.</span></div>
+              <div className="service-card-actions"><button className="btn-sm btn-edit" type="button" onClick={() => { setEditingId(service.id); setForm({ name: service.name, price: String(service.price), duration: String(service.duration), description: service.description || "" }); }} aria-label="Изменить услугу"><Pencil size={14} /></button><DeleteButton onClick={() => confirm(`Удалить услугу «${service.name}» из прайса? Существующие записи останутся без изменений.`) && mutate({ services: db.services.filter((item) => item.id !== service.id) }, `Удалена услуга из прайса: ${service.name}`)} /></div>
+            </article>
+          )) : <div className="card services-empty"><Sparkles size={24} /><h3>Прайс-лист пока пуст</h3><p>Добавьте первую услугу. Цена будет подставляться в запись клиента автоматически.</p></div>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ClientProfile({ client, db, onClose, onEdit, onPayment, onDebt }) {
+  if (!client) return null;
+  const phoneKey = String(client.phone || "").replace(/\D/g, "");
+  const relatedClients = db.clients.filter((row) => row.id === client.id || (phoneKey && String(row.phone || "").replace(/\D/g, "") === phoneKey));
+  const relatedIds = new Set(relatedClients.map((row) => clientIdKey(row.id)));
+  const payments = db.incomes.filter((item) => relatedIds.has(clientIdKey(item.clientId))).sort((a, b) => (parseDate(b.date)?.getTime() || 0) - (parseDate(a.date)?.getTime() || 0));
+  const debts = db.debts.filter((item) => relatedIds.has(clientIdKey(item.clientId)));
+  const paid = sumAmounts(payments);
+  const openBalance = sumAmounts(relatedClients, (visit) => outstandingForClient(db, visit));
+  return (
+    <Modal title="Карточка клиента" onClose={onClose}>
+      <div className="client-profile-head"><div className="client-avatar"><CarFront size={25} /></div><div><span className="dashboard-kicker">CLIENT PROFILE</span><h2>{client.car}</h2><p>{client.phone || "Телефон не указан"}</p></div><Badge status={statusClass(client.status)}>{client.status}</Badge></div>
+      <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button></div>
+      <div className="client-profile-stats"><div><span>Оплачено</span><strong>{money(paid)}</strong></div><div><span>Остаток к оплате</span><strong>{money(openBalance)}</strong></div><div><span>Визитов</span><strong>{relatedClients.length}</strong></div></div>
+      <section className="profile-section"><div className="card-header">Последние визиты</div>{relatedClients.slice().sort((a, b) => (parseDate(b.datetime)?.getTime() || 0) - (parseDate(a.datetime)?.getTime() || 0)).map((visit) => <div className="profile-history-row" key={visit.id}><span><strong>{visit.service || "Услуга не указана"}</strong><small>{dateText(visit.datetime)}</small></span><Badge status={statusClass(visit.status)}>{visit.status}</Badge><strong>{visit.servicePrice ? money(visit.servicePrice) : "Цена не указана"}</strong></div>)}</section>
+      <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)}</small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>
+      {client.phone && <a className="client-call-link" href={`tel:${client.phone}`}>Позвонить клиенту <ArrowRight size={14} /></a>}
+    </Modal>
+  );
+}
+
 function Dashboard({
   db,
+  user,
   totals,
   monthly,
   sync,
@@ -941,37 +1201,34 @@ function Dashboard({
         <div className="dashboard-hero-heading">
           <div>
             <span className="dashboard-kicker">
-              ANGEL DETAILING · CONTROL CENTER
+              {today.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })} · ВСЁ ПОД КОНТРОЛЕМ
             </span>
-            <h2>Главная панель</h2>
-            <p>Ключевые цифры и ближайшие действия на одном экране.</p>
+            <h2>Хорошего дня, {user}.</h2>
+            <p>Вот что происходит в мастерской сегодня.</p>
           </div>
           <div className={`dashboard-live ${sync.includes("Ошибка") ? "sync-error" : sync.includes("Сохранено") || sync.includes("Google OK") ? "" : "sync-pending"}`}>
             <span /> {sync}
           </div>
         </div>
         <div className="dashboard-actions">
-          <Button variant="secondary" icon={RefreshCw} onClick={reload}>
-            Обновить
+          <Button icon={CalendarPlus} onClick={() => openModal({ type: "client" })}>
+            Новая запись
           </Button>
-          <Button
-            variant="secondary"
-            icon={FileText}
-            onClick={() => window.print()}
-          >
-            PDF
+          <Button variant="secondary" icon={ChartNoAxesCombined} onClick={() => navigate("analytics")}>
+            Аналитика
           </Button>
-          <Button variant="secondary" icon={Save} onClick={exportData}>
-            Бэкап
+          <Button variant="secondary" icon={Sparkles} onClick={() => navigate("services")}>
+            Прайс-лист
           </Button>
-          <label className="action-btn btn-secondary file-btn">
-            <Save size={16} /> Импорт{" "}
-            <input
-              type="file"
-              accept="application/json,.json"
-              onChange={importData}
-            />
-          </label>
+          <Button variant="secondary" icon={RefreshCw} onClick={reload} title="Обновить данные" aria-label="Обновить данные" />
+          <Button variant="secondary" icon={FileText} onClick={() => window.print()} title="Сформировать PDF" aria-label="Сформировать PDF" />
+          <details className="dashboard-tools">
+            <summary><Save size={15} /> Бэкап</summary>
+            <div>
+              <button type="button" onClick={exportData}>Скачать резервную копию</button>
+              <label>Восстановить из файла<input type="file" accept="application/json,.json" onChange={importData} /></label>
+            </div>
+          </details>
         </div>
       </section>
       <section className="dashboard-metrics">
@@ -1393,7 +1650,7 @@ function FinancialInsights({ db, totals, monthly, years, reportYear, setReportYe
               <strong className="cyan-text">{money(totals.cash)}</strong>
             </div>
             <div>
-              <span>Клиенты</span>
+              <span>Клиентов</span>
               <strong>{db.clients.length}</strong>
             </div>
             <div>
@@ -1669,9 +1926,19 @@ function Table({ headers, children, sortBy }) {
     </>
   );
 }
-function Actions({ onEdit, onDelete }) {
+function Actions({ onEdit, onDelete, onView }) {
   return (
     <span className="actions">
+      {onView && (
+        <button
+          className="btn-sm btn-view"
+          onClick={onView}
+          title="Открыть карточку клиента"
+          aria-label="Открыть карточку клиента"
+        >
+          <Eye size={13} />
+        </button>
+      )}
       <button
         className="btn-sm btn-edit"
         onClick={onEdit}
@@ -1793,6 +2060,7 @@ function Clients({
   setStatus,
   openModal,
   mutate,
+  openProfile,
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   const filteredClients = db.clients.filter(
@@ -1890,6 +2158,7 @@ function Clients({
             <td>{client.comment || "-"}</td>
             <td>
               <Actions
+                onView={() => openProfile(client)}
                 onEdit={() => openModal({ type: "client", item: client })}
                 onDelete={() => {
                   const hasFinancialHistory =
@@ -1931,7 +2200,7 @@ function Expenses({ db, sort, sortBy, mutate }) {
     comment: "",
   });
   const update = (event) =>
-    setForm({ ...form, [event.target.name]: event.target.value });
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   const save = (event) => {
     event.preventDefault();
     if (!form.category.trim() || !validPositiveAmount(form.amount))
@@ -2521,7 +2790,9 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
   const isWindow = type === "window";
   const [form, setForm] = useState(
     item
-      ? { ...item }
+      ? isClient
+        ? { ...item, servicePrice: item.servicePrice ?? "" }
+        : { ...item }
       : isClient
         ? {
             car: "",
@@ -2538,18 +2809,29 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
           ? { name: "", qty: "", minQty: 2 }
           : isDebt
             ? {
-                clientId: db.clients[0]?.id || "",
+                clientId: preset?.clientId || db.clients[0]?.id || "",
                 amount: "",
                 paid: false,
                 comment: "",
               }
             : isWindow
               ? { datetime: "", comment: "" }
-              : { clientId: getUnpaidClients(db)[0]?.id || "", amount: "" },
+              : { clientId: preset?.clientId || getUnpaidClients(db)[0]?.id || "", amount: "" },
   );
   const paymentClients = getUnpaidClients(db);
-  const update = (event) =>
-    setForm({ ...form, [event.target.name]: event.target.value });
+  const update = (event) => {
+    const { name, value } = event.target;
+    if (name === "service") {
+      const catalogItem = db.services.find((service) => service.name === value);
+      setForm((current) => ({
+        ...current,
+        service: value,
+        servicePrice: catalogItem ? String(catalogItem.price) : "",
+      }));
+      return;
+    }
+    setForm((current) => ({ ...current, [name]: value }));
+  };
   const save = (event) => {
     event.preventDefault();
     if (isClient && (!form.car || !form.datetime))
@@ -2558,6 +2840,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
       const appointmentTime = parseDate(form.datetime)?.getTime();
       if (!appointmentTime) return alert("Укажите корректную дату и время записи.");
       if (
+        form.servicePrice != null &&
         form.servicePrice !== "" &&
         (!Number.isFinite(Number(form.servicePrice)) || Number(form.servicePrice) < 0)
       ) return alert("Стоимость услуги должна быть нулём или положительной суммой.");
@@ -2824,10 +3107,14 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
             <Field label="Услуга">
               <input
                 name="service"
+                list="service-catalog-options"
                 value={form.service}
                 onChange={update}
                 placeholder="Детейлинг / Химчистка"
               />
+              <datalist id="service-catalog-options">
+                {db.services.map((service) => <option key={service.id} value={service.name}>{`${money(service.price)} · ${service.duration} мин.`}</option>)}
+              </datalist>
             </Field>
             <Field label="Стоимость услуги (MDL)">
               <input

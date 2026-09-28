@@ -53,6 +53,7 @@ function readDatabase() {
       debts: [],
       windows: [],
       logs: [],
+      stockMovements: [],
     };
   }
   return JSON.parse(value);
@@ -75,6 +76,7 @@ function validateDatabase(data) {
     "debts",
     "windows",
     "logs",
+    "stockMovements",
   ];
   if (!data || typeof data !== "object") throw new Error("Invalid database");
   collections.forEach((collection) => {

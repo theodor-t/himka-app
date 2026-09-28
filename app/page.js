@@ -28,23 +28,22 @@ import {
   Pencil,
   User,
 } from "lucide-react";
+import {
+  amountToCents,
+  applyPaymentToDebts,
+  centsToAmount,
+  clientIdKey,
+  formatMoney,
+  getUnpaidClients,
+  MONTHS,
+  parseRecordDate,
+  periodKeyFor,
+  reversePaymentFromDebts,
+  sumAmounts,
+} from "./lib/finance.mjs";
 
 const SCRIPT_URL = "/api/db";
 const BACKUP_KEY = "angel-detailing-auto-backup";
-const MONTHS = [
-  "Январь",
-  "Февраль",
-  "Март",
-  "Апрель",
-  "Май",
-  "Июнь",
-  "Июль",
-  "Август",
-  "Сентябрь",
-  "Октябрь",
-  "Ноябрь",
-  "Декабрь",
-];
 const EMPTY_DB = {
   clients: [],
   expenses: [],
@@ -54,9 +53,11 @@ const EMPTY_DB = {
   debts: [],
   windows: [],
   logs: [],
+  stockMovements: [],
 };
 const NAV = [
   ["home", "Главная Панель", LayoutDashboard],
+  ["calendar", "Календарь", CalendarDays],
   ["clients", "1. Записи клиентов", Users],
   ["expenses", "2. Затраты", Receipt],
   ["profit", "3. Прибыль", TrendingUp],
@@ -68,19 +69,34 @@ const NAV = [
 ];
 const RU_COLLATOR = new Intl.Collator("ru", { numeric: true });
 
-const money = (value) => `${Number(value || 0).toLocaleString("ru-RU")} MDL`;
+const money = formatMoney;
 const dateText = (value) => {
   if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  const date = parseRecordDate(value);
+  if (!date) return value;
   return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 };
 const nowText = () => dateText(new Date());
 const currentMonth = () => MONTHS[new Date().getMonth()];
-const parseDate = (value) => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+const currentPeriod = (date = new Date()) => ({
+  month: MONTHS[date.getMonth()],
+  year: date.getFullYear(),
+  periodKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+});
+const subtractAmounts = (first, second) =>
+  centsToAmount(amountToCents(first) - amountToCents(second));
+const matchesPeriod = (item, selectedPeriod) => {
+  if (selectedPeriod === "all") return true;
+  const key = periodKeyFor(item);
+  return selectedPeriod.length === 4
+    ? key.startsWith(`${selectedPeriod}-`)
+    : key === selectedPeriod;
 };
+const parseDate = parseRecordDate;
+const createId = () =>
+  globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const validPositiveAmount = (value) =>
+  Number.isFinite(Number(value)) && amountToCents(value) > 0;
 const isSameDay = (value, reference = new Date()) => {
   const date = parseDate(value);
   return (
@@ -96,6 +112,7 @@ const normalizeDb = (data) => ({
   debts: data?.debts || [],
   windows: data?.windows || [],
   logs: data?.logs || [],
+  stockMovements: data?.stockMovements || [],
 });
 
 function Button({
@@ -196,11 +213,15 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [profitMonth, setProfitMonth] = useState("all");
+  const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
   const [clientQuery, setClientQuery] = useState("");
   const [clientStatus, setClientStatus] = useState("all");
   const [sort, setSort] = useState({ key: "", direction: 1 });
   const dbRef = useRef(EMPTY_DB);
   const syncInFlight = useRef(false);
+  const saveQueue = useRef(Promise.resolve());
+  const pendingSaves = useRef(0);
+  const dataRevision = useRef(0);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -233,7 +254,7 @@ export default function Home() {
       ...normalizedChanges,
       logs: [
         {
-          id: Date.now(),
+          id: createId(),
           datetime: nowText(),
           user: user || "Система",
           action: log,
@@ -241,43 +262,69 @@ export default function Home() {
         ...dbRef.current.logs,
       ],
     };
+    dataRevision.current += 1;
     dbRef.current = next;
     setDb(next);
     persist(next);
   };
   const persist = async (next) => {
     setLoadingMessage("Сохранение данных...");
+    const revision = dataRevision.current;
     setSync("Сохранение...");
     const serialized = JSON.stringify(next);
-    localStorage.setItem(
-      BACKUP_KEY,
-      JSON.stringify({ savedAt: new Date().toISOString(), data: next }),
-    );
-    try {
-      await fetch(SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: serialized,
-      });
-      localStorage.setItem("angel-detailing-db", serialized);
-      setSync("✓ Сохранено");
-    } catch {
-      setSync("⚠ Ошибка сохранения");
-    } finally {
-      setLoadingMessage(null);
-    }
+    pendingSaves.current += 1;
+    saveQueue.current = saveQueue.current.then(async () => {
+      try {
+        try {
+          localStorage.setItem(
+            BACKUP_KEY,
+            JSON.stringify({ savedAt: new Date().toISOString(), data: next }),
+          );
+        } catch {
+          // Local backup is best-effort; the cloud write remains authoritative.
+        }
+        const response = await fetch(SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: serialized,
+        });
+        if (!response.ok) throw new Error(`Save failed (${response.status})`);
+        try {
+          localStorage.setItem("angel-detailing-db", serialized);
+        } catch {
+          // Keep the successful server response even if browser storage is unavailable.
+        }
+        if (revision === dataRevision.current) setSync("✓ Сохранено");
+      } catch {
+        if (revision === dataRevision.current) setSync("⚠ Ошибка сохранения");
+      } finally {
+        pendingSaves.current = Math.max(0, pendingSaves.current - 1);
+        if (revision === dataRevision.current) setLoadingMessage(null);
+      }
+    });
+    return saveQueue.current;
   };
   const loadData = async () => {
-    if (syncInFlight.current || document.visibilityState === "hidden") return;
+    if (
+      syncInFlight.current ||
+      pendingSaves.current > 0 ||
+      document.visibilityState === "hidden"
+    ) return;
+    const revision = dataRevision.current;
     syncInFlight.current = true;
     setSync("Синхронизация...");
     try {
       const response = await fetch(SCRIPT_URL, { cache: "no-store" });
       if (!response.ok) throw new Error();
       const freshDb = normalizeDb(await response.json());
+      if (revision !== dataRevision.current || pendingSaves.current > 0) return;
       dbRef.current = freshDb;
       setDb(freshDb);
-      localStorage.setItem("angel-detailing-db", JSON.stringify(freshDb));
+      try {
+        localStorage.setItem("angel-detailing-db", JSON.stringify(freshDb));
+      } catch {
+        // Browser cache is optional; Google remains the source of truth.
+      }
       setSync("✓ Google OK");
     } catch {
       setSync("⚠ Ошибка Google");
@@ -347,9 +394,9 @@ export default function Home() {
   const sorted = (items, key, defaultDirection = 1) => {
     const activeKey = sort.key || key;
     return [...items].sort((a, b) => {
-      if (activeKey === "datetime") {
-        const dateA = Date.parse(a[activeKey] || "") || 0;
-        const dateB = Date.parse(b[activeKey] || "") || 0;
+      if (activeKey === "datetime" || activeKey === "date") {
+        const dateA = parseDate(a[activeKey])?.getTime() || 0;
+        const dateB = parseDate(b[activeKey])?.getTime() || 0;
         return (dateA - dateB) * (sort.key ? sort.direction : defaultDirection);
       }
       return (
@@ -376,6 +423,7 @@ export default function Home() {
         if (!Object.values(importedDb).every((value) => Array.isArray(value)))
           throw new Error();
         if (confirm("Заменить текущие данные выбранной резервной копией?")) {
+          dataRevision.current += 1;
           dbRef.current = importedDb;
           setDb(importedDb);
           persist(importedDb);
@@ -391,35 +439,30 @@ export default function Home() {
   };
 
   const totals = useMemo(() => {
-    const month = currentMonth();
-    const income = db.incomes.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0,
+    const todayPeriod = currentPeriod();
+    const inCurrentMonth = (item) => periodKeyFor(item) === todayPeriod.periodKey;
+    const income = sumAmounts(db.incomes);
+    const incomeMonth = sumAmounts(db.incomes.filter(inCurrentMonth));
+    const commonExpenses = sumAmounts(
+      db.expenses.filter((item) => item.source !== "Личные средства"),
     );
-    const incomeMonth = db.incomes
-      .filter((item) => item.month === month)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const commonExpenses = db.expenses
-      .filter((item) => item.source !== "Личные средства")
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const expensesMonth = db.expenses
-      .filter(
-        (item) => item.month === month && item.source !== "Личные средства",
-      )
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const personal = db.expenses
-      .filter((item) => item.source === "Личные средства")
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const personalMonth = db.expenses
-      .filter(
-        (item) => item.month === month && item.source === "Личные средства",
-      )
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const withdrawals = db.withdrawals.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0,
+    const expensesMonth = sumAmounts(
+      db.expenses.filter(
+        (item) => inCurrentMonth(item) && item.source !== "Личные средства",
+      ),
     );
-    const lowStock = db.warehouse.filter((item) => Number(item.qty || 0) <= 2);
+    const personal = sumAmounts(
+      db.expenses.filter((item) => item.source === "Личные средства"),
+    );
+    const personalMonth = sumAmounts(
+      db.expenses.filter(
+        (item) => inCurrentMonth(item) && item.source === "Личные средства",
+      ),
+    );
+    const withdrawals = sumAmounts(db.withdrawals);
+    const lowStock = db.warehouse.filter(
+      (item) => Number(item.qty || 0) <= Number(item.minQty ?? 2),
+    );
     return {
       income,
       incomeMonth,
@@ -429,47 +472,59 @@ export default function Home() {
       personalMonth,
       withdrawals,
       lowStock,
-      profit: income - commonExpenses,
-      cash: income - commonExpenses - withdrawals,
+      profit: subtractAmounts(income, commonExpenses),
+      cash: subtractAmounts(subtractAmounts(income, commonExpenses), withdrawals),
     };
   }, [db]);
   const period = useMemo(() => {
-    const matches = (item) =>
-      profitMonth === "all" || item.month === profitMonth;
-    const income = db.incomes
-      .filter(matches)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const expenses = db.expenses
-      .filter((item) => matches(item) && item.source !== "Личные средства")
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const personal = db.expenses
-      .filter((item) => matches(item) && item.source === "Личные средства")
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const withdrawals = db.withdrawals
-      .filter(matches)
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const income = sumAmounts(db.incomes.filter((item) => matchesPeriod(item, profitMonth)));
+    const expenses = sumAmounts(
+      db.expenses.filter(
+        (item) => matchesPeriod(item, profitMonth) && item.source !== "Личные средства",
+      ),
+    );
+    const personal = sumAmounts(
+      db.expenses.filter(
+        (item) => matchesPeriod(item, profitMonth) && item.source === "Личные средства",
+      ),
+    );
+    const withdrawals = sumAmounts(
+      db.withdrawals.filter((item) => matchesPeriod(item, profitMonth)),
+    );
     return {
       income,
       expenses,
       personal,
       withdrawals,
-      profit: income - expenses,
+      profit: subtractAmounts(income, expenses),
     };
   }, [db, profitMonth]);
+  const years = useMemo(() => {
+    const keys = [
+      ...db.incomes,
+      ...db.expenses,
+      ...db.withdrawals,
+    ].map((item) => periodKeyFor(item).slice(0, 4));
+    return [...new Set([String(new Date().getFullYear()), ...keys])].sort(
+      (first, second) => second.localeCompare(first),
+    );
+  }, [db]);
   const monthly = useMemo(
     () =>
-      MONTHS.map((month) => {
-        const income = db.incomes
-          .filter((item) => item.month === month)
-          .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-        const expenses = db.expenses
-          .filter(
-            (item) => item.month === month && item.source !== "Личные средства",
-          )
-          .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-        return { month, income, expenses, profit: income - expenses };
+      MONTHS.map((month, index) => {
+        const key = `${reportYear}-${String(index + 1).padStart(2, "0")}`;
+        const income = sumAmounts(
+          db.incomes.filter((item) => periodKeyFor(item) === key),
+        );
+        const expenses = sumAmounts(
+          db.expenses.filter(
+            (item) =>
+              periodKeyFor(item) === key && item.source !== "Личные средства",
+          ),
+        );
+        return { month, income, expenses, profit: centsToAmount(amountToCents(income) - amountToCents(expenses)) };
       }),
-    [db],
+    [db, reportYear],
   );
   const pageContent = useMemo(
     () => (
@@ -477,8 +532,12 @@ export default function Home() {
         page={page}
         db={db}
         user={user}
+        sync={sync}
         totals={totals}
         monthly={monthly}
+        years={years}
+        reportYear={reportYear}
+        setReportYear={setReportYear}
         period={period}
         month={profitMonth}
         setMonth={setProfitMonth}
@@ -503,8 +562,11 @@ export default function Home() {
       user,
       totals,
       monthly,
+      years,
+      reportYear,
       period,
       profitMonth,
+      sync,
       clientQuery,
       clientStatus,
       navigate,
@@ -665,8 +727,12 @@ function PageContent({
   page,
   db,
   user,
+  sync,
   totals,
   monthly,
+  years,
+  reportYear,
+  setReportYear,
   period,
   month,
   setMonth,
@@ -690,6 +756,10 @@ function PageContent({
         db={db}
         totals={totals}
         monthly={monthly}
+        sync={sync}
+        years={years}
+        reportYear={reportYear}
+        setReportYear={setReportYear}
         reload={reload}
         exportData={exportData}
         importData={importData}
@@ -711,6 +781,8 @@ function PageContent({
         mutate={mutate}
       />
     );
+  if (page === "calendar")
+    return <CalendarPage db={db} openModal={openModal} />;
   if (page === "expenses")
     return (
       <Expenses
@@ -727,6 +799,7 @@ function PageContent({
         db={db}
         period={period}
         month={month}
+        years={years}
         setMonth={setMonth}
         sort={sort}
         sortBy={sortBy}
@@ -742,6 +815,7 @@ function PageContent({
         sortBy={sortBy}
         openModal={openModal}
         mutate={mutate}
+        user={user}
       />
     );
   if (page === "withdrawals")
@@ -782,6 +856,10 @@ function Dashboard({
   db,
   totals,
   monthly,
+  sync,
+  years,
+  reportYear,
+  setReportYear,
   reload,
   exportData,
   importData,
@@ -809,9 +887,7 @@ function Dashboard({
     ["Затраты всего", totals.commonExpenses, "warning", Receipt],
     [
       "Активные долги",
-      db.debts
-        .filter((debt) => !debt.paid)
-        .reduce((sum, debt) => sum + Number(debt.amount || 0), 0),
+      sumAmounts(db.debts.filter((debt) => !debt.paid)),
       "danger",
       Bell,
     ],
@@ -827,8 +903,8 @@ function Dashboard({
             <h2>Главная панель</h2>
             <p>Ключевые цифры и ближайшие действия на одном экране.</p>
           </div>
-          <div className="dashboard-live">
-            <span /> Данные синхронизированы
+          <div className={`dashboard-live ${sync.includes("Ошибка") ? "sync-error" : sync.includes("Сохранено") || sync.includes("Google OK") ? "" : "sync-pending"}`}>
+            <span /> {sync}
           </div>
         </div>
         <div className="dashboard-actions">
@@ -932,18 +1008,23 @@ function Dashboard({
         totals={totals}
         todayAppointments={todayAppointments}
         monthly={monthly}
+        reportYear={reportYear}
       />
-      <FinancialInsights db={db} totals={totals} monthly={monthly} />
+      <FinancialInsights
+        db={db}
+        totals={totals}
+        monthly={monthly}
+        years={years}
+        reportYear={reportYear}
+        setReportYear={setReportYear}
+      />
     </div>
   );
 }
 
 function DebtorsPreview({ db, navigate }) {
   const activeDebts = db.debts.filter((debt) => !debt.paid);
-  const total = activeDebts.reduce(
-    (sum, debt) => sum + Number(debt.amount || 0),
-    0,
-  );
+  const total = sumAmounts(activeDebts);
   return activeDebts.length ? (
     <>
       <div className="debt-preview-total">
@@ -978,7 +1059,7 @@ function DebtorsPreview({ db, navigate }) {
 
 function AvailableWindows({ db, openModal, navigate }) {
   const windows = [...db.windows]
-    .filter((slot) => parseDate(slot.datetime))
+    .filter((slot) => parseDate(slot.datetime)?.getTime() > Date.now())
     .sort(
       (first, second) => parseDate(first.datetime) - parseDate(second.datetime),
     );
@@ -1072,11 +1153,23 @@ function Windows({ db, sort, sortBy, openModal, mutate }) {
 }
 
 function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
   const activeDebts = db.debts.filter((debt) => !debt.paid);
-  const total = activeDebts.reduce(
-    (sum, debt) => sum + Number(debt.amount || 0),
-    0,
-  );
+  const total = sumAmounts(activeDebts);
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const filteredDebts = db.debts.filter((debt) => {
+    const client = db.clients.find(
+      (row) => clientIdKey(row.id) === clientIdKey(debt.clientId),
+    );
+    return (
+      (filter === "all" || (filter === "paid" ? debt.paid : !debt.paid)) &&
+      (!normalizedQuery ||
+        `${client?.car || ""} ${debt.comment || ""}`
+          .toLocaleLowerCase("ru")
+          .includes(normalizedQuery))
+    );
+  });
   return (
     <>
       <section className="card debt-summary-card">
@@ -1089,7 +1182,7 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
         <div className="stats-grid">
           <div className="stat-card warning">
             <span className="stat-label">Активных должников</span>
-            <strong>{activeDebts.length}</strong>
+            <strong>{new Set(activeDebts.map((debt) => clientIdKey(debt.clientId))).size}</strong>
           </div>
           <Stat label="Общая сумма долга" value={total} color="danger" />
           <div className="stat-card success">
@@ -1101,6 +1194,19 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
       <section className="card">
         <div className="card-header">
           <span>Все долги</span>
+        </div>
+        <div className="filter-row">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Поиск по клиенту или комментарию..."
+            aria-label="Поиск долгов"
+          />
+          <select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Фильтр долгов">
+            <option value="all">Все долги</option>
+            <option value="open">Открытые</option>
+            <option value="paid">Погашенные</option>
+          </select>
         </div>
         <Table
           sortBy={sortBy}
@@ -1117,9 +1223,9 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
             ["clientId", "amount", "paid", "comment", "author", "date"][index],
           ])}
         >
-          {sort(db.debts, "date", -1).map((debt) => {
+          {sort(filteredDebts, "date", -1).map((debt) => {
             const client = db.clients.find(
-              (row) => String(row.id) === String(debt.clientId),
+              (row) => clientIdKey(row.id) === clientIdKey(debt.clientId),
             );
             return (
               <tr key={debt.id}>
@@ -1138,7 +1244,7 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
                 <td>
                   <Badge>{debt.author || user}</Badge>
                 </td>
-                <td>{debt.date}</td>
+                <td>{dateText(debt.date)}</td>
                 <td>
                   <Actions
                     onEdit={() => openModal({ type: "debt", item: debt })}
@@ -1154,20 +1260,29 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
               </tr>
             );
           })}
-          {!db.debts.length && (
-            <EmptyRow colSpan={7}>Должников пока нет</EmptyRow>
-          )}
+          {!filteredDebts.length && <EmptyRow colSpan={7}>Нет долгов по выбранному фильтру</EmptyRow>}
         </Table>
       </section>
     </>
   );
 }
 
-function FinancialInsights({ db, totals, monthly }) {
+function FinancialInsights({ db, totals, monthly, years, reportYear, setReportYear }) {
+  const annualIncome = sumAmounts(monthly.map((item) => ({ amount: item.income })));
+  const annualExpenses = sumAmounts(monthly.map((item) => ({ amount: item.expenses })));
+  const annualProfit = subtractAmounts(annualIncome, annualExpenses);
+  const annualPersonal = sumAmounts(
+    db.expenses.filter(
+      (item) => periodKeyFor(item).startsWith(`${reportYear}-`) && item.source === "Личные средства",
+    ),
+  );
+  const annualWithdrawals = sumAmounts(
+    db.withdrawals.filter((item) => periodKeyFor(item).startsWith(`${reportYear}-`)),
+  );
   const values = [
-    ["Доходы", totals.income, "income"],
-    ["Затраты", totals.commonExpenses, "expenses"],
-    ["Прибыль", totals.profit, "profit"],
+    ["Доходы", annualIncome, "income"],
+    ["Затраты", annualExpenses, "expenses"],
+    ["Прибыль", annualProfit, "profit"],
   ];
   const maximum = Math.max(...values.map(([, value]) => Math.abs(value)), 1);
   return (
@@ -1175,12 +1290,21 @@ function FinancialInsights({ db, totals, monthly }) {
       <div className="finance-board-heading">
         <div>
           <span className="dashboard-kicker">
-            Финансовый обзор · {currentMonth()}
+            Финансовый обзор · {reportYear}
           </span>
           <h3>Доходы и прибыль</h3>
-          <p>Сравнение ключевых показателей за всё время</p>
+              <p>Сравнение показателей за выбранный год</p>
         </div>
-        <TrendingUp size={20} className="red-icon" />
+        <div className="finance-report-controls">
+          <select
+            aria-label="Год финансового отчёта"
+            value={reportYear}
+            onChange={(event) => setReportYear(event.target.value)}
+          >
+            {years.map((year) => <option key={year} value={year}>{year}</option>)}
+          </select>
+          <TrendingUp size={20} className="red-icon" />
+        </div>
       </div>
       <div className="finance-board-grid">
         <div className="finance-main-chart">
@@ -1205,14 +1329,14 @@ function FinancialInsights({ db, totals, monthly }) {
         <div className="finance-side">
           <div className="finance-side-total">
             <span>Чистая прибыль</span>
-            <strong className={totals.profit >= 0 ? "positive" : "negative"}>
-              {money(totals.profit)}
+            <strong className={annualProfit >= 0 ? "positive" : "negative"}>
+              {money(annualProfit)}
             </strong>
-            <small>Доходы − затраты из кассы</small>
+            <small>Доходы минус затраты за {reportYear} год</small>
           </div>
           <div className="finance-side-list">
             <div>
-              <span>Касса</span>
+              <span>Баланс кассы сейчас</span>
               <strong className="cyan-text">{money(totals.cash)}</strong>
             </div>
             <div>
@@ -1221,12 +1345,12 @@ function FinancialInsights({ db, totals, monthly }) {
             </div>
             <div>
               <span>Личные средства</span>
-              <strong className="info-text">{money(totals.personal)}</strong>
+              <strong className="info-text">{money(annualPersonal)}</strong>
             </div>
             <div>
               <span>Выведено</span>
               <strong className="warning-text">
-                {money(totals.withdrawals)}
+                {money(annualWithdrawals)}
               </strong>
             </div>
           </div>
@@ -1237,12 +1361,9 @@ function FinancialInsights({ db, totals, monthly }) {
   );
 }
 
-function PrintReport({ db, totals, todayAppointments, monthly }) {
+function PrintReport({ db, totals, todayAppointments, monthly, reportYear }) {
   const activeDebts = db.debts.filter((debt) => !debt.paid);
-  const debtTotal = activeDebts.reduce(
-    (sum, debt) => sum + Number(debt.amount || 0),
-    0,
-  );
+  const debtTotal = sumAmounts(activeDebts);
   const availableWindows = db.windows
     .filter((slot) => parseDate(slot.datetime))
     .sort(
@@ -1295,7 +1416,7 @@ function PrintReport({ db, totals, todayAppointments, monthly }) {
       </div>
       <div className="print-chart">
         <div className="print-chart-heading">
-          <h2>Динамика по месяцам</h2>
+          <h2>Динамика по месяцам · {reportYear}</h2>
           <span>Доходы · затраты · прибыль</span>
         </div>
         <div className="print-chart-grid">
@@ -1521,6 +1642,94 @@ function statusClass(value) {
   );
 }
 
+const startOfWeek = (value) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  return date;
+};
+const localDateTimeValue = (date) => {
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+function CalendarPage({ db, openModal }) {
+  const [week, setWeek] = useState(() => startOfWeek(new Date()));
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(week);
+    date.setDate(week.getDate() + index);
+    return date;
+  });
+  const appointments = db.clients.filter((client) => parseDate(client.datetime));
+  const rangeLabel = `${dateText(days[0]).slice(0, 10)} — ${dateText(days[6]).slice(0, 10)}`;
+  return (
+    <section className="card calendar-card">
+      <div className="card-header calendar-header">
+        <div>
+          <strong>Расписание на неделю</strong>
+          <span>{rangeLabel}</span>
+        </div>
+        <div className="calendar-controls">
+          <button
+            className="btn-sm btn-qty"
+            type="button"
+            aria-label="Предыдущая неделя"
+            onClick={() => setWeek((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() - 7))}
+          >←</button>
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={() => setWeek(startOfWeek(new Date()))}
+          >Сегодня</Button>
+          <button
+            className="btn-sm btn-qty"
+            type="button"
+            aria-label="Следующая неделя"
+            onClick={() => setWeek((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() + 7))}
+          >→</button>
+        </div>
+      </div>
+      <div className="calendar-week-grid">
+        {days.map((day) => {
+          const dayAppointments = appointments
+            .filter((client) => isSameDay(client.datetime, day))
+            .sort((first, second) => parseDate(first.datetime) - parseDate(second.datetime));
+          const suggestedTime = new Date(day);
+          suggestedTime.setHours(day.toDateString() === new Date().toDateString() ? new Date().getHours() + 1 : 9, 0, 0, 0);
+          return (
+            <article className="calendar-day" key={day.toISOString()}>
+              <div className="calendar-day-heading">
+                <strong>{day.toLocaleDateString("ru-RU", { weekday: "short" })}</strong>
+                <span>{day.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}</span>
+              </div>
+              <div className="calendar-day-events">
+                {dayAppointments.map((client) => (
+                  <button
+                    className={`calendar-event ${statusClass(client.status)}`}
+                    type="button"
+                    key={client.id}
+                    onClick={() => openModal({ type: "client", item: client })}
+                  >
+                    <strong>{dateText(client.datetime).slice(11)} · {client.car}</strong>
+                    <span>{client.service || client.phone || "Услуга не указана"}</span>
+                    <Badge status={statusClass(client.status)}>{client.status}</Badge>
+                  </button>
+                ))}
+                {!dayAppointments.length && <span className="calendar-empty">Нет записей</span>}
+              </div>
+              <button
+                className="calendar-add"
+                type="button"
+                onClick={() => openModal({ type: "client", preset: { datetime: localDateTimeValue(suggestedTime) } })}
+              >+ Записать</button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function Clients({
   db,
   sort,
@@ -1576,7 +1785,8 @@ function Clients({
           "Сиденья",
           "Услуга",
           "Дата",
-          "Статус",
+          "Статус записи",
+          "Оплата",
           "Автор",
           "Инфо",
           "Действия",
@@ -1589,6 +1799,7 @@ function Clients({
             "service",
             "datetime",
             "status",
+            "payment",
             "author",
             "comment",
           ][i],
@@ -1607,29 +1818,58 @@ function Clients({
               <Badge status={statusClass(client.status)}>{client.status}</Badge>
             </td>
             <td>
+              {(() => {
+                const received = sumAmounts(
+                  db.incomes.filter(
+                    (income) => clientIdKey(income.clientId) === clientIdKey(client.id),
+                  ),
+                );
+                const outstanding = sumAmounts(
+                  db.debts.filter(
+                    (debt) =>
+                      clientIdKey(debt.clientId) === clientIdKey(client.id) &&
+                      !debt.paid,
+                  ),
+                );
+                const label = outstanding > 0
+                  ? received > 0 ? "Частично" : "Ожидает"
+                  : received > 0 ? "Оплачено" : "Не оплачено";
+                return (
+                  <Badge status={label === "Оплачено" ? "done" : label === "Частично" ? "waiting" : "cancelled"}>
+                    {label}
+                  </Badge>
+                );
+              })()}
+            </td>
+            <td>
               <Badge>{client.author || "TUDOR"}</Badge>
             </td>
             <td>{client.comment || "-"}</td>
             <td>
               <Actions
                 onEdit={() => openModal({ type: "client", item: client })}
-                onDelete={() =>
-                  confirm("Удалить эту запись?") &&
-                  mutate(
-                    {
-                      clients: db.clients.filter(
-                        (item) => item.id !== client.id,
-                      ),
-                    },
-                    `Удален клиент: ${client.car}`,
-                  )
-                }
+                onDelete={() => {
+                  const hasFinancialHistory =
+                    db.incomes.some(
+                      (income) => clientIdKey(income.clientId) === clientIdKey(client.id),
+                    ) ||
+                    db.debts.some(
+                      (debt) => clientIdKey(debt.clientId) === clientIdKey(client.id),
+                    );
+                  if (hasFinancialHistory)
+                    return alert("Нельзя удалить клиента с историей оплат или долгов. Измените статус записи вместо удаления.");
+                  if (confirm("Удалить эту запись?"))
+                    mutate(
+                      { clients: db.clients.filter((item) => item.id !== client.id) },
+                      `Удален клиент: ${client.car}`,
+                    );
+                }}
               />
             </td>
           </tr>
         ))}
-        {!filteredClients.length && (
-          <EmptyRow colSpan={9}>Нет клиентов по выбранным фильтрам</EmptyRow>
+          {!filteredClients.length && (
+          <EmptyRow colSpan={10}>Нет клиентов по выбранным фильтрам</EmptyRow>
         )}
       </Table>
     </section>
@@ -1637,6 +1877,8 @@ function Clients({
 }
 
 function Expenses({ db, sort, sortBy, mutate }) {
+  const [query, setQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [form, setForm] = useState({
     category: "",
     amount: "",
@@ -1648,16 +1890,18 @@ function Expenses({ db, sort, sortBy, mutate }) {
     setForm({ ...form, [event.target.name]: event.target.value });
   const save = (event) => {
     event.preventDefault();
-    if (!form.category || !Number(form.amount))
-      return alert("Заполните категорию и сумму!");
+    if (!form.category.trim() || !validPositiveAmount(form.amount))
+      return alert("Укажите категорию и положительную сумму в MDL!");
+    const transactionDate = new Date();
     mutate(
       {
         expenses: [
           {
             ...form,
-            id: Date.now(),
-            amount: Number(form.amount),
-            date: nowText(),
+            id: createId(),
+            amount: centsToAmount(amountToCents(form.amount)),
+            date: transactionDate.toISOString(),
+            ...currentPeriod(transactionDate),
             author: "TUDOR",
           },
           ...db.expenses,
@@ -1684,6 +1928,8 @@ function Expenses({ db, sort, sortBy, mutate }) {
             <input
               name="amount"
               type="number"
+              min="0.01"
+              step="0.01"
               value={form.amount}
               onChange={update}
               placeholder="1500"
@@ -1711,6 +1957,19 @@ function Expenses({ db, sort, sortBy, mutate }) {
       </form>
       <section className="card">
         <div className="card-header">История затрат</div>
+        <div className="filter-row">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Поиск по категории или комментарию..."
+            aria-label="Поиск расходов"
+          />
+          <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} aria-label="Фильтр источника расходов">
+            <option value="all">Все источники</option>
+            <option value="Общие">Из кассы</option>
+            <option value="Личные средства">Личные средства</option>
+          </select>
+        </div>
         <Table
           sortBy={sortBy}
           headers={[
@@ -1735,9 +1994,18 @@ function Expenses({ db, sort, sortBy, mutate }) {
             ][i],
           ])}
         >
-          {sort(db.expenses, "date").map((item) => (
+          {sort(
+            db.expenses.filter((item) => {
+              const search = query.trim().toLocaleLowerCase("ru");
+              return (
+                (sourceFilter === "all" || item.source === sourceFilter) &&
+                (!search || `${item.category || ""} ${item.comment || ""}`.toLocaleLowerCase("ru").includes(search))
+              );
+            }),
+            "date",
+          ).map((item) => (
             <tr key={item.id}>
-              <td>{item.date}</td>
+              <td>{dateText(item.date)}</td>
               <td>{item.month}</td>
               <td>{item.category}</td>
               <td className="negative">-{money(item.amount)}</td>
@@ -1763,7 +2031,10 @@ function Expenses({ db, sort, sortBy, mutate }) {
               </td>
             </tr>
           ))}
-          {!db.expenses.length && <EmptyRow colSpan={8} />}
+          {!db.expenses.filter((item) =>
+            (sourceFilter === "all" || item.source === sourceFilter) &&
+            (!query.trim() || `${item.category || ""} ${item.comment || ""}`.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru"))),
+          ).length && <EmptyRow colSpan={8} />}
         </Table>
       </section>
     </>
@@ -1792,6 +2063,7 @@ function Profit({
   db,
   period,
   month,
+  years,
   setMonth,
   sort,
   sortBy,
@@ -1803,7 +2075,21 @@ function Profit({
       <section className="card">
         <div className="card-header">
           <span>Прибыль и аналитика</span>
-          <Button onClick={() => openModal({ type: "income" })}>+ Доход</Button>
+          <div className="report-actions">
+            <Button
+              variant="secondary"
+              icon={FileText}
+              onClick={() => exportFinancialCsv(db, month)}
+            >
+              CSV
+            </Button>
+            <Button
+              onClick={() => openModal({ type: "income" })}
+              disabled={!getUnpaidClients(db).length}
+            >
+              + Оплата
+            </Button>
+          </div>
         </div>
         <Field label="Выберите период">
           <select
@@ -1811,8 +2097,14 @@ function Profit({
             onChange={(event) => setMonth(event.target.value)}
           >
             <option value="all">За всё время</option>
-            {MONTHS.map((item) => (
-              <option key={item}>{item}</option>
+            {years.map((year) => (
+              <optgroup key={year} label={year}>
+                <option value={year}>Весь {year} год</option>
+                {MONTHS.map((name, index) => {
+                  const key = `${year}-${String(index + 1).padStart(2, "0")}`;
+                  return <option key={key} value={key}>{name}</option>;
+                })}
+              </optgroup>
             ))}
           </select>
         </Field>
@@ -1837,14 +2129,14 @@ function Profit({
         </div>
       </section>
       <section className="card">
-        <div className="card-header">Список доходов</div>
+        <div className="card-header">История оплат</div>
         <Table
           sortBy={sortBy}
           headers={[
             "Дата",
             "Клиент",
             "Сумма",
-            "Статус",
+            "Статус записи",
             "Автор",
             "Действия",
           ].map((label, i) => [
@@ -1852,13 +2144,14 @@ function Profit({
             ["date", "clientId", "amount", "author"][i],
           ])}
         >
-          {db.incomes
-            .filter((item) => month === "all" || item.month === month)
+          {sort(db.incomes.filter((item) => matchesPeriod(item, month)), "date", -1)
             .map((item) => {
-              const client = db.clients.find((row) => row.id === item.clientId);
+              const client = db.clients.find(
+                (row) => clientIdKey(row.id) === clientIdKey(item.clientId),
+              );
               return (
                 <tr key={item.id}>
-                  <td>{item.date}</td>
+                  <td>{dateText(item.date)}</td>
                   <td>
                     <strong>{client?.car || "Удаленный клиент"}</strong>
                   </td>
@@ -1894,14 +2187,22 @@ function Profit({
                   <td>
                     <DeleteButton
                       onClick={() =>
-                        confirm("Удалить доход?") &&
+                        confirm("Удалить оплату?") &&
                         mutate(
                           {
-                            incomes: db.incomes.filter(
-                              (row) => row.id !== item.id,
-                            ),
+                            incomes: db.incomes.filter((row) => row.id !== item.id),
+                            debts: item.debtId
+                              ? db.debts.map((debt) =>
+                                  clientIdKey(debt.id) === clientIdKey(item.debtId)
+                                    ? { ...debt, paid: false }
+                                    : debt,
+                                )
+                              : reversePaymentFromDebts(
+                                  db.debts,
+                                  item.debtAllocations || [],
+                                ),
                           },
-                          `Удален доход: ${item.amount} MDL`,
+                          `Удалена оплата: ${money(item.amount)}`,
                         )
                       }
                     />
@@ -1909,94 +2210,118 @@ function Profit({
                 </tr>
               );
             })}
-          {!db.incomes.length && <EmptyRow colSpan={6} />}
+          {!db.incomes.filter((item) => matchesPeriod(item, month)).length && (
+            <EmptyRow colSpan={6}>Нет оплат за выбранный период</EmptyRow>
+          )}
         </Table>
       </section>
     </>
   );
 }
 
-function Warehouse({ db, sort, sortBy, openModal, mutate }) {
+function Warehouse({ db, sort, sortBy, openModal, mutate, user }) {
+  const changeStock = (item, delta) => {
+    const quantity = Number(item.qty || 0) + delta;
+    if (quantity < 0) return;
+    const movementDate = new Date();
+    const movement = {
+      id: createId(),
+      itemId: item.id,
+      name: item.name,
+      delta,
+      date: movementDate.toISOString(),
+      author: user,
+    };
+    mutate(
+      {
+        warehouse: db.warehouse.map((row) =>
+          row.id === item.id ? { ...row, qty: quantity } : row,
+        ),
+        stockMovements: [movement, ...db.stockMovements],
+      },
+      `Склад ${item.name}: ${delta > 0 ? "+" : ""}${delta}`,
+    );
+  };
   return (
-    <section className="card">
-      <div className="card-header">
-        <span>Учет расходников (Склад)</span>
-        <Button onClick={() => openModal({ type: "warehouse" })}>
-          + Товар
-        </Button>
-      </div>
-      <Table
-        sortBy={sortBy}
-        headers={["Расходник", "Кол-во", "Автор", "Изменить", "Управление"].map(
-          (label, i) => [label, ["name", "qty", "author"][i]],
-        )}
-      >
-        {sort(db.warehouse, "name").map((item) => (
-          <tr key={item.id}>
-            <td>
-              <strong>{item.name}</strong>
-            </td>
-            <td className="quantity">{item.qty}</td>
-            <td>
-              <Badge>{item.author || "TUDOR"}</Badge>
-            </td>
-            <td>
-              <button
-                className="btn-sm btn-qty"
-                onClick={() =>
-                  mutate(
-                    {
-                      warehouse: db.warehouse.map((row) =>
-                        row.id === item.id
-                          ? { ...row, qty: Math.max(0, Number(row.qty) - 1) }
-                          : row,
-                      ),
-                    },
-                    `Кол-во ${item.name}: -1`,
-                  )
-                }
-              >
-                <Minus size={13} />
-              </button>{" "}
-              <button
-                className="btn-sm btn-qty"
-                onClick={() =>
-                  mutate(
-                    {
-                      warehouse: db.warehouse.map((row) =>
-                        row.id === item.id
-                          ? { ...row, qty: Number(row.qty) + 1 }
-                          : row,
-                      ),
-                    },
-                    `Кол-во ${item.name}: +1`,
-                  )
-                }
-              >
-                <Plus size={13} />
-              </button>
-            </td>
-            <td>
-              <Actions
-                onEdit={() => openModal({ type: "warehouse", item })}
-                onDelete={() =>
-                  confirm("Удалить товар?") &&
-                  mutate(
-                    {
-                      warehouse: db.warehouse.filter(
-                        (row) => row.id !== item.id,
-                      ),
-                    },
-                    `Удален товар: ${item.name}`,
-                  )
-                }
-              />
-            </td>
-          </tr>
-        ))}
-        {!db.warehouse.length && <EmptyRow colSpan={5}>Склад пуст</EmptyRow>}
-      </Table>
-    </section>
+    <>
+      <section className="card">
+        <div className="card-header">
+          <span>Учет расходников (Склад)</span>
+          <Button onClick={() => openModal({ type: "warehouse" })}>
+            + Товар
+          </Button>
+        </div>
+        <Table
+          sortBy={sortBy}
+          headers={[
+            ["Расходник", "name"],
+            ["В наличии", "qty"],
+            ["Мин. запас", "minQty"],
+            ["Автор", "author"],
+            ["Движение", ""],
+            ["Управление", ""],
+          ]}
+        >
+          {sort(db.warehouse, "name").map((item) => (
+            <tr key={item.id}>
+              <td><strong>{item.name}</strong></td>
+              <td className="quantity">{item.qty}</td>
+              <td>{item.minQty ?? 2}</td>
+              <td><Badge>{item.author || "TUDOR"}</Badge></td>
+              <td>
+                <button
+                  className="btn-sm btn-qty"
+                  aria-label={`Уменьшить запас: ${item.name}`}
+                  disabled={Number(item.qty || 0) <= 0}
+                  onClick={() => changeStock(item, -1)}
+                >
+                  <Minus size={13} />
+                </button>{" "}
+                <button
+                  className="btn-sm btn-qty"
+                  aria-label={`Увеличить запас: ${item.name}`}
+                  onClick={() => changeStock(item, 1)}
+                >
+                  <Plus size={13} />
+                </button>
+              </td>
+              <td>
+                <Actions
+                  onEdit={() => openModal({ type: "warehouse", item })}
+                  onDelete={() =>
+                    confirm("Удалить товар? История движений останется.") &&
+                    mutate(
+                      { warehouse: db.warehouse.filter((row) => row.id !== item.id) },
+                      `Удален товар: ${item.name}`,
+                    )
+                  }
+                />
+              </td>
+            </tr>
+          ))}
+          {!db.warehouse.length && <EmptyRow colSpan={6}>Склад пуст</EmptyRow>}
+        </Table>
+      </section>
+      <section className="card">
+        <div className="card-header">История движения склада</div>
+        <Table
+          sortBy={sortBy}
+          headers={[["Дата", "date"], ["Товар", "name"], ["Изменение", "delta"], ["Автор", "author"]]}
+        >
+          {sort(db.stockMovements, "date", -1).map((movement) => (
+            <tr key={movement.id}>
+              <td>{dateText(movement.date)}</td>
+              <td>{movement.name || "Удалённый товар"}</td>
+              <td className={Number(movement.delta) >= 0 ? "positive" : "negative"}>
+                {Number(movement.delta) > 0 ? "+" : ""}{movement.delta}
+              </td>
+              <td><Badge>{movement.author || "TUDOR"}</Badge></td>
+            </tr>
+          ))}
+          {!db.stockMovements.length && <EmptyRow colSpan={4}>Движений пока нет</EmptyRow>}
+        </Table>
+      </section>
+    </>
   );
 }
 
@@ -2010,15 +2335,18 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
     setForm({ ...form, [event.target.name]: event.target.value });
   const save = (event) => {
     event.preventDefault();
-    if (!Number(form.amount)) return alert("Введите сумму вывода!");
+    if (!validPositiveAmount(form.amount))
+      return alert("Введите положительную сумму вывода!");
+    const transactionDate = new Date();
     mutate(
       {
         withdrawals: [
           {
             ...form,
-            id: Date.now(),
-            amount: Number(form.amount),
-            date: nowText(),
+            id: createId(),
+            amount: centsToAmount(amountToCents(form.amount)),
+            date: transactionDate.toISOString(),
+            ...currentPeriod(transactionDate),
             author: "TUDOR",
           },
           ...db.withdrawals,
@@ -2037,6 +2365,8 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
             <input
               name="amount"
               type="number"
+              min="0.01"
+              step="0.01"
               value={form.amount}
               onChange={update}
               placeholder="2000"
@@ -2069,7 +2399,7 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
         >
           {sort(db.withdrawals, "date").map((item) => (
             <tr key={item.id}>
-              <td>{item.date}</td>
+              <td>{dateText(item.date)}</td>
               <td>{item.month}</td>
               <td className="warning">-{money(item.amount)}</td>
               <td>
@@ -2145,7 +2475,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
             comment: "",
           }
         : isWarehouse
-          ? { name: "", qty: "" }
+          ? { name: "", qty: "", minQty: 2 }
           : isDebt
             ? {
                 clientId: db.clients[0]?.id || "",
@@ -2155,26 +2485,56 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
               }
             : isWindow
               ? { datetime: "", comment: "" }
-              : { clientId: db.clients[0]?.id || "", amount: "" },
+              : { clientId: getUnpaidClients(db)[0]?.id || "", amount: "" },
   );
+  const paymentClients = getUnpaidClients(db);
   const update = (event) =>
     setForm({ ...form, [event.target.name]: event.target.value });
   const save = (event) => {
     event.preventDefault();
     if (isClient && (!form.car || !form.datetime))
       return alert("Заполните марку авто и дату/время!");
-    if (isWarehouse && (!form.name || Number.isNaN(Number(form.qty))))
+    if (isClient) {
+      const appointmentTime = parseDate(form.datetime)?.getTime();
+      if (!appointmentTime) return alert("Укажите корректную дату и время записи.");
+      const collision = db.clients.some((client) => {
+        if (client.id === item?.id || ["Отменен", "Не пришел"].includes(client.status)) return false;
+        return parseDate(client.datetime)?.getTime() === appointmentTime;
+      });
+      if (collision) return alert("На это время уже записан другой клиент.");
+    }
+    if (
+      isWarehouse &&
+      (!form.name.trim() ||
+        !Number.isInteger(Number(form.qty)) ||
+        Number(form.qty) < 0 ||
+        !Number.isInteger(Number(form.minQty ?? 2)) ||
+        Number(form.minQty ?? 2) < 0)
+    )
       return alert("Заполните название и количество!");
-    if (type === "income" && (!form.clientId || !Number(form.amount)))
-      return alert("Выберите клиента и сумму!");
-    if (isDebt && (!form.clientId || Number(form.amount) <= 0))
+    if (type === "income" && (!form.clientId || !validPositiveAmount(form.amount)))
+      return alert("Выберите клиента и укажите положительную сумму оплаты!");
+    if (isDebt && (!form.clientId || !validPositiveAmount(form.amount)))
       return alert("Выберите клиента и укажите сумму долга!");
-    if (isWindow && !form.datetime)
-      return alert("Укажите дату и время свободного окна!");
+    if (isWindow) {
+      const windowTime = parseDate(form.datetime)?.getTime();
+      if (!windowTime || windowTime <= Date.now())
+        return alert("Укажите дату и время в будущем!");
+      const duplicateWindow = db.windows.some(
+        (slot) => slot.id !== item?.id && parseDate(slot.datetime)?.getTime() === windowTime,
+      );
+      const occupied = db.clients.some(
+        (client) =>
+          !["Отменен", "Не пришел"].includes(client.status) &&
+          parseDate(client.datetime)?.getTime() === windowTime,
+      );
+      if (duplicateWindow || occupied)
+        return alert("На это время уже есть свободное окно или запись клиента.");
+    }
     if (isClient) {
       const value = {
         ...form,
-        id: item?.id || Date.now(),
+        id: item?.id || createId(),
         author: item?.author || user,
       };
       mutate(
@@ -2192,62 +2552,124 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
       );
     }
     if (isWarehouse) {
+      const itemId = item?.id || createId();
+      const quantity = Number(form.qty);
+      const minQty = Number(form.minQty ?? 2);
       const value = {
         ...form,
-        id: item?.id || Date.now(),
-        qty: Number(form.qty),
+        id: itemId,
+        name: form.name.trim(),
+        qty: quantity,
+        minQty,
         author: item?.author || user,
       };
+      const delta = quantity - Number(item?.qty || 0);
+      const movementDate = new Date();
+      const movements = delta
+        ? [
+            {
+              id: createId(),
+              itemId,
+              name: value.name,
+              delta,
+              date: movementDate.toISOString(),
+              author: user,
+            },
+            ...db.stockMovements,
+          ]
+        : db.stockMovements;
       mutate(
         {
           warehouse: item
             ? db.warehouse.map((row) => (row.id === item.id ? value : row))
             : [value, ...db.warehouse],
+          stockMovements: movements,
         },
         `${item ? "Склад обновлён" : "Добавлен товар"}: ${form.name}`,
       );
     }
     if (type === "income") {
       const client = db.clients.find(
-        (row) => String(row.id) === String(form.clientId),
+        (row) => clientIdKey(row.id) === clientIdKey(form.clientId),
+      );
+      if (!client || !paymentClients.some((row) => clientIdKey(row.id) === clientIdKey(client.id)))
+        return alert("Этот клиент уже оплатил или отсутствует в списке должников.");
+      const transactionDate = new Date();
+      const allocation = applyPaymentToDebts(
+        db.debts,
+        client.id,
+        amountToCents(form.amount),
       );
       const value = {
-        id: Date.now(),
-        clientId: Number(form.clientId),
-        amount: Number(form.amount),
-        date: nowText(),
-        month: currentMonth(),
+        id: createId(),
+        clientId: client.id,
+        amount: centsToAmount(amountToCents(form.amount)),
+        date: transactionDate.toISOString(),
+        ...currentPeriod(transactionDate),
+        debtAllocations: allocation.allocations,
         author: user,
       };
       mutate(
-        { incomes: [value, ...db.incomes] },
-        `Доход: +${form.amount} MDL (${client?.car || form.clientId})`,
+        {
+          incomes: [value, ...db.incomes],
+          debts: allocation.debts,
+        },
+        `Оплата: +${money(value.amount)} (${client.car})`,
       );
     }
     if (isDebt) {
       const client = db.clients.find(
-        (row) => String(row.id) === String(form.clientId),
+        (row) => clientIdKey(row.id) === clientIdKey(form.clientId),
       );
+      const transactionDate = new Date();
       const value = {
         ...form,
-        id: item?.id || Date.now(),
-        clientId: Number(form.clientId),
-        amount: Number(form.amount),
+        id: item?.id || createId(),
+        clientId: client?.id ?? form.clientId,
+        amount: centsToAmount(amountToCents(form.amount)),
         paid: Boolean(form.paid),
-        date: item?.date || nowText(),
+        date: item?.date || transactionDate.toISOString(),
         author: item?.author || user,
       };
+      const existingDebtPayment = db.incomes.find(
+        (income) => clientIdKey(income.debtId) === clientIdKey(value.id),
+      );
+      let incomes = db.incomes;
+      if (value.paid && !existingDebtPayment) {
+        incomes = [
+          {
+            id: createId(),
+            clientId: value.clientId,
+            amount: value.amount,
+            date: transactionDate.toISOString(),
+            ...currentPeriod(transactionDate),
+            debtId: value.id,
+            debtAllocations: [],
+            author: user,
+          },
+          ...incomes,
+        ];
+      } else if (value.paid && existingDebtPayment) {
+        incomes = incomes.map((income) =>
+          income.id === existingDebtPayment.id
+            ? { ...income, clientId: value.clientId, amount: value.amount }
+            : income,
+        );
+      } else if (!value.paid && existingDebtPayment) {
+        incomes = incomes.filter((income) => income.id !== existingDebtPayment.id);
+      }
       mutate(
         {
+          incomes,
           debts: item
             ? db.debts.map((row) => (row.id === item.id ? value : row))
             : [value, ...db.debts],
         },
-        `${item ? "Изменен долг" : "Добавлен долг"}: ${client?.car || form.clientId}`,
+        `${item ? (value.paid ? "Погашен долг" : "Изменен долг") : "Добавлен долг"}: ${client?.car || form.clientId}`,
       );
     }
     if (isWindow) {
-      const value = { ...form, id: item?.id || Date.now() };
+      const value = { ...form, id: item?.id || createId() };
       mutate(
         {
           windows: item
@@ -2278,7 +2700,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
                 ? item
                   ? "Редактировать окно"
                   : "Новое свободное окно"
-                : "Добавить доход"
+                : "Добавить оплату"
       }
       onClose={onClose}
     >
@@ -2363,21 +2785,36 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
                 onChange={update}
               />
             </Field>
+            <Field label="Минимальный запас для уведомления">
+              <input
+                name="minQty"
+                type="number"
+                min="0"
+                step="1"
+                value={form.minQty ?? 2}
+                onChange={update}
+              />
+            </Field>
           </>
         )}
         {type === "income" && (
           <>
             <Field label="Выберите клиента">
-              <select name="clientId" value={form.clientId} onChange={update}>
-                {db.clients.length ? (
-                  db.clients.map((client) => (
+              <select
+                name="clientId"
+                value={form.clientId}
+                onChange={update}
+                disabled={!paymentClients.length}
+              >
+                {paymentClients.length ? (
+                  paymentClients.map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.car}
                       {client.service ? ` (${client.service})` : ""}
                     </option>
                   ))
                 ) : (
-                  <option value="">Сначала добавьте клиентов</option>
+                  <option value="">Нет клиентов с ожидающей оплатой</option>
                 )}
               </select>
             </Field>
@@ -2385,6 +2822,8 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
               <input
                 name="amount"
                 type="number"
+                min="0.01"
+                step="0.01"
                 value={form.amount}
                 onChange={update}
                 placeholder="1000"
@@ -2478,5 +2917,58 @@ function download(data) {
   anchor.href = url;
   anchor.download = "angel_detailing_backup.json";
   anchor.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportFinancialCsv(db, selectedPeriod) {
+  const clientsById = new Map(
+    db.clients.map((client) => [clientIdKey(client.id), client.car || ""]),
+  );
+  const rows = [
+    ["Тип", "Дата", "Клиент / категория", "Сумма MDL", "Период", "Комментарий"],
+    ...db.incomes
+      .filter((item) => matchesPeriod(item, selectedPeriod))
+      .map((item) => [
+        "Оплата",
+        dateText(item.date),
+        clientsById.get(clientIdKey(item.clientId)) || "Удаленный клиент",
+        centsToAmount(amountToCents(item.amount)),
+        periodKeyFor(item),
+        item.comment || "",
+      ]),
+    ...db.expenses
+      .filter((item) => matchesPeriod(item, selectedPeriod))
+      .map((item) => [
+        item.source === "Личные средства" ? "Личный расход" : "Расход",
+        dateText(item.date),
+        item.category,
+        -centsToAmount(amountToCents(item.amount)),
+        periodKeyFor(item),
+        item.comment || "",
+      ]),
+    ...db.withdrawals
+      .filter((item) => matchesPeriod(item, selectedPeriod))
+      .map((item) => [
+        "Вывод",
+        dateText(item.date),
+        "Касса",
+        -centsToAmount(amountToCents(item.amount)),
+        periodKeyFor(item),
+        item.comment || "",
+      ]),
+  ];
+  const csv = `\uFEFF${rows
+    .map((row) =>
+      row
+        .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
+        .join(";"),
+    )
+    .join("\r\n")}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `angel-detailing-finance-${selectedPeriod}.csv`;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

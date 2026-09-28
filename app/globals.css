@@ -1950,3 +1950,118 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 }
+.finance-report-controls,
+.report-actions,
+.calendar-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.finance-report-controls select {
+  min-width: 92px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--white);
+  background: #18181b;
+}
+.calendar-header > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+.calendar-header > div:first-child span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.calendar-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(150px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.calendar-day {
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(18, 18, 20, 0.75);
+}
+.calendar-day-heading {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.calendar-day-heading span {
+  color: var(--white);
+}
+.calendar-day-events {
+  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.calendar-event {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cyan);
+  border-radius: 7px;
+  color: var(--white);
+  background: #18181b;
+  text-align: left;
+}
+.calendar-event.done {
+  border-left-color: var(--success);
+}
+.calendar-event.cancelled,
+.calendar-event.no-show {
+  opacity: 0.65;
+  border-left-color: var(--muted);
+}
+.calendar-event > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.calendar-event .status-badge {
+  width: max-content;
+}
+.calendar-empty {
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.calendar-add {
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  color: var(--cyan);
+  background: transparent;
+}
+.calendar-add:hover {
+  border-color: var(--cyan);
+  background: #38bdf80d;
+}
+.dashboard-live.sync-error {
+  color: var(--danger);
+}
+.dashboard-live.sync-error span {
+  background: var(--danger);
+}
+.dashboard-live.sync-pending span {
+  background: var(--warning);
+}
+@media (max-width: 760px) {
+  .calendar-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .calendar-week-grid {
+    grid-template-columns: repeat(7, minmax(220px, 1fr));
+  }
+}

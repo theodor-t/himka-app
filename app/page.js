@@ -12,6 +12,7 @@ import {
   Check,
   ChevronDown,
   CircleDollarSign,
+  Copy,
   Clock3,
   Eye,
   FileText,
@@ -20,6 +21,7 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  MessageCircle,
   Minus,
   Package,
   Plus,
@@ -31,6 +33,7 @@ import {
   Sparkles,
   TrendingUp,
   Users,
+  Video,
   Wallet,
   X,
   Trash2,
@@ -53,6 +56,10 @@ import {
   sumAmounts,
   totalPaidForClient,
 } from "./lib/finance.mjs";
+import {
+  appointmentReminderMessage,
+  reminderChannelLinks,
+} from "./lib/messages.mjs";
 
 const SCRIPT_URL = "/api/db";
 const BACKUP_KEY = "angel-detailing-auto-backup";
@@ -67,11 +74,13 @@ const EMPTY_DB = {
   logs: [],
   stockMovements: [],
   services: [],
+  videoDescriptions: [],
 };
 const NAV = [
   ["home", "Главная Панель", LayoutDashboard],
   ["analytics", "Аналитика", ChartNoAxesCombined],
   ["services", "Услуги и цены", Sparkles],
+  ["videoDescriptions", "Описания для видео", Video],
   ["calendar", "Календарь", CalendarDays],
   ["clients", "1. Записи клиентов", Users],
   ["expenses", "2. Затраты", Receipt],
@@ -84,7 +93,7 @@ const NAV = [
 ];
 const NAV_GROUPS = [
   { title: "ОБЗОР", items: ["home", "analytics"] },
-  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "clients", "services"] },
+  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "clients", "services", "videoDescriptions"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "withdrawals", "debts"] },
   { title: "ОПЕРАЦИИ", items: ["warehouse", "windows", "logs"] },
 ];
@@ -127,6 +136,21 @@ const matchesPeriod = (item, selectedPeriod) => {
 const parseDate = parseRecordDate;
 const createId = () =>
   globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const copyText = async (text) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  const copied = document.execCommand("copy");
+  input.remove();
+  if (!copied) throw new Error("Clipboard unavailable");
+};
 const validPositiveAmount = (value) =>
   Number.isFinite(Number(value)) && amountToCents(value) > 0;
 const isCancelledAppointment = (appointment) =>
@@ -167,6 +191,7 @@ const normalizeDb = (data) => ({
   logs: data?.logs || [],
   stockMovements: data?.stockMovements || [],
   services: data?.services || [],
+  videoDescriptions: data?.videoDescriptions || [],
 });
 
 function Button({
@@ -835,6 +860,12 @@ export default function Home() {
             onEdit={() => setModal({ type: "client", item: modal.item })}
             onPayment={() => setModal({ type: "income", preset: { clientId: modal.item.id } })}
             onDebt={() => setModal({ type: "debt", preset: { clientId: modal.item.id } })}
+            onReminder={() => setModal({ type: "reminder", item: modal.item })}
+          />
+        ) : modal?.type === "reminder" ? (
+          <ReminderComposer
+            client={modal.item}
+            onClose={() => setModal(null)}
           />
         ) : modal && (
           <ModalContent
@@ -952,6 +983,8 @@ function PageContent({
       />
     );
   if (page === "services") return <ServicesPage db={db} mutate={mutate} user={user} />;
+  if (page === "videoDescriptions")
+    return <VideoDescriptionsPage db={db} mutate={mutate} user={user} />;
   if (page === "clients")
     return (
       <Clients
@@ -1171,7 +1204,137 @@ function ServicesPage({ db, mutate, user }) {
   );
 }
 
-function ClientProfile({ client, db, onClose, onEdit, onPayment, onDebt }) {
+function VideoDescriptionsPage({ db, mutate, user }) {
+  const [editingId, setEditingId] = useState(null);
+  const [copiedId, setCopiedId] = useState(null);
+  const [form, setForm] = useState({ title: "", caption: "", hashtags: "" });
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({ title: "", caption: "", hashtags: "" });
+  };
+  const save = (event) => {
+    event.preventDefault();
+    const title = form.title.trim();
+    const caption = form.caption.trim();
+    if (!title || !caption) return alert("Укажите название и текст описания.");
+    const hashtags = form.hashtags
+      .split(/[\s,]+/)
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .map((tag) => tag.startsWith("#") ? tag : `#${tag}`)
+      .join(" ");
+    const description = {
+      id: editingId || createId(),
+      title,
+      caption,
+      hashtags,
+      updatedAt: new Date().toISOString(),
+      author: user,
+    };
+    mutate(
+      {
+        videoDescriptions: editingId
+          ? db.videoDescriptions.map((item) => item.id === editingId ? description : item)
+          : [description, ...db.videoDescriptions],
+      },
+      `${editingId ? "Изменено" : "Добавлено"} описание для видео: ${title}`,
+    );
+    resetForm();
+  };
+  const copyDescription = async (item) => {
+    try {
+      await copyText([item.caption, item.hashtags].filter(Boolean).join("\n\n"));
+      setCopiedId(item.id);
+      window.setTimeout(() => setCopiedId((current) => current === item.id ? null : current), 1800);
+    } catch {
+      alert("Не удалось скопировать текст. Выделите и скопируйте его вручную.");
+    }
+  };
+  return (
+    <div className="video-descriptions-page">
+      <section className="video-library-hero">
+        <div>
+          <span className="dashboard-kicker">CONTENT STUDIO · TIKTOK</span>
+          <h2>Описания для видео</h2>
+          <p>Готовые подписи и хэштеги для роликов мастерской — одним нажатием в буфер.</p>
+        </div>
+        <div className="video-library-count"><Video size={19} /><strong>{db.videoDescriptions.length}</strong><span>готовых шаблонов</span></div>
+      </section>
+      <section className="video-library-layout">
+        <form className="card video-description-form" onSubmit={save}>
+          <div className="card-header"><span>{editingId ? "Редактировать шаблон" : "Новый шаблон"}</span>{editingId && <button type="button" className="text-action" onClick={resetForm}>Отмена</button>}</div>
+          <Field label="Название для поиска"><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Например, химчистка салона" /></Field>
+          <Field label="Описание видео"><textarea className="video-caption-input" value={form.caption} onChange={(event) => setForm({ ...form, caption: event.target.value })} placeholder="Расскажите коротко, что сделали в этом видео…" /></Field>
+          <Field label="Хэштеги"><textarea className="video-tags-input" value={form.hashtags} onChange={(event) => setForm({ ...form, hashtags: event.target.value })} placeholder="#детейлинг #авто #кишинёв" /></Field>
+          <small className="field-hint">Можно вводить хэштеги через пробел или запятую. Символ # добавится автоматически.</small>
+          <Button icon={Save}>{editingId ? "Сохранить шаблон" : "Добавить описание"}</Button>
+        </form>
+        <section className="video-description-grid">
+          {db.videoDescriptions.length ? db.videoDescriptions.map((item) => (
+            <article className="video-description-card" key={item.id}>
+              <div className="video-description-card-top"><span className="video-card-icon"><Video size={17} /></span><span className="video-card-platform">TIKTOK · ОПИСАНИЕ</span><button type="button" className="client-card-edit" aria-label="Редактировать описание" onClick={() => { setEditingId(item.id); setForm({ title: item.title, caption: item.caption, hashtags: item.hashtags || "" }); }}><Pencil size={14} /></button></div>
+              <h3>{item.title}</h3>
+              <p className="video-description-caption">{item.caption}</p>
+              {item.hashtags && <div className="video-hashtags">{item.hashtags.split(/\s+/).filter(Boolean).map((tag, index) => <span key={`${tag}-${index}`}>{tag}</span>)}</div>}
+              <div className="video-description-card-footer"><small>{item.updatedAt ? dateText(item.updatedAt) : "Описание"}</small><div><button type="button" className={`video-copy-btn ${copiedId === item.id ? "copied" : ""}`} onClick={() => copyDescription(item)}>{copiedId === item.id ? <Check size={15} /> : <Copy size={15} />}{copiedId === item.id ? "Скопировано" : "Копировать"}</button><DeleteButton onClick={() => confirm(`Удалить шаблон «${item.title}»?`) && mutate({ videoDescriptions: db.videoDescriptions.filter((row) => row.id !== item.id) }, `Удалено описание для видео: ${item.title}`)} /></div></div>
+            </article>
+          )) : (
+            <div className="card video-library-empty"><Video size={27} /><h3>Библиотека пока пустая</h3><p>Создайте первое описание. Оно останется здесь и будет готово для копирования в TikTok.</p></div>
+          )}
+        </section>
+      </section>
+    </div>
+  );
+}
+
+function ReminderComposer({ client, onClose }) {
+  const [language, setLanguage] = useState("ru");
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  if (!client) return null;
+  const message = appointmentReminderMessage(client, language);
+  const digits = String(client.phone || "").replace(/\D/g, "");
+  const channels = reminderChannelLinks(client.phone, message);
+  const copyMessage = async () => {
+    try {
+      await copyText(message);
+      setCopied(true);
+      setCopyError(false);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopyError(true);
+    }
+  };
+  return (
+    <Modal title="Напоминание о записи" onClose={onClose}>
+      <div className="reminder-composer-client"><span className="client-avatar"><CarFront size={20} /></span><div><strong>{client.car}</strong><small>{client.phone || "Для отправки добавьте номер телефона"}</small></div></div>
+      <Field label="Язык сообщения"><select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="ru">Русский</option><option value="ro">Română</option></select></Field>
+      <Field label="Текст напоминания"><textarea className="reminder-message-input" value={message} readOnly /></Field>
+      <div className="reminder-composer-actions"><Button variant="secondary" icon={copied ? Check : Copy} onClick={copyMessage}>{copied ? "Скопировано" : "Скопировать текст"}</Button></div>
+      {copyError && <p className="reminder-copy-error">Не получилось скопировать автоматически — выделите текст и скопируйте вручную.</p>}
+      <div className="reminder-channel-heading"><strong>Открыть для отправки через</strong><small>Сообщение и дата с временем уже подготовлены</small></div>
+      <div className="reminder-channel-grid">
+        {channels.map((channel) => (
+          <a
+            className={`reminder-channel ${channel.id}`}
+            key={channel.id}
+            href={digits ? channel.href : undefined}
+            target={channel.id === "sms" || channel.id === "viber" ? undefined : "_blank"}
+            rel={channel.id === "sms" || channel.id === "viber" ? undefined : "noreferrer"}
+            aria-disabled={!digits}
+            onClick={(event) => { if (!digits) event.preventDefault(); }}
+          >
+            <MessageCircle size={16} /><span>{channel.label}</span><ArrowRight size={13} />
+          </a>
+        ))}
+      </div>
+      {!digits && <p className="reminder-copy-error">У клиента не указан номер телефона — добавьте его в карточке перед отправкой.</p>}
+      <p className="reminder-channel-note">Канал откроется для ручной отправки. Telegram и Viber могут предложить выбрать получателя внутри приложения.</p>
+    </Modal>
+  );
+}
+
+function ClientProfile({ client, db, onClose, onEdit, onPayment, onDebt, onReminder }) {
   if (!client) return null;
   const phoneKey = String(client.phone || "").replace(/\D/g, "");
   const relatedClients = db.clients.filter((row) => row.id === client.id || (phoneKey && String(row.phone || "").replace(/\D/g, "") === phoneKey));
@@ -1183,7 +1346,7 @@ function ClientProfile({ client, db, onClose, onEdit, onPayment, onDebt }) {
   return (
     <Modal title="Карточка клиента" onClose={onClose}>
       <div className="client-profile-head"><div className="client-avatar"><CarFront size={25} /></div><div><span className="dashboard-kicker">CLIENT PROFILE</span><h2>{client.car}</h2><p>{client.phone || "Телефон не указан"}</p></div><Badge status={statusClass(client.status)}>{client.status}</Badge>{client.paymentExcluded && <Badge status="cancelled">Не в списке оплат</Badge>}</div>
-      <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button></div>
+      <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button icon={MessageCircle} onClick={onReminder}>Напоминание</Button><Button variant="secondary" icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button></div>
       <div className="client-profile-stats"><div><span>Оплачено</span><strong>{money(paid)}</strong></div><div><span>Остаток к оплате</span><strong>{money(openBalance)}</strong></div><div><span>Визитов</span><strong>{relatedClients.length}</strong></div></div>
       <section className="profile-section"><div className="card-header">Последние визиты</div>{relatedClients.slice().sort((a, b) => (parseDate(b.datetime)?.getTime() || 0) - (parseDate(a.datetime)?.getTime() || 0)).map((visit) => <div className="profile-history-row" key={visit.id}><span><strong>{visit.service || "Услуга не указана"}</strong><small>{dateText(visit.datetime)}</small></span><Badge status={statusClass(visit.status)}>{visit.status}</Badge><strong>{visit.servicePrice ? money(visit.servicePrice) : "Цена не указана"}</strong></div>)}</section>
       <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : payment.debtAllocations?.length ? "Платёж с погашением долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)}</small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>

@@ -22,12 +22,14 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  MessageSquareText,
   Minus,
   Package,
   Plus,
   Receipt,
   RefreshCw,
   Search,
+  RotateCcw,
   Save,
   ShieldCheck,
   Sparkles,
@@ -58,6 +60,8 @@ import {
 } from "./lib/finance.mjs";
 import {
   appointmentReminderMessage,
+  DEFAULT_REMINDER_TEMPLATES,
+  REMINDER_VARIABLES,
   reminderChannelLinks,
 } from "./lib/messages.mjs";
 
@@ -75,12 +79,14 @@ const EMPTY_DB = {
   stockMovements: [],
   services: [],
   videoDescriptions: [],
+  messageTemplates: [],
 };
 const NAV = [
   ["home", "Главная Панель", LayoutDashboard],
   ["analytics", "Аналитика", ChartNoAxesCombined],
   ["services", "Услуги и цены", Sparkles],
   ["videoDescriptions", "Описания для видео", Video],
+  ["reminderTemplates", "Шаблоны напоминаний", MessageSquareText],
   ["calendar", "Календарь", CalendarDays],
   ["clients", "1. Записи клиентов", Users],
   ["expenses", "2. Затраты", Receipt],
@@ -93,7 +99,7 @@ const NAV = [
 ];
 const NAV_GROUPS = [
   { title: "ОБЗОР", items: ["home", "analytics"] },
-  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "clients", "services", "videoDescriptions"] },
+  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "clients", "services", "videoDescriptions", "reminderTemplates"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "withdrawals", "debts"] },
   { title: "ОПЕРАЦИИ", items: ["warehouse", "windows", "logs"] },
 ];
@@ -192,6 +198,7 @@ const normalizeDb = (data) => ({
   stockMovements: data?.stockMovements || [],
   services: data?.services || [],
   videoDescriptions: data?.videoDescriptions || [],
+  messageTemplates: data?.messageTemplates || [],
 });
 
 function Button({
@@ -865,6 +872,7 @@ export default function Home() {
         ) : modal?.type === "reminder" ? (
           <ReminderComposer
             client={modal.item}
+            templates={db.messageTemplates}
             onClose={() => setModal(null)}
           />
         ) : modal && (
@@ -985,6 +993,8 @@ function PageContent({
   if (page === "services") return <ServicesPage db={db} mutate={mutate} user={user} />;
   if (page === "videoDescriptions")
     return <VideoDescriptionsPage db={db} mutate={mutate} user={user} />;
+  if (page === "reminderTemplates")
+    return <ReminderTemplatesPage db={db} mutate={mutate} user={user} />;
   if (page === "clients")
     return (
       <Clients
@@ -1287,12 +1297,105 @@ function VideoDescriptionsPage({ db, mutate, user }) {
   );
 }
 
-function ReminderComposer({ client, onClose }) {
+function ReminderTemplatesPage({ db, mutate, user }) {
+  const [drafts, setDrafts] = useState(() => ({
+    ru: db.messageTemplates.find((item) => item.language === "ru")?.template || DEFAULT_REMINDER_TEMPLATES.ru,
+    ro: db.messageTemplates.find((item) => item.language === "ro")?.template || DEFAULT_REMINDER_TEMPLATES.ro,
+  }));
+  const [savedLanguage, setSavedLanguage] = useState("");
+  const previewClient = {
+    car: "BMW X5",
+    phone: "+373 69 123 456",
+    service: "Химчистка салона",
+    servicePrice: 1500,
+    datetime: "2026-10-15T14:30",
+  };
+  const saveTemplate = (language, template = drafts[language]) => {
+    if (!template.trim()) return alert("Текст шаблона не может быть пустым.");
+    const entry = {
+      id: `reminder-${language}`,
+      language,
+      template: template.trim(),
+      updatedAt: new Date().toISOString(),
+      author: user,
+    };
+    mutate(
+      {
+        messageTemplates: [
+          ...db.messageTemplates.filter((item) => item.language !== language),
+          entry,
+        ],
+      },
+      `Сохранён шаблон напоминания (${language === "ru" ? "русский" : "румынский"})`,
+    );
+    setDrafts((current) => ({ ...current, [language]: entry.template }));
+    setSavedLanguage(language);
+    window.setTimeout(() => setSavedLanguage((current) => current === language ? "" : current), 1800);
+  };
+  const resetTemplate = (language) => {
+    setDrafts((current) => ({ ...current, [language]: DEFAULT_REMINDER_TEMPLATES[language] }));
+    saveTemplate(language, DEFAULT_REMINDER_TEMPLATES[language]);
+  };
+  const templateCard = (language, title, locale) => (
+    <article className="reminder-template-card" key={language}>
+      <div className="reminder-template-card-heading">
+        <div><span className="dashboard-kicker">{locale}</span><h3>{title}</h3></div>
+        <span className="reminder-template-status">{savedLanguage === language ? "Сохранено" : "Шаблон сообщений"}</span>
+      </div>
+      <textarea
+        className="reminder-template-input"
+        value={drafts[language]}
+        onChange={(event) => setDrafts((current) => ({ ...current, [language]: event.target.value }))}
+        aria-label={`Текст шаблона на ${title.toLowerCase()}`}
+        spellCheck
+      />
+      <div className="reminder-template-preview">
+        <span>ПРЕДПРОСМОТР</span>
+        <p>{appointmentReminderMessage(previewClient, language, drafts[language])}</p>
+      </div>
+      <div className="reminder-template-actions">
+        <Button icon={Save} onClick={() => saveTemplate(language)}>
+          {savedLanguage === language ? "Сохранено" : "Сохранить шаблон"}
+        </Button>
+        <Button variant="secondary" icon={RotateCcw} onClick={() => resetTemplate(language)}>
+          Стандартный текст
+        </Button>
+      </div>
+    </article>
+  );
+  return (
+    <div className="reminder-templates-page">
+      <section className="reminder-templates-hero">
+        <span className="dashboard-kicker">CUSTOMER MESSAGING · TEMPLATES</span>
+        <h2>Ваш текст. Ваш тон.</h2>
+        <p>Настройте напоминания на русском и румынском. Переменные автоматически заменятся данными записи.</p>
+      </section>
+      <section className="reminder-template-list">
+        {templateCard("ru", "Русский", "RU · РУССКИЙ")}
+        {templateCard("ro", "Română", "RO · ROMÂNĂ")}
+      </section>
+      <section className="card reminder-variables-card">
+        <div className="card-header"><span>Переменные шаблона</span><MessageSquareText size={17} /></div>
+        <p>Вставляйте переменные в фигурных скобках в любое место текста. Если данных нет, соответствующее значение останется пустым.</p>
+        <div className="reminder-variable-grid">
+          {REMINDER_VARIABLES.map((variable) => (
+            <div className="reminder-variable" key={variable.key}>
+              <code>{variable.key}</code><span>{variable.description}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReminderComposer({ client, templates = [], onClose }) {
   const [language, setLanguage] = useState("ru");
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   if (!client) return null;
-  const message = appointmentReminderMessage(client, language);
+  const selectedTemplate = templates.find((item) => item.language === language)?.template;
+  const message = appointmentReminderMessage(client, language, selectedTemplate);
   const digits = String(client.phone || "").replace(/\D/g, "");
   const channels = reminderChannelLinks(client.phone, message);
   const copyMessage = async () => {
@@ -1304,6 +1407,16 @@ function ReminderComposer({ client, onClose }) {
     } catch {
       setCopyError(true);
     }
+  };
+  const prepareChannelMessage = (channel) => {
+    if (!channel.copyBeforeOpen) return;
+    void copyText(message)
+      .then(() => {
+        setCopied(true);
+        setCopyError(false);
+        window.setTimeout(() => setCopied(false), 1800);
+      })
+      .catch(() => setCopyError(true));
   };
   return (
     <Modal title="Напоминание о записи" onClose={onClose}>
@@ -1322,14 +1435,17 @@ function ReminderComposer({ client, onClose }) {
             target={channel.id === "sms" || channel.id === "viber" ? undefined : "_blank"}
             rel={channel.id === "sms" || channel.id === "viber" ? undefined : "noreferrer"}
             aria-disabled={!digits}
-            onClick={(event) => { if (!digits) event.preventDefault(); }}
+            onClick={(event) => {
+              if (!digits) event.preventDefault();
+              else prepareChannelMessage(channel);
+            }}
           >
             <MessageCircle size={16} /><span>{channel.label}</span><ArrowRight size={13} />
           </a>
         ))}
       </div>
       {!digits && <p className="reminder-copy-error">У клиента не указан номер телефона — добавьте его в карточке перед отправкой.</p>}
-      <p className="reminder-channel-note">Канал откроется для ручной отправки. Telegram и Viber могут предложить выбрать получателя внутри приложения.</p>
+      <p className="reminder-channel-note">SMS и WhatsApp откроют чат с текстом. Viber и Telegram откроют переписку по номеру, а текст скопируется автоматически — вставьте его в поле сообщения.</p>
     </Modal>
   );
 }

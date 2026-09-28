@@ -34,7 +34,19 @@ test("all four reminder channels receive a prepared message", () => {
   assert.deepEqual(channels.map(({ id }) => id), ["sms", "whatsapp", "viber", "telegram"]);
   assert.match(channels[0].href, /^sms:\+37369123456\?body=/);
   assert.match(channels[1].href, /^https:\/\/wa\.me\/37369123456\?text=/);
-  assert.match(channels[2].href, /^viber:\/\/forward\?text=/);
-  assert.match(channels[3].href, /^https:\/\/t\.me\/share\/url\?text=/);
-  channels.forEach(({ href }) => assert.ok(href.includes("BMW%20X5")));
+  assert.equal(channels[2].href, "viber://chat?number=%2B37369123456");
+  assert.equal(channels[3].href, "https://t.me/+37369123456");
+  assert.equal(channels[2].copyBeforeOpen, true);
+  assert.equal(channels[3].copyBeforeOpen, true);
+  assert.ok(channels[0].href.includes("BMW%20X5"));
+  assert.ok(channels[1].href.includes("BMW%20X5"));
+});
+
+test("custom reminders replace documented variables and leave unknown tokens visible", () => {
+  const message = appointmentReminderMessage(
+    { ...appointment, phone: "+37369123456", servicePrice: 1500 },
+    "ru",
+    "{{client}}|{{phone}}|{{service}}|{{date}}|{{time}}|{{price}}|{{business}}|{{unknown}}",
+  );
+  assert.match(message, /^BMW X5\|\+37369123456\|Химчистка\|12 октября 2026 г\.\|14:30\|1\s?500 MDL\|ANGEL DETAILING\|\{\{unknown\}\}$/);
 });

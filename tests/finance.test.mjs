@@ -85,3 +85,43 @@ test("separate open debt remains payable after the quoted service price is cover
   assert.equal(outstandingForClient(db, db.clients[0]), 25);
   assert.equal(getUnpaidClients(db).length, 1);
 });
+
+test("payment allocation does not count one payment against both service and debt", () => {
+  const db = {
+    clients: [{ id: "visit-2", servicePrice: 1000, status: "Выполнено" }],
+    incomes: [],
+    debts: [{ id: "debt-1", clientId: "visit-2", amount: 500, paid: false }],
+  };
+  const firstPayment = applyPaymentToDebts(db.debts, "visit-2", amountToCents(700));
+  db.debts = firstPayment.debts;
+  db.incomes.push({
+    clientId: "visit-2",
+    amount: 700,
+    debtAllocations: firstPayment.allocations,
+    serviceAmountCents: firstPayment.serviceAmountCents,
+  });
+  assert.equal(firstPayment.serviceAmountCents, 20000);
+  assert.equal(outstandingForClient(db, db.clients[0]), 800);
+
+  const finalPayment = applyPaymentToDebts(db.debts, "visit-2", amountToCents(800));
+  db.incomes.push({
+    clientId: "visit-2",
+    amount: 800,
+    debtAllocations: finalPayment.allocations,
+    serviceAmountCents: finalPayment.serviceAmountCents,
+  });
+  db.debts = finalPayment.debts;
+  assert.equal(outstandingForClient(db, db.clients[0]), 0);
+  assert.equal(getUnpaidClients(db).length, 0);
+});
+
+test("manual payment exclusion hides a client without inventing income", () => {
+  const db = {
+    clients: [{ id: 1, servicePrice: 400, paymentExcluded: true }],
+    incomes: [],
+    debts: [],
+  };
+  assert.equal(outstandingForClient(db, db.clients[0]), 400);
+  assert.deepEqual(getUnpaidClients(db), []);
+  assert.deepEqual(db.incomes, []);
+});

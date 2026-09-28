@@ -88,6 +88,26 @@ export function totalPaidForClient(incomes, clientId) {
   );
 }
 
+export function totalPaidForService(incomes, clientId) {
+  return centsToAmount(
+    incomes
+      .filter((income) => clientIdKey(income.clientId) === clientIdKey(clientId))
+      .reduce((total, income) => {
+        if (Number.isFinite(income.serviceAmountCents))
+          return total + Math.round(income.serviceAmountCents);
+        if (income.debtId) return total;
+        const debtAllocationCents = (income.debtAllocations || []).reduce(
+          (sum, allocation) =>
+            sum + (Number.isFinite(allocation.amountCents)
+              ? Math.round(allocation.amountCents)
+              : amountToCents(allocation.amount)),
+          0,
+        );
+        return total + Math.max(0, amountToCents(income.amount) - debtAllocationCents);
+      }, 0),
+  );
+}
+
 export function outstandingForClient(db, client) {
   const servicePrice = amountToCents(client.servicePrice);
   const debtBalance = amountToCents(
@@ -101,9 +121,9 @@ export function outstandingForClient(db, client) {
   if (servicePrice > 0) {
     const serviceBalance = Math.max(
       0,
-      servicePrice - amountToCents(totalPaidForClient(db.incomes, client.id)),
+      servicePrice - amountToCents(totalPaidForService(db.incomes, client.id)),
     );
-    return centsToAmount(Math.max(serviceBalance, debtBalance));
+    return centsToAmount(serviceBalance + debtBalance);
   }
   return centsToAmount(debtBalance);
 }
@@ -111,6 +131,7 @@ export function outstandingForClient(db, client) {
 export function getUnpaidClients(db) {
   return db.clients.filter(
     (client) => {
+      if (client.paymentExcluded) return false;
       const receivedPayment = db.incomes.some(
         (income) => clientIdKey(income.clientId) === clientIdKey(client.id),
       );
@@ -119,7 +140,7 @@ export function getUnpaidClients(db) {
       if (servicePrice > 0)
         return (
           (activeAppointment &&
-            amountToCents(totalPaidForClient(db.incomes, client.id)) < servicePrice) ||
+            amountToCents(totalPaidForService(db.incomes, client.id)) < servicePrice) ||
           hasOpenDebt(db.debts, client.id)
         );
       return hasOpenDebt(db.debts, client.id) || (activeAppointment && !receivedPayment);
@@ -159,6 +180,7 @@ export function applyPaymentToDebts(debts, clientId, paymentCents) {
   return {
     debts: updates.size ? debts.map((debt) => updates.get(debt.id) || debt) : debts,
     allocations,
+    serviceAmountCents: remaining,
   };
 }
 

@@ -106,15 +106,12 @@ const currentPeriod = (date = new Date()) => ({
 });
 const financeYears = (db) => {
   const currentYear = new Date().getFullYear();
-  const recentYears = Array.from({ length: 11 }, (_, offset) =>
-    String(currentYear - offset),
-  );
   const recordYears = [
     ...db.incomes,
     ...db.expenses,
     ...db.withdrawals,
   ].map((item) => periodKeyFor(item).slice(0, 4));
-  return [...new Set([...recentYears, ...recordYears])].sort(
+  return [...new Set([String(currentYear), ...recordYears])].sort(
     (first, second) => second.localeCompare(first),
   );
 };
@@ -132,6 +129,27 @@ const createId = () =>
   globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const validPositiveAmount = (value) =>
   Number.isFinite(Number(value)) && amountToCents(value) > 0;
+const isCancelledAppointment = (appointment) =>
+  ["Отменен", "Не пришел"].includes(appointment?.status);
+const serviceDurationMinutes = (appointment, services = []) =>
+  Math.max(
+    1,
+    Number(appointment?.serviceDuration) ||
+      Number(services.find((service) => service.name === appointment?.service)?.duration) ||
+      60,
+  );
+const hasAppointmentConflict = (appointments, candidate, services = [], ignoredId) => {
+  const candidateStart = parseRecordDate(candidate.datetime)?.getTime();
+  if (!candidateStart) return false;
+  const candidateEnd = candidateStart + serviceDurationMinutes(candidate, services) * 60000;
+  return appointments.some((appointment) => {
+    if (appointment.id === ignoredId || isCancelledAppointment(appointment)) return false;
+    const start = parseRecordDate(appointment.datetime)?.getTime();
+    if (!start) return false;
+    const end = start + serviceDurationMinutes(appointment, services) * 60000;
+    return candidateStart < end && start < candidateEnd;
+  });
+};
 const isSameDay = (value, reference = new Date()) => {
   const date = parseDate(value);
   return (
@@ -249,6 +267,7 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [globalSearch, setGlobalSearch] = useState("");
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [profitMonth, setProfitMonth] = useState("all");
   const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
   const [clientQuery, setClientQuery] = useState("");
@@ -260,6 +279,11 @@ export default function Home() {
   const pendingSaves = useRef(0);
   const dataRevision = useRef(0);
   const localSavePending = useRef(false);
+  const globalSearchInputRef = useRef(null);
+
+  useEffect(() => {
+    if (mobileSearchOpen) globalSearchInputRef.current?.focus();
+  }, [mobileSearchOpen]);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -720,13 +744,26 @@ export default function Home() {
               </button>
               <h1>{NAV.find((item) => item[0] === page)?.[1] || "Панель"}</h1>
             </div>
-            <div className="global-search-wrap">
+            <div className={`global-search-wrap ${mobileSearchOpen ? "mobile-search-open" : ""}`}>
               <Search size={17} />
+              <button
+                className="mobile-search-trigger"
+                type="button"
+                aria-label="Открыть поиск клиентов"
+                onClick={() => setMobileSearchOpen(true)}
+              >
+                <Search size={17} />
+              </button>
               <input
+                ref={globalSearchInputRef}
                 value={globalSearch}
                 onChange={(event) => setGlobalSearch(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Escape") setGlobalSearch("");
+                  if (event.key === "Escape") {
+                    setGlobalSearch("");
+                    setMobileSearchOpen(false);
+                    event.currentTarget.blur();
+                  }
                   if (event.key === "Enter" && globalSearch.trim()) {
                     const match = db.clients.find((client) =>
                       [client.car, client.phone, client.service].some((value) =>
@@ -735,6 +772,7 @@ export default function Home() {
                     );
                     if (match) {
                       setGlobalSearch("");
+                      setMobileSearchOpen(false);
                       setModal({ type: "client-profile", item: match });
                     }
                   }
@@ -757,6 +795,7 @@ export default function Home() {
                         key={client.id}
                         onClick={() => {
                           setGlobalSearch("");
+                          setMobileSearchOpen(false);
                           setModal({ type: "client-profile", item: client });
                         }}
                       >
@@ -1060,8 +1099,7 @@ function AnalyticsPage({ db, totals, monthly, years, reportYear, setReportYear }
       <section className="analytics-layout">
         <article className="card analytics-chart-card">
           <div className="card-header"><span>Денежный поток</span><span className="analytics-subtitle">По месяцам · {reportYear}</span></div>
-          <div className="analytics-legend"><span><i className="legend-income" />Выручка</span><span><i className="legend-expenses" />Расходы</span><span><i className="legend-profit" />Прибыль</span></div>
-          <MonthlyChart data={monthly} />
+          <MonthlyChart data={monthly} bare showHeader={false} />
         </article>
         <article className="card analytics-insight-card">
           <div className="card-header"><span>Главный результат</span><Sparkles size={18} /></div>
@@ -1085,7 +1123,7 @@ function AnalyticsPage({ db, totals, monthly, years, reportYear, setReportYear }
         </article>
         <article className="card">
           <div className="card-header"><span>Что важно сейчас</span><Activity size={17} /></div>
-          <div className="analytics-action"><span className="analytics-action-icon"><Clock3 size={16} /></span><div><strong>Записи на ближайшую неделю</strong><small>{db.clients.filter((client) => { const date = parseDate(client.datetime); return date && date >= new Date() && date < new Date(Date.now() + 7 * 86400000); }).length} запланировано</small></div></div>
+          <div className="analytics-action"><span className="analytics-action-icon"><Clock3 size={16} /></span><div><strong>Записи на ближайшую неделю</strong><small>{db.clients.filter((client) => { const date = parseDate(client.datetime); return !isCancelledAppointment(client) && date && date >= new Date() && date < new Date(Date.now() + 7 * 86400000); }).length} запланировано</small></div></div>
           <div className="analytics-action"><span className="analytics-action-icon"><Package size={16} /></span><div><strong>Низкий остаток на складе</strong><small>{totals.lowStock.length ? totals.lowStock.map((item) => item.name).join(", ") : "Всё в норме"}</small></div></div>
           <div className="analytics-action"><span className="analytics-action-icon"><Check size={16} /></span><div><strong>Маржа за год</strong><small>{annualIncome ? `${((annualProfit / annualIncome) * 100).toFixed(1)}% от выручки` : "Добавьте оплаты и расходы"}</small></div></div>
         </article>
@@ -1144,11 +1182,11 @@ function ClientProfile({ client, db, onClose, onEdit, onPayment, onDebt }) {
   const openBalance = sumAmounts(relatedClients, (visit) => outstandingForClient(db, visit));
   return (
     <Modal title="Карточка клиента" onClose={onClose}>
-      <div className="client-profile-head"><div className="client-avatar"><CarFront size={25} /></div><div><span className="dashboard-kicker">CLIENT PROFILE</span><h2>{client.car}</h2><p>{client.phone || "Телефон не указан"}</p></div><Badge status={statusClass(client.status)}>{client.status}</Badge></div>
+      <div className="client-profile-head"><div className="client-avatar"><CarFront size={25} /></div><div><span className="dashboard-kicker">CLIENT PROFILE</span><h2>{client.car}</h2><p>{client.phone || "Телефон не указан"}</p></div><Badge status={statusClass(client.status)}>{client.status}</Badge>{client.paymentExcluded && <Badge status="cancelled">Не в списке оплат</Badge>}</div>
       <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button></div>
       <div className="client-profile-stats"><div><span>Оплачено</span><strong>{money(paid)}</strong></div><div><span>Остаток к оплате</span><strong>{money(openBalance)}</strong></div><div><span>Визитов</span><strong>{relatedClients.length}</strong></div></div>
       <section className="profile-section"><div className="card-header">Последние визиты</div>{relatedClients.slice().sort((a, b) => (parseDate(b.datetime)?.getTime() || 0) - (parseDate(a.datetime)?.getTime() || 0)).map((visit) => <div className="profile-history-row" key={visit.id}><span><strong>{visit.service || "Услуга не указана"}</strong><small>{dateText(visit.datetime)}</small></span><Badge status={statusClass(visit.status)}>{visit.status}</Badge><strong>{visit.servicePrice ? money(visit.servicePrice) : "Цена не указана"}</strong></div>)}</section>
-      <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)}</small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>
+      <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : payment.debtAllocations?.length ? "Платёж с погашением долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)}</small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>
       {client.phone && <a className="client-call-link" href={`tel:${client.phone}`}>Позвонить клиенту <ArrowRight size={14} /></a>}
     </Modal>
   );
@@ -1172,6 +1210,7 @@ function Dashboard({
   const today = new Date();
   const appointments = db.clients
     .map((client) => ({ ...client, parsedDate: parseDate(client.datetime) }))
+    .filter(({ parsedDate, ...client }) => parsedDate && !isCancelledAppointment(client))
     .filter(({ parsedDate }) => parsedDate)
     .filter(({ parsedDate }) => {
       const daysFromToday =
@@ -1190,7 +1229,7 @@ function Dashboard({
     ["Затраты всего", totals.commonExpenses, "warning", Receipt],
     [
       "Остаток к оплате",
-      sumAmounts(getUnpaidClients(db), (client) => outstandingForClient(db, client)),
+      sumAmounts(db.clients, (client) => outstandingForClient(db, client)),
       "danger",
       Bell,
     ],
@@ -1811,7 +1850,7 @@ function PrintReport({ db, totals, todayAppointments, monthly, reportYear }) {
   );
 }
 
-function MonthlyChart({ data, embedded = false }) {
+function MonthlyChart({ data, embedded = false, bare = false, showHeader = true }) {
   const maxValue = Math.max(
     ...data.map((item) =>
       Math.max(item.income, item.expenses, Math.abs(item.profit)),
@@ -1820,12 +1859,12 @@ function MonthlyChart({ data, embedded = false }) {
   );
   return (
     <section
-      className={`${embedded ? "" : "card "}chart-card ${embedded ? "embedded-chart" : ""}`}
+      className={`${embedded ? "" : "card "}chart-card ${embedded ? "embedded-chart" : ""} ${bare ? "bare-chart" : ""}`}
     >
-      <div className="card-header">
+      {showHeader && <div className="card-header">
         <span>Динамика по месяцам</span>
         <TrendingUp size={18} className="red-icon" />
-      </div>
+      </div>}
       <div className="chart-legend">
         <span>
           <i className="legend-income" />
@@ -1928,7 +1967,11 @@ function Table({ headers, children, sortBy }) {
 }
 function Actions({ onEdit, onDelete, onView }) {
   return (
-    <span className="actions">
+    <span
+      className="actions"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
       {onView && (
         <button
           className="btn-sm btn-view"
@@ -2062,129 +2105,104 @@ function Clients({
   mutate,
   openProfile,
 }) {
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredClients = db.clients.filter(
-    (client) =>
-      (!normalizedQuery ||
-        [client.car, client.phone, client.service, client.comment].some(
-          (value) =>
-            String(value || "")
-              .toLowerCase()
-              .includes(normalizedQuery),
-        )) &&
-      (status === "all" || client.status === status),
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const filteredClients = sort(
+    db.clients.filter(
+      (client) =>
+        (!normalizedQuery ||
+          [client.car, client.phone, client.service, client.comment].some((value) =>
+            String(value || "").toLocaleLowerCase("ru").includes(normalizedQuery),
+          )) &&
+        (status === "all" || client.status === status),
+    ),
+    "datetime",
+    -1,
   );
+  const upcomingCount = db.clients.filter((client) => {
+    const date = parseDate(client.datetime);
+    return !isCancelledAppointment(client) && date && date >= new Date();
+  }).length;
+  const openBalance = sumAmounts(db.clients, (client) => outstandingForClient(db, client));
   return (
-    <section className="card">
-      <div className="card-header">
-        <span>Записи клиентов</span>
-        <Button onClick={() => openModal({ type: "client" })}>+ Клиент</Button>
-      </div>
-      <div className="filter-row">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Поиск: авто, телефон, услуга..."
-          aria-label="Поиск клиентов"
-        />
-        <select
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-          aria-label="Фильтр по статусу"
-        >
-          <option value="all">Все статусы</option>
-          {["В ожидании", "Не пришел", "Отменен", "Выполнено"].map((item) => (
-            <option key={item}>{item}</option>
-          ))}
-        </select>
-      </div>
-      <Table
-        sortBy={sortBy}
-        headers={[
-          "Авто",
-          "Телефон",
-          "Сиденья",
-          "Услуга",
-          "Дата",
-          "Статус записи",
-          "Оплата",
-          "Автор",
-          "Инфо",
-          "Действия",
-        ].map((label, i) => [
-          label,
-          [
-            "car",
-            "phone",
-            "seatType",
-            "service",
-            "datetime",
-            "status",
-            "payment",
-            "author",
-            "comment",
-          ][i],
-        ])}
-      >
-        {sort(filteredClients, "datetime", -1).map((client) => (
-          <tr key={client.id}>
-            <td>
-              <strong>{client.car}</strong>
-            </td>
-            <td>{client.phone || "-"}</td>
-            <td>{client.seatType || "-"}</td>
-            <td>{client.service || "-"}</td>
-            <td>{dateText(client.datetime)}</td>
-            <td>
-              <Badge status={statusClass(client.status)}>{client.status}</Badge>
-            </td>
-            <td>
-              {(() => {
-                const received = totalPaidForClient(db.incomes, client.id);
-                const outstanding = outstandingForClient(db, client);
-                const label = outstanding > 0
-                  ? received > 0 ? "Частично" : "Ожидает"
-                  : received > 0 ? "Оплачено" : "Не оплачено";
-                return (
-                  <Badge status={label === "Оплачено" ? "done" : label === "Частично" ? "waiting" : "cancelled"}>
-                    {label}
-                  </Badge>
-                );
-              })()}
-            </td>
-            <td>
-              <Badge>{client.author || "TUDOR"}</Badge>
-            </td>
-            <td>{client.comment || "-"}</td>
-            <td>
-              <Actions
-                onView={() => openProfile(client)}
-                onEdit={() => openModal({ type: "client", item: client })}
-                onDelete={() => {
-                  const hasFinancialHistory =
-                    db.incomes.some(
-                      (income) => clientIdKey(income.clientId) === clientIdKey(client.id),
-                    ) ||
-                    db.debts.some(
-                      (debt) => clientIdKey(debt.clientId) === clientIdKey(client.id),
-                    );
-                  if (hasFinancialHistory)
-                    return alert("Нельзя удалить клиента с историей оплат или долгов. Измените статус записи вместо удаления.");
-                  if (confirm("Удалить эту запись?"))
-                    mutate(
-                      { clients: db.clients.filter((item) => item.id !== client.id) },
-                      `Удален клиент: ${client.car}`,
-                    );
-                }}
-              />
-            </td>
-          </tr>
-        ))}
-          {!filteredClients.length && (
-          <EmptyRow colSpan={10}>Нет клиентов по выбранным фильтрам</EmptyRow>
+    <div className="clients-page">
+      <section className="clients-hero">
+        <div>
+          <span className="dashboard-kicker">CUSTOMER RELATIONSHIP · CLIENTS</span>
+          <h2>Клиенты и записи</h2>
+          <p>Откройте клиента, чтобы увидеть его визиты, оплаты и остаток.</p>
+        </div>
+        <Button icon={Plus} onClick={() => openModal({ type: "client" })}>Новая запись</Button>
+      </section>
+      <section className="clients-overview">
+        <article><span>Всего записей</span><strong>{db.clients.length}</strong><small>в клиентской базе</small></article>
+        <article><span>Предстоящие</span><strong>{upcomingCount}</strong><small>ещё не отменены</small></article>
+        <article><span>Остаток к оплате</span><strong>{money(openBalance)}</strong><small>услуги и открытые долги</small></article>
+      </section>
+      <section className="clients-directory">
+        <div className="clients-toolbar">
+          <div className="clients-toolbar-title"><div><h3>Клиентская база</h3><span>{filteredClients.length} записей</span></div></div>
+          <div className="clients-filters">
+            <label className="clients-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Имя, авто, телефон или услуга" aria-label="Поиск клиентов" /></label>
+            <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Фильтр по статусу записи">
+              <option value="all">Все статусы</option>
+              {["В ожидании", "Не пришел", "Отменен", "Выполнено"].map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </div>
+        </div>
+        {filteredClients.length ? (
+          <div className="client-card-grid">
+            {filteredClients.map((client) => {
+              const received = totalPaidForClient(db.incomes, client.id);
+              const outstanding = outstandingForClient(db, client);
+              const paymentLabel = client.paymentExcluded
+                ? "Закрыто вне кассы"
+                : outstanding > 0
+                  ? received > 0 ? "Частично оплачено" : "Ожидает оплаты"
+                  : received > 0 ? "Оплачено" : "Оплата не указана";
+              const paymentClass = client.paymentExcluded || received === 0 && outstanding === 0
+                ? "cancelled"
+                : outstanding > 0 && received > 0
+                  ? "waiting"
+                  : outstanding > 0
+                    ? "waiting"
+                    : "done";
+              return (
+                <article
+                  className="client-summary-card"
+                  key={client.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Открыть карточку клиента ${client.car}`}
+                  onClick={() => openProfile(client)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openProfile(client);
+                    }
+                  }}
+                >
+                  <div className="client-summary-top">
+                    <span className="client-car-avatar"><CarFront size={18} /></span>
+                    <Badge status={statusClass(client.status)}>{client.status || "В ожидании"}</Badge>
+                    <button className="client-card-edit" type="button" aria-label={`Редактировать запись ${client.car}`} onClick={(event) => { event.stopPropagation(); openModal({ type: "client", item: client }); }}><Pencil size={14} /></button>
+                  </div>
+                  <div className="client-summary-name"><h3>{client.car || "Без названия"}</h3><span>{client.phone || "Телефон не указан"}</span></div>
+                  <div className="client-summary-service"><Sparkles size={14} /><span>{client.service || "Услуга не указана"}</span><strong>{client.servicePrice ? money(client.servicePrice) : ""}</strong></div>
+                  <div className="client-summary-footer">
+                    <span><CalendarDays size={14} />{dateText(client.datetime)}</span>
+                    <Badge status={paymentClass}>{paymentLabel}</Badge>
+                  </div>
+                  {client.comment && <p className="client-summary-note">{client.comment}</p>}
+                  <span className="client-card-open">Открыть карточку <ArrowRight size={14} /></span>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="clients-empty"><Users size={25} /><h3>Пока нет подходящих записей</h3><p>Попробуйте изменить поиск или создайте новую запись.</p><Button icon={Plus} onClick={() => openModal({ type: "client" })}>Добавить запись</Button></div>
         )}
-      </Table>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -2791,7 +2809,12 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
   const [form, setForm] = useState(
     item
       ? isClient
-        ? { ...item, servicePrice: item.servicePrice ?? "" }
+        ? {
+            ...item,
+            servicePrice: item.servicePrice ?? "",
+            serviceDuration: item.serviceDuration ?? "60",
+            paymentExcluded: Boolean(item.paymentExcluded),
+          }
         : { ...item }
       : isClient
         ? {
@@ -2800,6 +2823,8 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
             seatType: "",
             service: "",
             servicePrice: "",
+            serviceDuration: "60",
+            paymentExcluded: false,
             datetime: preset?.datetime || "",
             windowId: preset?.windowId || "",
             status: "В ожидании",
@@ -2822,11 +2847,30 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
   const update = (event) => {
     const { name, value } = event.target;
     if (name === "service") {
+      if (value === "__custom__") {
+        setForm((current) => ({
+          ...current,
+          service: "",
+          servicePrice: "",
+          serviceDuration: "60",
+        }));
+        return;
+      }
       const catalogItem = db.services.find((service) => service.name === value);
       setForm((current) => ({
         ...current,
         service: value,
         servicePrice: catalogItem ? String(catalogItem.price) : "",
+        serviceDuration: String(catalogItem?.duration || 60),
+      }));
+      return;
+    }
+    if (name === "customService") {
+      setForm((current) => ({
+        ...current,
+        service: value,
+        servicePrice: "",
+        serviceDuration: "60",
       }));
       return;
     }
@@ -2844,11 +2888,13 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         form.servicePrice !== "" &&
         (!Number.isFinite(Number(form.servicePrice)) || Number(form.servicePrice) < 0)
       ) return alert("Стоимость услуги должна быть нулём или положительной суммой.");
-      const collision = db.clients.some((client) => {
-        if (client.id === item?.id || ["Отменен", "Не пришел"].includes(client.status)) return false;
-        return parseDate(client.datetime)?.getTime() === appointmentTime;
-      });
-      if (collision) return alert("На это время уже записан другой клиент.");
+      const collision = hasAppointmentConflict(
+        db.clients,
+        form,
+        db.services,
+        item?.id,
+      );
+      if (collision) return alert("Эта запись пересекается по времени с другой услугой. Проверьте длительность и выберите другое время.");
     }
     if (
       isWarehouse &&
@@ -2879,13 +2925,16 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
       const windowTime = parseDate(form.datetime)?.getTime();
       if (!windowTime || windowTime <= Date.now())
         return alert("Укажите дату и время в будущем!");
-      const duplicateWindow = db.windows.some(
-        (slot) => slot.id !== item?.id && parseDate(slot.datetime)?.getTime() === windowTime,
+      const duplicateWindow = hasAppointmentConflict(
+        db.windows,
+        { datetime: form.datetime, serviceDuration: 60 },
+        [],
+        item?.id,
       );
-      const occupied = db.clients.some(
-        (client) =>
-          !["Отменен", "Не пришел"].includes(client.status) &&
-          parseDate(client.datetime)?.getTime() === windowTime,
+      const occupied = hasAppointmentConflict(
+        db.clients,
+        { datetime: form.datetime, serviceDuration: 60 },
+        db.services,
       );
       if (duplicateWindow || occupied)
         return alert("На это время уже есть свободное окно или запись клиента.");
@@ -2898,8 +2947,12 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
           form.servicePrice === ""
             ? ""
             : centsToAmount(amountToCents(form.servicePrice)),
+        serviceDuration: serviceDurationMinutes(form, db.services),
+        paymentExcluded: Boolean(form.paymentExcluded),
         author: item?.author || user,
       };
+      const exclusionChanged =
+        Boolean(item?.paymentExcluded) !== value.paymentExcluded;
       mutate(
         {
           clients: item
@@ -2911,7 +2964,9 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
               }
             : {}),
         },
-        `${item ? "Изменена запись" : "Добавлен клиент"}: ${form.car}`,
+        exclusionChanged
+          ? `${value.paymentExcluded ? "Исключён из списка оплат" : "Возвращён в список оплат"}: ${form.car}`
+          : `${item ? "Изменена запись" : "Добавлен клиент"}: ${form.car}`,
       );
     }
     if (isWarehouse) {
@@ -2974,6 +3029,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         date: transactionDate.toISOString(),
         ...currentPeriod(transactionDate),
         debtAllocations: allocation.allocations,
+        serviceAmountCents: allocation.serviceAmountCents,
         author: user,
       };
       mutate(
@@ -3012,6 +3068,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
             ...currentPeriod(transactionDate),
             debtId: value.id,
             debtAllocations: [],
+            serviceAmountCents: 0,
             author: user,
           },
           ...incomes,
@@ -3104,19 +3161,29 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
                 <option>Другое</option>
               </select>
             </Field>
-            <Field label="Услуга">
-              <input
+            <Field label="Услуга из прайс-листа">
+              <select
                 name="service"
-                list="service-catalog-options"
-                value={form.service}
+                value={db.services.some((service) => service.name === form.service) ? form.service : "__custom__"}
                 onChange={update}
-                placeholder="Детейлинг / Химчистка"
-              />
-              <datalist id="service-catalog-options">
-                {db.services.map((service) => <option key={service.id} value={service.name}>{`${money(service.price)} · ${service.duration} мин.`}</option>)}
-              </datalist>
+              >
+                <option value="__custom__">Своя услуга / не из прайса</option>
+                {db.services.map((service) => (
+                  <option key={service.id} value={service.name}>
+                    {service.name} · {money(service.price)} · {service.duration} мин.
+                  </option>
+                ))}
+              </select>
             </Field>
-            <Field label="Стоимость услуги (MDL)">
+            <Field label="Своя услуга (необязательно)">
+              <input
+                name="customService"
+                value={db.services.some((service) => service.name === form.service) ? "" : form.service}
+                onChange={update}
+                placeholder="Введите услугу вручную"
+              />
+            </Field>
+            <Field label="Цена для этой записи (MDL) · можно изменить">
               <input
                 name="servicePrice"
                 type="number"
@@ -3126,7 +3193,24 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
                 onChange={update}
                 placeholder="Например, 1500"
               />
+              <small className="field-hint">
+                При выборе услуги из прайса цена подставляется автоматически. Здесь можно задать индивидуальную цену.
+              </small>
             </Field>
+            <label className="checkbox-field payment-exclusion-field">
+              <input
+                type="checkbox"
+                checked={Boolean(form.paymentExcluded)}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    paymentExcluded: event.target.checked,
+                  }))
+                }
+              />
+              <span>Убрать из списка ожидающих оплат</span>
+              <small>Для расчёта вне приложения. Поступление в кассу не создаётся.</small>
+            </label>
             <Field label="Дата и время">
               <input
                 name="datetime"

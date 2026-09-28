@@ -80,6 +80,34 @@ export function hasOpenDebt(debts, clientId) {
   );
 }
 
+export function totalPaidForClient(incomes, clientId) {
+  return sumAmounts(
+    incomes.filter(
+      (income) => clientIdKey(income.clientId) === clientIdKey(clientId),
+    ),
+  );
+}
+
+export function outstandingForClient(db, client) {
+  const servicePrice = amountToCents(client.servicePrice);
+  const debtBalance = amountToCents(
+    sumAmounts(
+      db.debts.filter(
+        (debt) =>
+          clientIdKey(debt.clientId) === clientIdKey(client.id) && !debt.paid,
+      ),
+    ),
+  );
+  if (servicePrice > 0) {
+    const serviceBalance = Math.max(
+      0,
+      servicePrice - amountToCents(totalPaidForClient(db.incomes, client.id)),
+    );
+    return centsToAmount(Math.max(serviceBalance, debtBalance));
+  }
+  return centsToAmount(debtBalance);
+}
+
 export function getUnpaidClients(db) {
   return db.clients.filter(
     (client) => {
@@ -87,10 +115,14 @@ export function getUnpaidClients(db) {
         (income) => clientIdKey(income.clientId) === clientIdKey(client.id),
       );
       const activeAppointment = !["Отменен", "Не пришел"].includes(client.status);
-      return (
-        hasOpenDebt(db.debts, client.id) ||
-        (!receivedPayment && activeAppointment)
-      );
+      const servicePrice = amountToCents(client.servicePrice);
+      if (servicePrice > 0)
+        return (
+          (activeAppointment &&
+            amountToCents(totalPaidForClient(db.incomes, client.id)) < servicePrice) ||
+          hasOpenDebt(db.debts, client.id)
+        );
+      return hasOpenDebt(db.debts, client.id) || (activeAppointment && !receivedPayment);
     },
   );
 }

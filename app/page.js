@@ -36,10 +36,13 @@ import {
   formatMoney,
   getUnpaidClients,
   MONTHS,
+  monthLabel,
+  outstandingForClient,
   parseRecordDate,
   periodKeyFor,
   reversePaymentFromDebts,
   sumAmounts,
+  totalPaidForClient,
 } from "./lib/finance.mjs";
 
 const SCRIPT_URL = "/api/db";
@@ -83,6 +86,20 @@ const currentPeriod = (date = new Date()) => ({
   year: date.getFullYear(),
   periodKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
 });
+const financeYears = (db) => {
+  const currentYear = new Date().getFullYear();
+  const recentYears = Array.from({ length: 11 }, (_, offset) =>
+    String(currentYear - offset),
+  );
+  const recordYears = [
+    ...db.incomes,
+    ...db.expenses,
+    ...db.withdrawals,
+  ].map((item) => periodKeyFor(item).slice(0, 4));
+  return [...new Set([...recentYears, ...recordYears])].sort(
+    (first, second) => second.localeCompare(first),
+  );
+};
 const subtractAmounts = (first, second) =>
   centsToAmount(amountToCents(first) - amountToCents(second));
 const matchesPeriod = (item, selectedPeriod) => {
@@ -222,6 +239,7 @@ export default function Home() {
   const saveQueue = useRef(Promise.resolve());
   const pendingSaves = useRef(0);
   const dataRevision = useRef(0);
+  const localSavePending = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth")
@@ -272,31 +290,50 @@ export default function Home() {
     const revision = dataRevision.current;
     setSync("Сохранение...");
     const serialized = JSON.stringify(next);
+    localSavePending.current = true;
+    try {
+      localStorage.setItem(
+        BACKUP_KEY,
+        JSON.stringify({
+          savedAt: new Date().toISOString(),
+          pending: true,
+          data: next,
+        }),
+      );
+    } catch {
+      // Continue with the cloud save if local storage is unavailable.
+    }
     pendingSaves.current += 1;
     saveQueue.current = saveQueue.current.then(async () => {
       try {
-        try {
-          localStorage.setItem(
-            BACKUP_KEY,
-            JSON.stringify({ savedAt: new Date().toISOString(), data: next }),
-          );
-        } catch {
-          // Local backup is best-effort; the cloud write remains authoritative.
-        }
         const response = await fetch(SCRIPT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: serialized,
         });
         if (!response.ok) throw new Error(`Save failed (${response.status})`);
-        try {
-          localStorage.setItem("angel-detailing-db", serialized);
-        } catch {
-          // Keep the successful server response even if browser storage is unavailable.
+        if (revision === dataRevision.current) {
+          localSavePending.current = false;
+          try {
+            localStorage.setItem("angel-detailing-db", serialized);
+            localStorage.setItem(
+              BACKUP_KEY,
+              JSON.stringify({
+                savedAt: new Date().toISOString(),
+                pending: false,
+                data: next,
+              }),
+            );
+          } catch {
+            // Keep the successful server response even if browser storage is unavailable.
+          }
+          setSync("✓ Сохранено");
         }
-        if (revision === dataRevision.current) setSync("✓ Сохранено");
       } catch {
-        if (revision === dataRevision.current) setSync("⚠ Ошибка сохранения");
+        if (revision === dataRevision.current) {
+          localSavePending.current = true;
+          setSync("⚠ Ошибка сохранения");
+        }
       } finally {
         pendingSaves.current = Math.max(0, pendingSaves.current - 1);
         if (revision === dataRevision.current) setLoadingMessage(null);
@@ -305,6 +342,10 @@ export default function Home() {
     return saveQueue.current;
   };
   const loadData = async () => {
+    if (localSavePending.current && pendingSaves.current === 0) {
+      void persist(dbRef.current);
+      return;
+    }
     if (
       syncInFlight.current ||
       pendingSaves.current > 0 ||
@@ -340,6 +381,17 @@ export default function Home() {
         const parsedDb = normalizeDb(JSON.parse(cachedDb));
         dbRef.current = parsedDb;
         setDb(parsedDb);
+      }
+      const backup = JSON.parse(localStorage.getItem(BACKUP_KEY) || "null");
+      const backupDb = backup?.data ? normalizeDb(backup.data) : null;
+      if (
+        backupDb &&
+        Object.values(backupDb).every(Array.isArray) &&
+        (backup.pending || !cachedDb)
+      ) {
+        dbRef.current = backupDb;
+        setDb(backupDb);
+        localSavePending.current = Boolean(backup.pending);
       }
     } catch {
       localStorage.removeItem("angel-detailing-db");
@@ -499,16 +551,7 @@ export default function Home() {
       profit: subtractAmounts(income, expenses),
     };
   }, [db, profitMonth]);
-  const years = useMemo(() => {
-    const keys = [
-      ...db.incomes,
-      ...db.expenses,
-      ...db.withdrawals,
-    ].map((item) => periodKeyFor(item).slice(0, 4));
-    return [...new Set([String(new Date().getFullYear()), ...keys])].sort(
-      (first, second) => second.localeCompare(first),
-    );
-  }, [db]);
+  const years = useMemo(() => financeYears(db), [db]);
   const monthly = useMemo(
     () =>
       MONTHS.map((month, index) => {
@@ -886,8 +929,8 @@ function Dashboard({
     ["Доходы всего", totals.income, "success", TrendingUp],
     ["Затраты всего", totals.commonExpenses, "warning", Receipt],
     [
-      "Активные долги",
-      sumAmounts(db.debts.filter((debt) => !debt.paid)),
+      "Остаток к оплате",
+      sumAmounts(getUnpaidClients(db), (client) => outstandingForClient(db, client)),
       "danger",
       Bell,
     ],
@@ -942,8 +985,8 @@ function Dashboard({
             <small>
               {label === "Баланс кассы"
                 ? "после расходов и выводов"
-                : label === "Активные долги"
-                  ? "ожидается к погашению"
+                : label === "Остаток к оплате"
+                  ? "по заданным ценам и долгам"
                   : "за всё время"}
             </small>
           </div>
@@ -1248,13 +1291,23 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
                 <td>
                   <Actions
                     onEdit={() => openModal({ type: "debt", item: debt })}
-                    onDelete={() =>
-                      confirm("Удалить долг?") &&
-                      mutate(
-                        { debts: db.debts.filter((row) => row.id !== debt.id) },
-                        `Удален долг: ${client?.car || debt.clientId}`,
-                      )
-                    }
+                    onDelete={() => {
+                      const linkedPayment = db.incomes.some(
+                        (income) =>
+                          clientIdKey(income.debtId) === clientIdKey(debt.id) ||
+                          income.debtAllocations?.some(
+                            (allocation) =>
+                              clientIdKey(allocation.debtId) === clientIdKey(debt.id),
+                          ),
+                      );
+                      if (linkedPayment)
+                        return alert("Нельзя удалить долг, связанный с оплатой. Сначала удалите связанную оплату из истории.");
+                      if (confirm("Удалить долг?"))
+                        mutate(
+                          { debts: db.debts.filter((row) => row.id !== debt.id) },
+                          `Удален долг: ${client?.car || debt.clientId}`,
+                        );
+                    }}
                   />
                 </td>
               </tr>
@@ -1819,18 +1872,8 @@ function Clients({
             </td>
             <td>
               {(() => {
-                const received = sumAmounts(
-                  db.incomes.filter(
-                    (income) => clientIdKey(income.clientId) === clientIdKey(client.id),
-                  ),
-                );
-                const outstanding = sumAmounts(
-                  db.debts.filter(
-                    (debt) =>
-                      clientIdKey(debt.clientId) === clientIdKey(client.id) &&
-                      !debt.paid,
-                  ),
-                );
+                const received = totalPaidForClient(db.incomes, client.id);
+                const outstanding = outstandingForClient(db, client);
                 const label = outstanding > 0
                   ? received > 0 ? "Частично" : "Ожидает"
                   : received > 0 ? "Оплачено" : "Не оплачено";
@@ -1883,6 +1926,7 @@ function Expenses({ db, sort, sortBy, mutate }) {
     category: "",
     amount: "",
     month: currentMonth(),
+    year: String(new Date().getFullYear()),
     source: "Общие",
     comment: "",
   });
@@ -1893,6 +1937,7 @@ function Expenses({ db, sort, sortBy, mutate }) {
     if (!form.category.trim() || !validPositiveAmount(form.amount))
       return alert("Укажите категорию и положительную сумму в MDL!");
     const transactionDate = new Date();
+    const periodKey = `${form.year}-${String(MONTHS.indexOf(form.month) + 1).padStart(2, "0")}`;
     mutate(
       {
         expenses: [
@@ -1901,7 +1946,8 @@ function Expenses({ db, sort, sortBy, mutate }) {
             id: createId(),
             amount: centsToAmount(amountToCents(form.amount)),
             date: transactionDate.toISOString(),
-            ...currentPeriod(transactionDate),
+            periodKey,
+            year: Number(form.year),
             author: "TUDOR",
           },
           ...db.expenses,
@@ -1937,6 +1983,11 @@ function Expenses({ db, sort, sortBy, mutate }) {
           </Field>
           <Field label="Месяц">
             <MonthSelect name="month" value={form.month} onChange={update} />
+          </Field>
+          <Field label="Год">
+            <select name="year" value={form.year} onChange={update}>
+              {financeYears(db).map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
           </Field>
           <Field label="Источник средств">
             <select name="source" value={form.source} onChange={update}>
@@ -2006,7 +2057,7 @@ function Expenses({ db, sort, sortBy, mutate }) {
           ).map((item) => (
             <tr key={item.id}>
               <td>{dateText(item.date)}</td>
-              <td>{item.month}</td>
+              <td>{monthLabel(periodKeyFor(item))}</td>
               <td>{item.category}</td>
               <td className="negative">-{money(item.amount)}</td>
               <td>{item.source}</td>
@@ -2329,6 +2380,7 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
   const [form, setForm] = useState({
     amount: "",
     month: currentMonth(),
+    year: String(new Date().getFullYear()),
     comment: "",
   });
   const update = (event) =>
@@ -2338,6 +2390,7 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
     if (!validPositiveAmount(form.amount))
       return alert("Введите положительную сумму вывода!");
     const transactionDate = new Date();
+    const periodKey = `${form.year}-${String(MONTHS.indexOf(form.month) + 1).padStart(2, "0")}`;
     mutate(
       {
         withdrawals: [
@@ -2346,7 +2399,8 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
             id: createId(),
             amount: centsToAmount(amountToCents(form.amount)),
             date: transactionDate.toISOString(),
-            ...currentPeriod(transactionDate),
+            periodKey,
+            year: Number(form.year),
             author: "TUDOR",
           },
           ...db.withdrawals,
@@ -2375,6 +2429,11 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
           <Field label="Месяц">
             <MonthSelect name="month" value={form.month} onChange={update} />
           </Field>
+          <Field label="Год">
+            <select name="year" value={form.year} onChange={update}>
+              {financeYears(db).map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+          </Field>
         </div>
         <Field label="Комментарий / На что выведено">
           <textarea
@@ -2400,7 +2459,7 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
           {sort(db.withdrawals, "date").map((item) => (
             <tr key={item.id}>
               <td>{dateText(item.date)}</td>
-              <td>{item.month}</td>
+              <td>{monthLabel(periodKeyFor(item))}</td>
               <td className="warning">-{money(item.amount)}</td>
               <td>
                 <Badge>{item.author || "TUDOR"}</Badge>
@@ -2469,6 +2528,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
             phone: "",
             seatType: "",
             service: "",
+            servicePrice: "",
             datetime: preset?.datetime || "",
             windowId: preset?.windowId || "",
             status: "В ожидании",
@@ -2497,6 +2557,10 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
     if (isClient) {
       const appointmentTime = parseDate(form.datetime)?.getTime();
       if (!appointmentTime) return alert("Укажите корректную дату и время записи.");
+      if (
+        form.servicePrice !== "" &&
+        (!Number.isFinite(Number(form.servicePrice)) || Number(form.servicePrice) < 0)
+      ) return alert("Стоимость услуги должна быть нулём или положительной суммой.");
       const collision = db.clients.some((client) => {
         if (client.id === item?.id || ["Отменен", "Не пришел"].includes(client.status)) return false;
         return parseDate(client.datetime)?.getTime() === appointmentTime;
@@ -2516,6 +2580,18 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
       return alert("Выберите клиента и укажите положительную сумму оплаты!");
     if (isDebt && (!form.clientId || !validPositiveAmount(form.amount)))
       return alert("Выберите клиента и укажите сумму долга!");
+    if (
+      isDebt &&
+      item &&
+      clientIdKey(item.clientId) !== clientIdKey(form.clientId) &&
+      db.incomes.some(
+        (income) =>
+          clientIdKey(income.debtId) === clientIdKey(item.id) ||
+          income.debtAllocations?.some(
+            (allocation) => clientIdKey(allocation.debtId) === clientIdKey(item.id),
+          ),
+      )
+    ) return alert("Нельзя сменить клиента у долга с историей оплат. Создайте новый долг для другого клиента.");
     if (isWindow) {
       const windowTime = parseDate(form.datetime)?.getTime();
       if (!windowTime || windowTime <= Date.now())
@@ -2535,6 +2611,10 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
       const value = {
         ...form,
         id: item?.id || createId(),
+        servicePrice:
+          form.servicePrice === ""
+            ? ""
+            : centsToAmount(amountToCents(form.servicePrice)),
         author: item?.author || user,
       };
       mutate(
@@ -2594,6 +2674,10 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
       );
       if (!client || !paymentClients.some((row) => clientIdKey(row.id) === clientIdKey(client.id)))
         return alert("Этот клиент уже оплатил или отсутствует в списке должников.");
+      if (
+        amountToCents(client.servicePrice) > 0 &&
+        amountToCents(form.amount) > amountToCents(outstandingForClient(db, client))
+      ) return alert(`Оплата больше остатка. К оплате: ${money(outstandingForClient(db, client))}.`);
       const transactionDate = new Date();
       const allocation = applyPaymentToDebts(
         db.debts,
@@ -2743,6 +2827,17 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
                 value={form.service}
                 onChange={update}
                 placeholder="Детейлинг / Химчистка"
+              />
+            </Field>
+            <Field label="Стоимость услуги (MDL)">
+              <input
+                name="servicePrice"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.servicePrice ?? ""}
+                onChange={update}
+                placeholder="Например, 1500"
               />
             </Field>
             <Field label="Дата и время">

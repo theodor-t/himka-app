@@ -6,6 +6,7 @@ import {
   centsToAmount,
   formatMoney,
   getUnpaidClients,
+  outstandingForClient,
   parseRecordDate,
   periodKeyFor,
   reversePaymentFromDebts,
@@ -58,4 +59,29 @@ test("payments reduce debts by exact cents and can be reversed", () => {
   const finalPayment = applyPaymentToDebts(payment.debts, 7, amountToCents(20));
   assert.equal(finalPayment.debts[0].amount, 0);
   assert.equal(finalPayment.debts[0].paid, true);
+});
+
+test("priced client remains selectable for partial payments and disappears when fully paid", () => {
+  const db = {
+    clients: [{ id: "visit-1", servicePrice: 1500, status: "Выполнено" }],
+    incomes: [],
+    debts: [],
+  };
+  assert.equal(outstandingForClient(db, db.clients[0]), 1500);
+  db.incomes.push({ clientId: "visit-1", amount: 500 });
+  assert.equal(outstandingForClient(db, db.clients[0]), 1000);
+  assert.equal(getUnpaidClients(db).length, 1);
+  db.incomes.push({ clientId: "visit-1", amount: 1000 });
+  assert.equal(outstandingForClient(db, db.clients[0]), 0);
+  assert.equal(getUnpaidClients(db).length, 0);
+});
+
+test("separate open debt remains payable after the quoted service price is covered", () => {
+  const db = {
+    clients: [{ id: 1, servicePrice: 100, status: "Выполнено" }],
+    incomes: [{ clientId: 1, amount: 100 }],
+    debts: [{ id: "d1", clientId: 1, amount: 25, paid: false }],
+  };
+  assert.equal(outstandingForClient(db, db.clients[0]), 25);
+  assert.equal(getUnpaidClients(db).length, 1);
 });

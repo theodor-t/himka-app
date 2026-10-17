@@ -19,12 +19,19 @@ import {
   ChartNoAxesCombined,
   CarFront,
   Check,
+  Cloud,
+  CloudDrizzle,
+  CloudLightning,
+  CloudRain,
+  CloudSnow,
+  CloudSun,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Copy,
   Clock3,
+  Droplets,
   Eye,
   FileText,
   History,
@@ -32,6 +39,7 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  MapPin,
   MessageCircle,
   MessageSquareText,
   Minus,
@@ -48,6 +56,8 @@ import {
   Users,
   Video,
   Wallet,
+  Wind,
+  Sun,
   X,
   Trash2,
   Pencil,
@@ -95,9 +105,23 @@ const EMPTY_DB = {
   videoDescriptions: [],
   messageTemplates: [],
 };
+const WEATHER_LOCATIONS = [
+  { id: "chisinau", name: "Кишинёв", latitude: 47.0105, longitude: 28.8638 },
+  { id: "balti", name: "Бельцы", latitude: 47.753994, longitude: 27.918414 },
+  { id: "cahul", name: "Кагул", latitude: 45.9079, longitude: 28.1944 },
+  { id: "orhei", name: "Оргеев", latitude: 47.3833, longitude: 28.8167 },
+  { id: "comrat", name: "Комрат", latitude: 46.3000, longitude: 28.65 },
+  { id: "ungheni", name: "Унгены", latitude: 47.2108, longitude: 27.8005 },
+  { id: "soroca", name: "Сороки", latitude: 48.1566, longitude: 28.2849 },
+  { id: "tiraspol", name: "Тирасполь", latitude: 46.8403, longitude: 29.6433 },
+];
+const WEATHER_LOCATION_STORAGE_KEY = "angel-detailing-weather-location";
+const clientWeatherCache = new Map();
+const clientWeatherRequests = new Map();
 const NAV = [
   ["home", "Главная Панель", LayoutDashboard],
   ["analytics", "Аналитика", ChartNoAxesCombined],
+  ["weather", "Погода", CloudSun],
   ["services", "Услуги и цены", Sparkles],
   ["videoDescriptions", "Описания для видео", Video],
   ["reminderTemplates", "Шаблоны напоминаний", MessageSquareText],
@@ -112,7 +136,7 @@ const NAV = [
   ["logs", "8. Журнал логов", History],
 ];
 const NAV_GROUPS = [
-  { title: "ОБЗОР", items: ["home", "analytics"] },
+  { title: "ОБЗОР", items: ["home", "analytics", "weather"] },
   { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "clients", "services", "videoDescriptions", "reminderTemplates"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "withdrawals", "debts"] },
   { title: "ОПЕРАЦИИ", items: ["warehouse", "windows", "logs"] },
@@ -1088,6 +1112,7 @@ function PageContent({
         openProfile={(client) => openModal({ type: "client-profile", item: client })}
       />
     );
+  if (page === "weather") return <WeatherPage />;
   if (page === "calendar")
     return <CalendarPage db={db} openModal={openModal} />;
   if (page === "expenses")
@@ -1499,7 +1524,7 @@ function ReminderComposer({ client, templates = [], onClose }) {
   };
   return (
     <Modal title="Напоминание о записи" onClose={onClose}>
-      <div className="reminder-composer-client"><span className="client-avatar"><CarFront size={20} /></span><div><strong>{client.car}</strong><small>{client.phone || "Для отправки добавьте номер телефона"}</small></div></div>
+      <div className="reminder-composer-client"><span className="client-avatar"><CarFront size={20} /></span><div><strong>{client.car}</strong><small>{client.phone || "Для отправки добавьте номер телефона"}</small><small>Запись: {dateText(client.datetime)} <ClientWeatherBadge datetime={client.datetime} /></small></div></div>
       <Field label="Язык сообщения"><select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="ru">Русский</option><option value="ro">Română</option></select></Field>
       <Field label="Текст напоминания"><textarea className="reminder-message-input" value={message} readOnly /></Field>
       <div className="reminder-composer-actions"><Button variant="secondary" icon={copied ? Check : Copy} onClick={copyMessage}>{copied ? "Скопировано" : "Скопировать текст"}</Button></div>
@@ -1543,8 +1568,8 @@ function ClientProfile({ client, db, onClose, onEdit, onDelete, onRebook, onPaym
       <div className="client-profile-head"><div className="client-avatar"><CarFront size={25} /></div><div><span className="dashboard-kicker">CLIENT PROFILE</span><h2>{client.car}</h2><p>{client.phone || "Телефон не указан"}</p></div><Badge status={statusClass(client.status)}>{client.status}</Badge>{client.paymentExcluded && <Badge status="cancelled">Не в списке оплат</Badge>}</div>
       <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button variant="secondary" icon={CalendarPlus} onClick={onRebook}>Повторить запись</Button><Button icon={MessageCircle} onClick={onReminder}>Напоминание</Button><Button variant="secondary" icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button><Button variant="secondary" icon={Trash2} className="delete-profile-btn" onClick={onDelete}>Удалить клиента полностью</Button></div>
       <div className="client-profile-stats"><div><span>Оплачено</span><strong>{money(paid)}</strong></div><div><span>Остаток к оплате</span><strong>{money(openBalance)}</strong></div><div><span>Визитов</span><strong>{relatedClients.length}</strong></div></div>
-      <section className="profile-section"><div className="card-header">Последние визиты</div>{relatedClients.slice().sort((a, b) => (parseDate(b.datetime)?.getTime() || 0) - (parseDate(a.datetime)?.getTime() || 0)).map((visit) => <div className="profile-history-row" key={visit.id}><span><strong>{visit.service || "Услуга не указана"}</strong><small>{dateText(visit.datetime)}</small></span><Badge status={statusClass(visit.status)}>{visit.status}</Badge><strong>{visit.servicePrice ? money(visit.servicePrice) : "Цена не указана"}</strong></div>)}</section>
-      <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : payment.debtAllocations?.length ? "Платёж с погашением долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)}</small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>
+      <section className="profile-section"><div className="card-header">Последние визиты</div>{relatedClients.slice().sort((a, b) => (parseDate(b.datetime)?.getTime() || 0) - (parseDate(a.datetime)?.getTime() || 0)).map((visit) => <div className="profile-history-row" key={visit.id}><span><strong>{visit.service || "Услуга не указана"}</strong><small>{dateText(visit.datetime)} <ClientWeatherBadge datetime={visit.datetime} /></small></span><Badge status={statusClass(visit.status)}>{visit.status}</Badge><strong>{visit.servicePrice ? money(visit.servicePrice) : "Цена не указана"}</strong></div>)}</section>
+      <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : payment.debtAllocations?.length ? "Платёж с погашением долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)} <ClientWeatherBadge datetime={payment.date} /></small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>
       {client.phone && <a className="client-call-link" href={`tel:${client.phone}`}>Позвонить клиенту <ArrowRight size={14} /></a>}
     </Modal>
   );
@@ -1681,6 +1706,7 @@ function Dashboard({
                         ? `Сегодня, ${dateText(client.datetime).slice(11)}`
                         : dateText(client.datetime)}
                       {client.service ? ` · ${client.service}` : ""}
+                      <ClientWeatherBadge datetime={client.datetime} />
                     </span>
                   </div>
                   <Badge status={statusClass(client.status)}>
@@ -1942,7 +1968,7 @@ function Debtors({ db, sort, sortBy, openModal, mutate, user }) {
                 <td>
                   <Badge>{debt.author || user}</Badge>
                 </td>
-                <td>{dateText(debt.date)}</td>
+                <td>{dateText(debt.date)} <ClientWeatherBadge datetime={debt.date} /></td>
                 <td>
                   <Actions
                     onEdit={() => openModal({ type: "debt", item: debt })}
@@ -2161,7 +2187,7 @@ function PrintReport({ db, totals, todayAppointments, monthly, reportYear }) {
           <div className="print-appointment" key={client.id}>
             <strong>
               {dateText(client.datetime).slice(11)} ·{" "}
-              {client.car || "Без имени"}
+              {client.car || "Без имени"} <ClientWeatherBadge datetime={client.datetime} />
             </strong>
             <span>
               {client.service || "Услуга не указана"} ·{" "}
@@ -2431,6 +2457,315 @@ const localDateTimeValue = (date) => {
   const pad = (part) => String(part).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
+const calendarDateKey = (date) => {
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+const weatherPresentation = (symbolCode = "") => {
+  const code = symbolCode.toLowerCase();
+  if (code.includes("thunder")) return { icon: CloudLightning, label: "Гроза" };
+  if (code.includes("snow") || code.includes("sleet")) return { icon: CloudSnow, label: "Снег" };
+  if (code.includes("drizzle")) return { icon: CloudDrizzle, label: "Морось" };
+  if (code.includes("rain")) return { icon: CloudRain, label: "Дождь" };
+  if (code.includes("fog")) return { icon: Cloud, label: "Туман" };
+  if (code.includes("clearsky")) return { icon: Sun, label: "Ясно" };
+  if (code.includes("partlycloudy") || code.includes("fair"))
+    return { icon: CloudSun, label: "Переменная облачность" };
+  if (code.includes("cloud") || code.includes("overcast"))
+    return { icon: Cloud, label: "Облачно" };
+  return { icon: CloudSun, label: "Переменная погода" };
+};
+
+function CalendarWeather({ dateKey, showHourly = false }) {
+  const [locationId, setLocationId] = useState("chisinau");
+  const [weather, setWeather] = useState({ status: "loading", forecast: null });
+  const location = WEATHER_LOCATIONS.find((item) => item.id === locationId) || WEATHER_LOCATIONS[0];
+
+  useEffect(() => {
+    try {
+      const savedLocation = localStorage.getItem(WEATHER_LOCATION_STORAGE_KEY);
+      if (WEATHER_LOCATIONS.some((item) => item.id === savedLocation))
+        setLocationId(savedLocation);
+    } catch {
+      // The default city remains available when browser storage is disabled.
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      lat: String(location.latitude),
+      lon: String(location.longitude),
+      date: dateKey,
+    });
+    setWeather({ status: "loading", forecast: null });
+    fetch(`/api/weather?${params}`, { signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Weather unavailable");
+        return payload;
+      })
+      .then(({ forecast, fetchedAt }) =>
+        setWeather({ status: forecast ? "ready" : "unavailable", forecast, fetchedAt }),
+      )
+      .catch((error) => {
+        if (error.name !== "AbortError")
+          setWeather({ status: "error", forecast: null });
+      });
+    return () => controller.abort();
+  }, [dateKey, location]);
+
+  const presentation = weather.forecast
+    ? weatherPresentation(weather.forecast.symbolCode)
+    : null;
+  const WeatherIcon = presentation?.icon;
+  const selectLocation = (event) => {
+    const nextLocation = event.target.value;
+    setLocationId(nextLocation);
+    try {
+      localStorage.setItem(WEATHER_LOCATION_STORAGE_KEY, nextLocation);
+      window.dispatchEvent(new Event("angel-weather-location-change"));
+    } catch {
+      // Location selection remains active for the current session.
+    }
+  };
+
+  return (
+    <section className="calendar-weather" aria-label="Прогноз погоды на выбранную дату">
+      <div className="calendar-weather-header">
+        <div className="calendar-weather-title">
+          <span>ПОГОДА НА ВЫБРАННЫЙ ДЕНЬ</span>
+          <strong>{location.name} · {new Date(`${dateKey}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</strong>
+        </div>
+        <label className="calendar-weather-location">
+          <MapPin size={15} />
+          <select value={locationId} onChange={selectLocation} aria-label="Город для прогноза погоды">
+            {WEATHER_LOCATIONS.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="calendar-weather-body" aria-live="polite">
+        {weather.status === "loading" && (
+          <div className="calendar-weather-message"><LoaderCircle size={18} className="loading-spinner" /> Загружаем прогноз…</div>
+        )}
+        {weather.status === "error" && (
+          <div className="calendar-weather-message error">Погода временно недоступна. Проверьте соединение и попробуйте выбрать дату ещё раз.</div>
+        )}
+        {weather.status === "unavailable" && (
+          <div className="calendar-weather-message">На эту дату прогноза нет. MET Norway предоставляет прогноз примерно на 9 дней вперёд.</div>
+        )}
+        {weather.status === "ready" && (
+          <>
+            <div className="calendar-weather-summary">
+              <div className="calendar-weather-condition">
+                <WeatherIcon size={38} strokeWidth={1.6} aria-hidden="true" />
+                <div>
+                  <strong>{Math.round(weather.forecast.temperatureMax)}° / {Math.round(weather.forecast.temperatureMin)}°</strong>
+                  <span>{presentation.label}</span>
+                </div>
+              </div>
+              <div className="calendar-weather-metric">
+                <Droplets size={17} />
+                <span><strong>{weather.forecast.precipitation.toLocaleString("ru-RU")} мм</strong><small>осадки</small></span>
+              </div>
+              <div className="calendar-weather-metric">
+                <Wind size={17} />
+                <span><strong>{Math.round(weather.forecast.windSpeedMax)} км/ч</strong><small>макс. ветер</small></span>
+              </div>
+            </div>
+            {showHourly && (
+              <div className="calendar-hourly">
+                <div className="calendar-hourly-header">
+                  <strong>{weather.forecast.hourly.every((hour) => hour.intervalHours === 1) ? "Почасовой прогноз" : "Прогноз по интервалам"}</strong>
+                  <span>{weather.forecast.hourly.length} точек · местное время</span>
+                </div>
+                <div className="calendar-hourly-grid">
+                  {weather.forecast.hourly.map((hour) => {
+                    const HourIcon = weatherPresentation(hour.symbolCode).icon;
+                    return (
+                      <article className="calendar-hour" key={`${dateKey}-${hour.time}`}>
+                        <time>{hour.time}</time>
+                        <HourIcon size={18} aria-hidden="true" />
+                        <strong>{hour.temperature == null ? "—" : `${Math.round(hour.temperature)}°`}</strong>
+                        <span><Droplets size={12} /> {hour.precipitation.toLocaleString("ru-RU")} мм</span>
+                        <span><Wind size={12} /> {hour.windSpeed == null ? "—" : `${Math.round(hour.windSpeed)} км/ч`}</span>
+                        {hour.intervalHours > 1 && <small>шаг {hour.intervalHours} ч</small>}
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <p className="calendar-weather-credit">
+        Прогноз <a href="https://api.met.no/" target="_blank" rel="noreferrer">MET Norway</a>, дневная сводка из почасовых данных · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>
+      </p>
+    </section>
+  );
+}
+
+const isWeatherForecastDate = (dateKey) => {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const [todayYear, todayMonth, todayDay] = calendarDateKey(new Date()).split("-").map(Number);
+  const daysFromToday = (Date.UTC(year, month - 1, day) - Date.UTC(todayYear, todayMonth - 1, todayDay)) / 86400000;
+  return daysFromToday >= 0 && daysFromToday <= 8;
+};
+
+const getClientWeather = (dateKey, location) => {
+  const cacheKey = `${location.id}:${dateKey}`;
+  if (clientWeatherCache.has(cacheKey))
+    return Promise.resolve(clientWeatherCache.get(cacheKey));
+  if (clientWeatherRequests.has(cacheKey))
+    return clientWeatherRequests.get(cacheKey);
+
+  const params = new URLSearchParams({
+    lat: String(location.latitude),
+    lon: String(location.longitude),
+    date: dateKey,
+  });
+  const request = fetch(`/api/weather?${params}`)
+    .then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Weather unavailable");
+      return payload.forecast || null;
+    })
+    .then((forecast) => {
+      clientWeatherCache.set(cacheKey, forecast);
+      if (clientWeatherCache.size > 120)
+        clientWeatherCache.delete(clientWeatherCache.keys().next().value);
+      return forecast;
+    })
+    .finally(() => clientWeatherRequests.delete(cacheKey));
+  clientWeatherRequests.set(cacheKey, request);
+  return request;
+};
+
+function ClientWeatherBadge({ datetime }) {
+  const appointmentDate = parseDate(datetime);
+  const dateKey = appointmentDate ? calendarDateKey(appointmentDate) : "";
+  const [locationId, setLocationId] = useState("chisinau");
+  const [forecast, setForecast] = useState(null);
+  const location = WEATHER_LOCATIONS.find((item) => item.id === locationId) || WEATHER_LOCATIONS[0];
+
+  useEffect(() => {
+    const updateLocation = () => {
+      try {
+        const savedLocation = localStorage.getItem(WEATHER_LOCATION_STORAGE_KEY);
+        if (WEATHER_LOCATIONS.some((item) => item.id === savedLocation))
+          setLocationId(savedLocation);
+      } catch {
+        // Keep the default location when browser storage is unavailable.
+      }
+    };
+    updateLocation();
+    window.addEventListener("angel-weather-location-change", updateLocation);
+    return () => window.removeEventListener("angel-weather-location-change", updateLocation);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!dateKey || !isWeatherForecastDate(dateKey)) {
+      setForecast(null);
+      return () => { active = false; };
+    }
+    getClientWeather(dateKey, location)
+      .then((result) => {
+        if (active) setForecast(result);
+      })
+      .catch(() => {
+        if (active) setForecast(null);
+      });
+    return () => { active = false; };
+  }, [dateKey, location]);
+
+  if (!forecast) return null;
+  const presentation = weatherPresentation(forecast.symbolCode);
+  const WeatherIcon = presentation.icon;
+  const temperature = forecast.temperatureMax == null
+    ? "—"
+    : `${Math.round(forecast.temperatureMax)}°`;
+  return (
+    <span className="client-weather-badge" title={`${presentation.label}, ${temperature} · ${location.name}`} aria-label={`Погода: ${presentation.label}, ${temperature}`}>
+      <WeatherIcon size={13} aria-hidden="true" />
+      <strong>{temperature}</strong>
+    </span>
+  );
+}
+
+function WeatherPage() {
+  const [dateKey, setDateKey] = useState(() => calendarDateKey(new Date()));
+  const quickDates = [
+    { offset: 0, label: "Сегодня" },
+    { offset: 1, label: "Завтра" },
+    { offset: 2, label: "Послезавтра" },
+  ].map((item) => {
+    const date = new Date();
+    date.setDate(date.getDate() + item.offset);
+    return { ...item, dateKey: calendarDateKey(date), date };
+  });
+  const presets = quickDates.map((item) => ({
+    ...item,
+    fullLabel: item.date.toLocaleDateString("ru-RU", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }),
+  }));
+
+  return (
+    <div className="weather-page">
+      <header className="weather-page-heading">
+        <div>
+          <span className="dashboard-kicker">ПОГОДА · МОЛДОВА</span>
+          <h2>Прогноз по часам</h2>
+        </div>
+      </header>
+      <div className="weather-page-controls">
+        <div className="weather-quick-dates" role="group" aria-label="Быстрый выбор даты">
+          {quickDates.map((item) => (
+            <button
+              className={dateKey === item.dateKey ? "active" : ""}
+              type="button"
+              key={item.offset}
+              aria-pressed={dateKey === item.dateKey}
+              onClick={() => setDateKey(item.dateKey)}
+            >
+              <strong>{item.label}</strong>
+              <span>{item.date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</span>
+            </button>
+          ))}
+        </div>
+        <label className="weather-date-picker">
+          <CalendarDays size={17} />
+          <span>Другая дата</span>
+          <input type="date" value={dateKey} onChange={(event) => setDateKey(event.target.value)} />
+        </label>
+      </div>
+      <nav className="weather-date-nav" aria-label="Прогноз на ближайшие дни">
+        {presets.map((item) => (
+          <button
+            type="button"
+            key={item.offset}
+            aria-current={dateKey === item.dateKey ? "date" : undefined}
+            onClick={() => setDateKey(item.dateKey)}
+          >
+            {item.fullLabel}<ChevronRight size={14} />
+          </button>
+        ))}
+        {dateKey !== calendarDateKey(new Date()) && (
+          <button type="button" onClick={() => setDateKey(calendarDateKey(new Date()))}>
+            К сегодняшнему дню<ArrowRight size={14} />
+          </button>
+        )}
+      </nav>
+      <CalendarWeather dateKey={dateKey} showHourly />
+    </div>
+  );
+}
 
 function CalendarPage({ db, openModal }) {
   const [week, setWeek] = useState(() => startOfWeek(new Date()));
@@ -2450,6 +2785,15 @@ function CalendarPage({ db, openModal }) {
         current.getMonth(),
         current.getDate() + amount,
       ));
+    const selectedDateKey = calendarDateKey(selectedDay);
+    const moveWeek = (amount) => {
+      setWeek((current) => new Date(
+        current.getFullYear(),
+        current.getMonth(),
+        current.getDate() + amount * 7,
+      ));
+      moveSelectedDay(amount * 7);
+    };
   const rangeLabel = `${dateText(days[0]).slice(0, 10)} — ${dateText(days[6]).slice(0, 10)}`;
   return (
     <section className="card calendar-card">
@@ -2463,7 +2807,7 @@ function CalendarPage({ db, openModal }) {
             className="btn-sm btn-qty"
             type="button"
             aria-label="Предыдущая неделя"
-            onClick={() => setWeek((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() - 7))}
+            onClick={() => moveWeek(-1)}
           >←</button>
           <Button
             variant="secondary"
@@ -2478,10 +2822,11 @@ function CalendarPage({ db, openModal }) {
             className="btn-sm btn-qty"
             type="button"
             aria-label="Следующая неделя"
-            onClick={() => setWeek((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() + 7))}
+            onClick={() => moveWeek(1)}
           >→</button>
         </div>
       </div>
+      <CalendarWeather dateKey={selectedDateKey} />
       <div className="calendar-week-grid">
         {days.map((day) => {
           const dayAppointments = appointments
@@ -2490,11 +2835,16 @@ function CalendarPage({ db, openModal }) {
           const suggestedTime = new Date(day);
           suggestedTime.setHours(day.toDateString() === new Date().toDateString() ? new Date().getHours() + 1 : 9, 0, 0, 0);
           return (
-            <article className="calendar-day" key={day.toISOString()}>
-              <div className="calendar-day-heading">
+            <article className={`calendar-day ${isSameDay(day, selectedDay) ? "selected" : ""}`} key={day.toISOString()}>
+              <button
+                className="calendar-day-heading"
+                type="button"
+                aria-pressed={isSameDay(day, selectedDay)}
+                onClick={() => setSelectedDay(day)}
+              >
                 <strong>{day.toLocaleDateString("ru-RU", { weekday: "short" })}</strong>
                 <span>{day.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}</span>
-              </div>
+              </button>
               <div className="calendar-day-events">
                 {dayAppointments.map((client) => (
                   <button
@@ -2503,7 +2853,7 @@ function CalendarPage({ db, openModal }) {
                     key={client.id}
                     onClick={() => openModal({ type: "client", item: client })}
                   >
-                    <strong>{dateText(client.datetime).slice(11)} · {client.car}</strong>
+                    <strong>{dateText(client.datetime).slice(11)} · {client.car} <ClientWeatherBadge datetime={client.datetime} /></strong>
                     <span>{client.service || client.phone || "Услуга не указана"}</span>
                     <Badge status={statusClass(client.status)}>{client.status}</Badge>
                   </button>
@@ -2533,7 +2883,7 @@ function CalendarPage({ db, openModal }) {
               key={client.id}
               onClick={() => openModal({ type: "client", item: client })}
             >
-              <strong>{dateText(client.datetime).slice(11)} · {client.car}</strong>
+              <strong>{dateText(client.datetime).slice(11)} · {client.car} <ClientWeatherBadge datetime={client.datetime} /></strong>
               <span>{client.service || client.phone || "Услуга не указана"}</span>
               <Badge status={statusClass(client.status)}>{client.status}</Badge>
             </button>
@@ -2662,7 +3012,7 @@ function Clients({
                   <div className="client-summary-name"><h3>{client.car || "Без названия"}</h3><span>{client.phone || "Телефон не указан"}</span></div>
                   <div className="client-summary-service"><Sparkles size={14} /><span>{client.service || "Услуга не указана"}</span><strong>{client.servicePrice ? money(client.servicePrice) : ""}</strong></div>
                   <div className="client-summary-footer">
-                    <span><CalendarDays size={14} />{dateText(client.datetime)}</span>
+                    <span><CalendarDays size={14} />{dateText(client.datetime)} <ClientWeatherBadge datetime={client.datetime} /></span>
                     <Badge status={paymentClass}>{paymentLabel}</Badge>
                   </div>
                   {client.comment && <p className="client-summary-note">{client.comment}</p>}
@@ -2990,7 +3340,7 @@ function Profit({
               );
               return (
                 <tr key={item.id}>
-                  <td>{dateText(item.date)}</td>
+                  <td>{dateText(item.date)} <ClientWeatherBadge datetime={item.date} /></td>
                   <td>
                     <strong>{client?.car || "Удаленный клиент"}</strong>
                   </td>
@@ -3720,7 +4070,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
               <span>Убрать из списка ожидающих оплат</span>
               <small>Для расчёта вне приложения. Поступление в кассу не создаётся.</small>
             </label>
-            <Field label="Дата и время">
+            <Field label={<span>Дата и время <ClientWeatherBadge datetime={form.datetime} /></span>}>
               <input
                 name="datetime"
                 type="datetime-local"

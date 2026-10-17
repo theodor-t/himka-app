@@ -77,6 +77,7 @@ import {
   normalizePhoneForMessaging,
   reminderChannelLinks,
 } from "./lib/messages.mjs";
+import { sortAuditLogsNewestFirst } from "./lib/audit.mjs";
 
 const SCRIPT_URL = "/api/db";
 const BACKUP_KEY = "angel-detailing-auto-backup";
@@ -207,7 +208,7 @@ const normalizeDb = (data) => ({
   ...(data || {}),
   debts: data?.debts || [],
   windows: data?.windows || [],
-  logs: data?.logs || [],
+  logs: sortAuditLogsNewestFirst(Array.isArray(data?.logs) ? data.logs : []),
   stockMovements: data?.stockMovements || [],
   services: data?.services || [],
   videoDescriptions: data?.videoDescriptions || [],
@@ -356,20 +357,29 @@ export default function Home() {
         "withdrawals",
         changes.withdrawals,
       );
+    const changedCollections = Object.keys(normalizedChanges).filter(
+      (collection) => collection !== "logs",
+    );
+    const logAction = typeof log === "string" && log.trim()
+      ? log.trim()
+      : `Изменены данные: ${changedCollections.join(", ") || "операция"}`;
+    const previousLogs = Array.isArray(normalizedChanges.logs)
+      ? normalizedChanges.logs
+      : Array.isArray(dbRef.current.logs)
+        ? dbRef.current.logs
+        : [];
     const next = {
       ...dbRef.current,
       ...normalizedChanges,
-      logs: [
+      logs: sortAuditLogsNewestFirst([
         {
           id: createId(),
           datetime: nowText(),
           user: user || "Система",
-          action: log,
+          action: logAction,
         },
-        ...(Array.isArray(normalizedChanges.logs)
-          ? normalizedChanges.logs
-          : dbRef.current.logs),
-      ],
+        ...previousLogs,
+      ]),
     };
     dataRevision.current += 1;
     dbRef.current = next;
@@ -533,6 +543,7 @@ export default function Home() {
   const navigate = (next) => {
     setPage(next);
     setMenuOpen(false);
+    setSort({ key: "", direction: 1 });
   };
   const sorted = (items, key, defaultDirection = 1) => {
     const activeKey = sort.key || key;
@@ -1146,7 +1157,7 @@ function PageContent({
         mutate={mutate}
       />
     );
-  return <Logs db={db} sort={sort} sortBy={sortBy} />;
+  return <Logs db={db} sync={sync} />;
 }
 
 function AnalyticsPage({ db, totals, monthly, years, reportYear, setReportYear }) {
@@ -2266,7 +2277,9 @@ function Table({ headers, children, sortBy }) {
   const [mobileSortKey, setMobileSortKey] = useState("");
   const [mobileDescending, setMobileDescending] = useState(false);
   const rows = Children.toArray(children);
+  const rowSignature = rows.map((row) => row.key || "").join("|");
   const totalPages = Math.max(1, Math.ceil(rows.length / 20));
+  useEffect(() => setCurrentPage(1), [rowSignature]);
   useEffect(
     () => setCurrentPage((page) => Math.min(page, totalPages)),
     [totalPages],
@@ -2551,6 +2564,8 @@ function Clients({
   mutate,
   openProfile,
 }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 12;
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
   const filteredClients = sort(
     db.clients.filter(
@@ -2563,6 +2578,17 @@ function Clients({
     ),
     "datetime",
     -1,
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / pageSize));
+  const visibleClients = filteredClients.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+  const firstVisible = filteredClients.length ? (currentPage - 1) * pageSize + 1 : 0;
+  const lastVisible = Math.min(currentPage * pageSize, filteredClients.length);
+  useEffect(
+    () => setCurrentPage((page) => Math.min(page, totalPages)),
+    [totalPages],
   );
   const upcomingCount = db.clients.filter((client) => {
     const date = parseDate(client.datetime);
@@ -2586,18 +2612,19 @@ function Clients({
       </section>
       <section className="clients-directory">
         <div className="clients-toolbar">
-          <div className="clients-toolbar-title"><div><h3>Клиентская база</h3><span>{filteredClients.length} записей</span></div></div>
+          <div className="clients-toolbar-title"><div><h3>Клиентская база</h3><span>{filteredClients.length ? `Показано ${firstVisible}–${lastVisible} из ${filteredClients.length}` : "0 записей"}</span></div></div>
           <div className="clients-filters">
-            <label className="clients-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Имя, авто, телефон или услуга" aria-label="Поиск клиентов" /></label>
-            <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Фильтр по статусу записи">
+            <label className="clients-search"><Search size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setCurrentPage(1); }} placeholder="Имя, авто, телефон или услуга" aria-label="Поиск клиентов" /></label>
+            <select value={status} onChange={(event) => { setStatus(event.target.value); setCurrentPage(1); }} aria-label="Фильтр по статусу записи">
               <option value="all">Все статусы</option>
               {["В ожидании", "Не пришел", "Отменен", "Выполнено"].map((item) => <option key={item}>{item}</option>)}
             </select>
           </div>
         </div>
         {filteredClients.length ? (
+          <>
           <div className="client-card-grid">
-            {filteredClients.map((client) => {
+            {visibleClients.map((client) => {
               const received = totalPaidForClient(db.incomes, client.id);
               const outstanding = outstandingForClient(db, client);
               const paymentLabel = client.paymentExcluded
@@ -2644,6 +2671,30 @@ function Clients({
               );
             })}
           </div>
+          {totalPages > 1 && (
+            <div className="pagination client-pagination" aria-label="Страницы клиентской базы">
+              <button
+                className="btn-sm btn-qty"
+                type="button"
+                aria-label="Предыдущая страница клиентов"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((page) => page - 1)}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span>Страница {currentPage} из {totalPages}</span>
+              <button
+                className="btn-sm btn-qty"
+                type="button"
+                aria-label="Следующая страница клиентов"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((page) => page + 1)}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          )}
+          </>
         ) : (
           <div className="clients-empty"><Users size={25} /><h3>Пока нет подходящих записей</h3><p>Попробуйте изменить поиск или создайте новую запись.</p><Button icon={Plus} onClick={() => openModal({ type: "client" })}>Добавить запись</Button></div>
         )}
@@ -3225,18 +3276,26 @@ function Withdrawals({ db, sort, sortBy, mutate }) {
     </>
   );
 }
-function Logs({ db, sort, sortBy }) {
+function Logs({ db, sync }) {
   return (
     <section className="card">
-      <div className="card-header">Журнал действий</div>
+      <div className="card-header logs-header">
+        <span>Журнал действий</span>
+        <div>
+          <span className="logs-count">{db.logs.length} событий</span>
+          <span
+            className={`logs-sync-status ${sync.includes("Ошибка") ? "error" : ""}`}
+            role="status"
+            aria-live="polite"
+          >
+            {sync}
+          </span>
+        </div>
+      </div>
       <Table
-        sortBy={sortBy}
-        headers={["Дата", "Пользователь", "Действие"].map((label, i) => [
-          label,
-          ["datetime", "user", "action"][i],
-        ])}
+        headers={["Дата", "Пользователь", "Действие"].map((label) => [label, ""])}
       >
-        {sort(db.logs, "datetime").map((log) => (
+        {sortAuditLogsNewestFirst(db.logs).map((log) => (
           <tr key={log.id}>
             <td>{log.datetime}</td>
             <td>

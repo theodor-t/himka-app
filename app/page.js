@@ -106,8 +106,8 @@ const EMPTY_DB = {
   messageTemplates: [],
 };
 const WEATHER_LOCATIONS = [
-  { id: "chisinau", name: "Кишинёв", latitude: 47.0105, longitude: 28.8638 },
   { id: "balti", name: "Бельцы", latitude: 47.753994, longitude: 27.918414 },
+  { id: "chisinau", name: "Кишинёв", latitude: 47.0105, longitude: 28.8638 },
   { id: "cahul", name: "Кагул", latitude: 45.9079, longitude: 28.1944 },
   { id: "orhei", name: "Оргеев", latitude: 47.3833, longitude: 28.8167 },
   { id: "comrat", name: "Комрат", latitude: 46.3000, longitude: 28.65 },
@@ -115,7 +115,7 @@ const WEATHER_LOCATIONS = [
   { id: "soroca", name: "Сороки", latitude: 48.1566, longitude: 28.2849 },
   { id: "tiraspol", name: "Тирасполь", latitude: 46.8403, longitude: 29.6433 },
 ];
-const WEATHER_LOCATION_STORAGE_KEY = "angel-detailing-weather-location";
+const WEATHER_LOCATION_STORAGE_KEY = "angel-detailing-weather-location-v2";
 const clientWeatherCache = new Map();
 const clientWeatherRequests = new Map();
 const NAV = [
@@ -2477,7 +2477,7 @@ const weatherPresentation = (symbolCode = "") => {
 };
 
 function CalendarWeather({ dateKey, showHourly = false }) {
-  const [locationId, setLocationId] = useState("chisinau");
+  const [locationId, setLocationId] = useState("balti");
   const [weather, setWeather] = useState({ status: "loading", forecast: null });
   const location = WEATHER_LOCATIONS.find((item) => item.id === locationId) || WEATHER_LOCATIONS[0];
 
@@ -2647,7 +2647,7 @@ const getClientWeather = (dateKey, location) => {
 function ClientWeatherBadge({ datetime }) {
   const appointmentDate = parseDate(datetime);
   const dateKey = appointmentDate ? calendarDateKey(appointmentDate) : "";
-  const [locationId, setLocationId] = useState("chisinau");
+  const [locationId, setLocationId] = useState("balti");
   const [forecast, setForecast] = useState(null);
   const location = WEATHER_LOCATIONS.find((item) => item.id === locationId) || WEATHER_LOCATIONS[0];
 

@@ -2914,6 +2914,8 @@ th {
 .client-profile-head p { margin: 4px 0 0; color: #a1ae9c; font-size: 11px; }
 .client-profile-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 15px 0; }
 .client-profile-actions .action-btn { width: auto; min-height: 39px; padding: 9px 12px; font-size: 9px; }
+.client-profile-actions .delete-profile-btn { color: #ffb6ad; border-color: #ef444466; }
+.client-profile-actions .delete-profile-btn:hover { color: #fff; border-color: #ef4444; background: #ef444426; }
 .client-profile-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
 .client-profile-stats > div { display: grid; gap: 7px; padding: 13px; border: 1px solid #ffffff0e; border-radius: 10px; background: #ffffff05; }
 .client-profile-stats span { color: #9eaa99; font-size: 9px; text-transform: uppercase; }

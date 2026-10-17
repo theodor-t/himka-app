@@ -12,6 +12,7 @@ import {
 import {
   Activity,
   ArrowRight,
+  ArrowUpDown,
   Bell,
   CalendarDays,
   CalendarPlus,
@@ -64,6 +65,7 @@ import {
   outstandingForClient,
   parseRecordDate,
   periodKeyFor,
+  removeClientHistory,
   reversePaymentFromDebts,
   sumAmounts,
   totalPaidForClient,
@@ -364,7 +366,9 @@ export default function Home() {
           user: user || "Система",
           action: log,
         },
-        ...dbRef.current.logs,
+        ...(Array.isArray(normalizedChanges.logs)
+          ? normalizedChanges.logs
+          : dbRef.current.logs),
       ],
     };
     dataRevision.current += 1;
@@ -562,10 +566,7 @@ export default function Home() {
         if (!Object.values(importedDb).every((value) => Array.isArray(value)))
           throw new Error();
         if (confirm("Заменить текущие данные выбранной резервной копией?")) {
-          dataRevision.current += 1;
-          dbRef.current = importedDb;
-          setDb(importedDb);
-          persist(importedDb);
+          mutate(importedDb, "Импортирована резервная копия данных");
         }
       } catch {
         alert(
@@ -575,6 +576,32 @@ export default function Home() {
       event.target.value = "";
     };
     reader.readAsText(file);
+  };
+  const deleteClientProfile = (client) => {
+    const currentDb = dbRef.current;
+    const phone = normalizePhoneForMessaging(client.phone);
+    const relatedClients = currentDb.clients.filter(
+      (candidate) =>
+        clientIdKey(candidate.id) === clientIdKey(client.id) ||
+        (phone && normalizePhoneForMessaging(candidate.phone) === phone),
+    );
+    const clientIds = relatedClients.map((candidate) => candidate.id);
+    const remaining = removeClientHistory(currentDb, clientIds);
+    const paymentCount = currentDb.incomes.length - remaining.incomes.length;
+    const debtCount = currentDb.debts.length - remaining.debts.length;
+    const displayName = client.car || "этого клиента";
+    if (!window.confirm(
+      `Полностью удалить ${displayName}? Будут удалены ${relatedClients.length} записей, ${paymentCount} оплат и ${debtCount} долгов; финансовые отчёты пересчитаются. Исторические события журнала останутся для аудита.`,
+    )) return;
+    mutate(
+      {
+        clients: remaining.clients,
+        incomes: remaining.incomes,
+        debts: remaining.debts,
+      },
+      `Удалён профиль клиента и связанные данные (${relatedClients.length} записей, ${paymentCount} оплат, ${debtCount} долгов)`,
+    );
+    setModal(null);
   };
 
   const totals = useMemo(() => {
@@ -682,7 +709,10 @@ export default function Home() {
         mutate={mutate}
         addLog={addLog}
         reload={loadData}
-        exportData={() => download(db)}
+        exportData={() => {
+          download(db);
+          addLog("Экспортирована резервная копия данных");
+        }}
         importData={importData}
       />
     ),
@@ -889,6 +919,7 @@ export default function Home() {
             db={db}
             onClose={() => setModal(null)}
             onEdit={() => setModal({ type: "client", item: modal.item })}
+            onDelete={() => deleteClientProfile(modal.item)}
             onRebook={() => setModal({
               type: "client",
               preset: {
@@ -1010,6 +1041,7 @@ function PageContent({
         reload={reload}
         exportData={exportData}
         importData={importData}
+        addLog={addLog}
         navigate={navigate}
         openModal={openModal}
       />
@@ -1069,6 +1101,7 @@ function PageContent({
         sortBy={sortBy}
         openModal={openModal}
         mutate={mutate}
+        addLog={addLog}
       />
     );
   if (page === "warehouse")
@@ -1485,10 +1518,10 @@ function ReminderComposer({ client, templates = [], onClose }) {
   );
 }
 
-function ClientProfile({ client, db, onClose, onEdit, onRebook, onPayment, onDebt, onReminder }) {
+function ClientProfile({ client, db, onClose, onEdit, onDelete, onRebook, onPayment, onDebt, onReminder }) {
   if (!client) return null;
-  const phoneKey = String(client.phone || "").replace(/\D/g, "");
-  const relatedClients = db.clients.filter((row) => row.id === client.id || (phoneKey && String(row.phone || "").replace(/\D/g, "") === phoneKey));
+  const phoneKey = normalizePhoneForMessaging(client.phone);
+  const relatedClients = db.clients.filter((row) => row.id === client.id || (phoneKey && normalizePhoneForMessaging(row.phone) === phoneKey));
   const relatedIds = new Set(relatedClients.map((row) => clientIdKey(row.id)));
   const payments = db.incomes.filter((item) => relatedIds.has(clientIdKey(item.clientId))).sort((a, b) => (parseDate(b.date)?.getTime() || 0) - (parseDate(a.date)?.getTime() || 0));
   const debts = db.debts.filter((item) => relatedIds.has(clientIdKey(item.clientId)));
@@ -1497,7 +1530,7 @@ function ClientProfile({ client, db, onClose, onEdit, onRebook, onPayment, onDeb
   return (
     <Modal title="Карточка клиента" onClose={onClose}>
       <div className="client-profile-head"><div className="client-avatar"><CarFront size={25} /></div><div><span className="dashboard-kicker">CLIENT PROFILE</span><h2>{client.car}</h2><p>{client.phone || "Телефон не указан"}</p></div><Badge status={statusClass(client.status)}>{client.status}</Badge>{client.paymentExcluded && <Badge status="cancelled">Не в списке оплат</Badge>}</div>
-      <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button variant="secondary" icon={CalendarPlus} onClick={onRebook}>Повторить запись</Button><Button icon={MessageCircle} onClick={onReminder}>Напоминание</Button><Button variant="secondary" icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button></div>
+      <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button variant="secondary" icon={CalendarPlus} onClick={onRebook}>Повторить запись</Button><Button icon={MessageCircle} onClick={onReminder}>Напоминание</Button><Button variant="secondary" icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button><Button variant="secondary" icon={Trash2} className="delete-profile-btn" onClick={onDelete}>Удалить клиента полностью</Button></div>
       <div className="client-profile-stats"><div><span>Оплачено</span><strong>{money(paid)}</strong></div><div><span>Остаток к оплате</span><strong>{money(openBalance)}</strong></div><div><span>Визитов</span><strong>{relatedClients.length}</strong></div></div>
       <section className="profile-section"><div className="card-header">Последние визиты</div>{relatedClients.slice().sort((a, b) => (parseDate(b.datetime)?.getTime() || 0) - (parseDate(a.datetime)?.getTime() || 0)).map((visit) => <div className="profile-history-row" key={visit.id}><span><strong>{visit.service || "Услуга не указана"}</strong><small>{dateText(visit.datetime)}</small></span><Badge status={statusClass(visit.status)}>{visit.status}</Badge><strong>{visit.servicePrice ? money(visit.servicePrice) : "Цена не указана"}</strong></div>)}</section>
       <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : payment.debtAllocations?.length ? "Платёж с погашением долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)}</small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>
@@ -1518,6 +1551,7 @@ function Dashboard({
   reload,
   exportData,
   importData,
+  addLog,
   navigate,
   openModal,
 }) {
@@ -1574,7 +1608,7 @@ function Dashboard({
             Прайс-лист
           </Button>
           <Button variant="secondary" icon={RefreshCw} onClick={reload} title="Обновить данные" aria-label="Обновить данные" />
-          <Button variant="secondary" icon={FileText} onClick={() => window.print()} title="Сформировать PDF" aria-label="Сформировать PDF" />
+          <Button variant="secondary" icon={FileText} onClick={() => { window.print(); addLog("Сформирован печатный отчёт"); }} title="Сформировать PDF" aria-label="Сформировать PDF" />
           <details className="dashboard-tools">
             <summary><Save size={15} /> Бэкап</summary>
             <div>
@@ -2819,6 +2853,7 @@ function Profit({
   sortBy,
   openModal,
   mutate,
+  addLog,
 }) {
   return (
     <>
@@ -2829,7 +2864,10 @@ function Profit({
             <Button
               variant="secondary"
               icon={FileText}
-              onClick={() => exportFinancialCsv(db, month)}
+              onClick={() => {
+                exportFinancialCsv(db, month);
+                addLog(`Экспортирован финансовый CSV: ${month}`);
+              }}
             >
               CSV
             </Button>

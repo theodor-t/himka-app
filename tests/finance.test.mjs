@@ -9,6 +9,7 @@ import {
   outstandingForClient,
   parseRecordDate,
   periodKeyFor,
+  removeClientHistory,
   reversePaymentFromDebts,
   sumAmounts,
 } from "../app/lib/finance.mjs";
@@ -124,4 +125,28 @@ test("manual payment exclusion hides a client without inventing income", () => {
   assert.equal(outstandingForClient(db, db.clients[0]), 400);
   assert.deepEqual(getUnpaidClients(db), []);
   assert.deepEqual(db.incomes, []);
+});
+
+test("removing a client group cascades visits, payments, debts, and debt allocations", () => {
+  const db = {
+    clients: [{ id: "visit-1" }, { id: "visit-2" }, { id: "other" }],
+    incomes: [
+      { id: "payment-1", clientId: "visit-1" },
+      { id: "debt-payment", clientId: "other", debtId: "debt-1" },
+      { id: "allocated-payment", clientId: "other", debtAllocations: [{ debtId: "debt-1" }] },
+      { id: "payment-other", clientId: "other" },
+    ],
+    debts: [
+      { id: "debt-1", clientId: "visit-2" },
+      { id: "debt-other", clientId: "other" },
+    ],
+    logs: [{ id: "log-1", action: "previous audit entry" }],
+  };
+
+  const result = removeClientHistory(db, ["visit-1", "visit-2"]);
+
+  assert.deepEqual(result.clients.map(({ id }) => id), ["other"]);
+  assert.deepEqual(result.incomes.map(({ id }) => id), ["payment-other"]);
+  assert.deepEqual(result.debts.map(({ id }) => id), ["debt-other"]);
+  assert.deepEqual(result.logs, db.logs);
 });

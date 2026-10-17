@@ -203,3 +203,28 @@ export function reversePaymentFromDebts(debts, allocations = []) {
     };
   });
 }
+
+export function removeClientHistory(db, clientIds) {
+  const removedClientIds = new Set(clientIds.map(clientIdKey));
+  const removedDebtIds = new Set(
+    db.debts
+      .filter((debt) => removedClientIds.has(clientIdKey(debt.clientId)) && debt.id != null)
+      .map((debt) => clientIdKey(debt.id)),
+  );
+  const referencesRemovedDebt = (debtId) =>
+    debtId != null && removedDebtIds.has(clientIdKey(debtId));
+
+  return {
+    ...db,
+    clients: db.clients.filter((client) => !removedClientIds.has(clientIdKey(client.id))),
+    incomes: db.incomes.filter(
+      (income) =>
+        !removedClientIds.has(clientIdKey(income.clientId)) &&
+        !referencesRemovedDebt(income.debtId) &&
+        !(income.debtAllocations || []).some((allocation) =>
+          referencesRemovedDebt(allocation.debtId),
+        ),
+    ),
+    debts: db.debts.filter((debt) => !removedClientIds.has(clientIdKey(debt.clientId))),
+  };
+}

@@ -60,27 +60,41 @@ export function appointmentReminderMessage(
   );
 }
 
+export function normalizePhoneForMessaging(phone, defaultCountryCode = "373") {
+  const rawPhone = String(phone || "").trim();
+  let digits = rawPhone.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  else if (!rawPhone.startsWith("+") && !digits.startsWith(defaultCountryCode)) {
+    digits = digits.startsWith("0")
+      ? `${defaultCountryCode}${digits.slice(1)}`
+      : `${defaultCountryCode}${digits}`;
+  }
+  if (digits.length < 8 || digits.length > 15) return "";
+  if (digits.startsWith("373") && digits.length !== 11) return "";
+  return digits;
+}
+
 export function reminderChannelLinks(phone, message) {
-  const digits = String(phone || "").replace(/\D/g, "");
+  const digits = normalizePhoneForMessaging(phone);
   const encodedMessage = encodeURIComponent(message);
   return [
-    { id: "sms", label: "SMS", href: `sms:+${digits}?body=${encodedMessage}` },
+    { id: "sms", label: "SMS", href: digits ? `sms:+${digits}?body=${encodedMessage}` : "" },
     {
       id: "whatsapp",
       label: "WhatsApp",
-      href: `https://wa.me/${digits}?text=${encodedMessage}`,
+      href: digits ? `https://wa.me/${digits}?text=${encodedMessage}` : "",
     },
     {
       id: "viber",
       label: "Viber",
-      href: `viber://chat?number=${encodeURIComponent(`+${digits}`)}`,
+      href: digits ? `viber://chat?number=%2B${digits}` : "",
       copyBeforeOpen: true,
     },
     {
       id: "telegram",
       label: "Telegram",
-      href: `https://t.me/+${digits}`,
-      copyBeforeOpen: true,
+      href: digits ? `https://t.me/+${digits}?text=${encodedMessage}` : "",
     },
   ];
 }

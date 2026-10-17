@@ -1,6 +1,14 @@
 "use client";
 
-import { Children, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Activity,
   ArrowRight,
@@ -11,6 +19,8 @@ import {
   CarFront,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   Copy,
   Clock3,
@@ -62,6 +72,7 @@ import {
   appointmentReminderMessage,
   DEFAULT_REMINDER_TEMPLATES,
   REMINDER_VARIABLES,
+  normalizePhoneForMessaging,
   reminderChannelLinks,
 } from "./lib/messages.mjs";
 
@@ -812,6 +823,19 @@ export default function Home() {
                 placeholder="Поиск клиента..."
                 aria-label="Поиск клиента по имени, авто или телефону"
               />
+              {mobileSearchOpen && (
+                <button
+                  className="mobile-search-close"
+                  type="button"
+                  aria-label="Закрыть поиск"
+                  onClick={() => {
+                    setGlobalSearch("");
+                    setMobileSearchOpen(false);
+                  }}
+                >
+                  <X size={17} />
+                </button>
+              )}
               {globalSearch.trim() && (
                 <div className="global-search-results">
                   {db.clients
@@ -865,6 +889,17 @@ export default function Home() {
             db={db}
             onClose={() => setModal(null)}
             onEdit={() => setModal({ type: "client", item: modal.item })}
+            onRebook={() => setModal({
+              type: "client",
+              preset: {
+                car: modal.item.car,
+                phone: modal.item.phone,
+                seatType: modal.item.seatType,
+                service: modal.item.service,
+                servicePrice: modal.item.servicePrice,
+                serviceDuration: modal.item.serviceDuration,
+              },
+            })}
             onPayment={() => setModal({ type: "income", preset: { clientId: modal.item.id } })}
             onDebt={() => setModal({ type: "debt", preset: { clientId: modal.item.id } })}
             onReminder={() => setModal({ type: "reminder", item: modal.item })}
@@ -1396,7 +1431,7 @@ function ReminderComposer({ client, templates = [], onClose }) {
   if (!client) return null;
   const selectedTemplate = templates.find((item) => item.language === language)?.template;
   const message = appointmentReminderMessage(client, language, selectedTemplate);
-  const digits = String(client.phone || "").replace(/\D/g, "");
+  const digits = normalizePhoneForMessaging(client.phone);
   const channels = reminderChannelLinks(client.phone, message);
   const copyMessage = async () => {
     try {
@@ -1444,13 +1479,13 @@ function ReminderComposer({ client, templates = [], onClose }) {
           </a>
         ))}
       </div>
-      {!digits && <p className="reminder-copy-error">У клиента не указан номер телефона — добавьте его в карточке перед отправкой.</p>}
-      <p className="reminder-channel-note">SMS и WhatsApp откроют чат с текстом. Viber и Telegram откроют переписку по номеру, а текст скопируется автоматически — вставьте его в поле сообщения.</p>
+      {!digits && <p className="reminder-copy-error">{client.phone ? "Номер не распознан. Для Молдовы укажите 069123456 или +37369123456; для другой страны — международный номер с +." : "Добавьте номер клиента, чтобы подготовить ссылки для отправки."}</p>}
+      <p className="reminder-channel-note">SMS, WhatsApp и Telegram откроются с подготовленным текстом. Viber откроет чат по номеру, а текст будет скопирован для вставки. Telegram может не найти контакт из-за настроек приватности; для Viber нужно установленное приложение.</p>
     </Modal>
   );
 }
 
-function ClientProfile({ client, db, onClose, onEdit, onPayment, onDebt, onReminder }) {
+function ClientProfile({ client, db, onClose, onEdit, onRebook, onPayment, onDebt, onReminder }) {
   if (!client) return null;
   const phoneKey = String(client.phone || "").replace(/\D/g, "");
   const relatedClients = db.clients.filter((row) => row.id === client.id || (phoneKey && String(row.phone || "").replace(/\D/g, "") === phoneKey));
@@ -1462,7 +1497,7 @@ function ClientProfile({ client, db, onClose, onEdit, onPayment, onDebt, onRemin
   return (
     <Modal title="Карточка клиента" onClose={onClose}>
       <div className="client-profile-head"><div className="client-avatar"><CarFront size={25} /></div><div><span className="dashboard-kicker">CLIENT PROFILE</span><h2>{client.car}</h2><p>{client.phone || "Телефон не указан"}</p></div><Badge status={statusClass(client.status)}>{client.status}</Badge>{client.paymentExcluded && <Badge status="cancelled">Не в списке оплат</Badge>}</div>
-      <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button icon={MessageCircle} onClick={onReminder}>Напоминание</Button><Button variant="secondary" icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button></div>
+      <div className="client-profile-actions"><Button variant="secondary" icon={Pencil} onClick={onEdit}>Запись</Button><Button variant="secondary" icon={CalendarPlus} onClick={onRebook}>Повторить запись</Button><Button icon={MessageCircle} onClick={onReminder}>Напоминание</Button><Button variant="secondary" icon={CircleDollarSign} onClick={onPayment} disabled={!getUnpaidClients(db).some((row) => clientIdKey(row.id) === clientIdKey(client.id))}>Принять оплату</Button><Button variant="secondary" icon={Plus} onClick={onDebt}>Добавить долг</Button></div>
       <div className="client-profile-stats"><div><span>Оплачено</span><strong>{money(paid)}</strong></div><div><span>Остаток к оплате</span><strong>{money(openBalance)}</strong></div><div><span>Визитов</span><strong>{relatedClients.length}</strong></div></div>
       <section className="profile-section"><div className="card-header">Последние визиты</div>{relatedClients.slice().sort((a, b) => (parseDate(b.datetime)?.getTime() || 0) - (parseDate(a.datetime)?.getTime() || 0)).map((visit) => <div className="profile-history-row" key={visit.id}><span><strong>{visit.service || "Услуга не указана"}</strong><small>{dateText(visit.datetime)}</small></span><Badge status={statusClass(visit.status)}>{visit.status}</Badge><strong>{visit.servicePrice ? money(visit.servicePrice) : "Цена не указана"}</strong></div>)}</section>
       <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : payment.debtAllocations?.length ? "Платёж с погашением долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)}</small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>
@@ -2194,6 +2229,8 @@ function MonthlyChart({ data, embedded = false, bare = false, showHeader = true 
 
 function Table({ headers, children, sortBy }) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [mobileSortKey, setMobileSortKey] = useState("");
+  const [mobileDescending, setMobileDescending] = useState(false);
   const rows = Children.toArray(children);
   const totalPages = Math.max(1, Math.ceil(rows.length / 20));
   useEffect(
@@ -2201,21 +2238,74 @@ function Table({ headers, children, sortBy }) {
     [totalPages],
   );
   const visibleRows = rows.slice((currentPage - 1) * 20, currentPage * 20);
+  const labeledRows = visibleRows.map((row) => {
+    if (!isValidElement(row) || row.type !== "tr") return row;
+    let columnIndex = 0;
+    const cells = Children.map(row.props.children, (cell) => {
+      if (!isValidElement(cell) || cell.type !== "td") return cell;
+      const label = headers[columnIndex]?.[0];
+      columnIndex += 1;
+      return cloneElement(cell, {
+        "data-label": cell.props.colSpan ? undefined : label,
+        "aria-label": cell.props.colSpan ? undefined : label,
+      });
+    });
+    return cloneElement(row, undefined, cells);
+  });
   return (
     <>
       <div className="table-responsive">
+        <div className="mobile-table-tools">
+          <label>
+            <span>Сортировка</span>
+            <select
+              aria-label="Сортировать записи по колонке"
+              value={mobileSortKey}
+              onChange={(event) => {
+                const key = event.target.value;
+                setMobileSortKey(key);
+                setMobileDescending(false);
+                if (key) sortBy(key);
+              }}
+            >
+              <option value="">Без сортировки</option>
+              {headers.filter(([, key]) => key).map(([label, key]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="btn-sm btn-qty"
+            type="button"
+            disabled={!mobileSortKey}
+            aria-label={mobileDescending ? "Сортировать по возрастанию" : "Сортировать по убыванию"}
+            onClick={() => {
+              if (mobileSortKey) {
+                sortBy(mobileSortKey);
+                setMobileDescending((value) => !value);
+              }
+            }}
+          ><ArrowUpDown size={16} /></button>
+        </div>
         <table>
           <thead>
             <tr>
               {headers.map(([label, key]) => (
-                <th key={label} onClick={() => key && sortBy(key)}>
-                  {label}
-                  {key && " ⇳"}
+                <th key={label}>
+                  {key ? (
+                    <button
+                      className="table-sort"
+                      type="button"
+                      onClick={() => sortBy(key)}
+                    >
+                      {label}<span aria-hidden="true"> ⇳</span>
+                    </button>
+                  ) : label}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>{visibleRows}</tbody>
+          <tbody>{labeledRows}</tbody>
         </table>
       </div>
       {totalPages > 1 && (
@@ -2297,12 +2387,22 @@ const localDateTimeValue = (date) => {
 
 function CalendarPage({ db, openModal }) {
   const [week, setWeek] = useState(() => startOfWeek(new Date()));
+  const [selectedDay, setSelectedDay] = useState(() => new Date());
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(week);
     date.setDate(week.getDate() + index);
     return date;
   });
   const appointments = db.clients.filter((client) => parseDate(client.datetime));
+    const dayAppointments = appointments
+      .filter((client) => isSameDay(client.datetime, selectedDay))
+      .sort((first, second) => parseDate(first.datetime) - parseDate(second.datetime));
+    const moveSelectedDay = (amount) =>
+      setSelectedDay((current) => new Date(
+        current.getFullYear(),
+        current.getMonth(),
+        current.getDate() + amount,
+      ));
   const rangeLabel = `${dateText(days[0]).slice(0, 10)} — ${dateText(days[6]).slice(0, 10)}`;
   return (
     <section className="card calendar-card">
@@ -2321,7 +2421,11 @@ function CalendarPage({ db, openModal }) {
           <Button
             variant="secondary"
             type="button"
-            onClick={() => setWeek(startOfWeek(new Date()))}
+            onClick={() => {
+              const today = new Date();
+              setWeek(startOfWeek(today));
+              setSelectedDay(today);
+            }}
           >Сегодня</Button>
           <button
             className="btn-sm btn-qty"
@@ -2367,6 +2471,35 @@ function CalendarPage({ db, openModal }) {
             </article>
           );
         })}
+      </div>
+      <div className="calendar-mobile-agenda">
+        <div className="calendar-mobile-day-nav">
+          <button className="btn-sm btn-qty" type="button" aria-label="Предыдущий день" onClick={() => moveSelectedDay(-1)}><ChevronLeft size={18} /></button>
+          <strong>{selectedDay.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}</strong>
+          <button className="btn-sm btn-qty" type="button" aria-label="Следующий день" onClick={() => moveSelectedDay(1)}><ChevronRight size={18} /></button>
+        </div>
+        <div className="calendar-mobile-events">
+          {dayAppointments.length ? dayAppointments.map((client) => (
+            <button
+              className={`calendar-event ${statusClass(client.status)}`}
+              type="button"
+              key={client.id}
+              onClick={() => openModal({ type: "client", item: client })}
+            >
+              <strong>{dateText(client.datetime).slice(11)} · {client.car}</strong>
+              <span>{client.service || client.phone || "Услуга не указана"}</span>
+              <Badge status={statusClass(client.status)}>{client.status}</Badge>
+            </button>
+          )) : <span className="calendar-empty">На этот день записей нет</span>}
+        </div>
+        <Button icon={Plus} onClick={() => {
+          const suggestedTime = new Date(selectedDay);
+          const hour = selectedDay.toDateString() === new Date().toDateString()
+            ? Math.min(new Date().getHours() + 1, 23)
+            : 9;
+          suggestedTime.setHours(hour, 0, 0, 0);
+          openModal({ type: "client", preset: { datetime: localDateTimeValue(suggestedTime) } });
+        }}>Записать на этот день</Button>
       </div>
     </section>
   );
@@ -3097,12 +3230,12 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         : { ...item }
       : isClient
         ? {
-            car: "",
-            phone: "",
-            seatType: "",
-            service: "",
-            servicePrice: "",
-            serviceDuration: "60",
+            car: preset?.car || "",
+            phone: preset?.phone || "",
+            seatType: preset?.seatType || "",
+            service: preset?.service || "",
+            servicePrice: preset?.servicePrice ?? "",
+            serviceDuration: String(preset?.serviceDuration || 60),
             paymentExcluded: false,
             datetime: preset?.datetime || "",
             windowId: preset?.windowId || "",

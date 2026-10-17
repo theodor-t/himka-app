@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   appointmentReminderMessage,
+  normalizePhoneForMessaging,
   reminderChannelLinks,
 } from "../app/lib/messages.mjs";
 
@@ -35,11 +36,20 @@ test("all four reminder channels receive a prepared message", () => {
   assert.match(channels[0].href, /^sms:\+37369123456\?body=/);
   assert.match(channels[1].href, /^https:\/\/wa\.me\/37369123456\?text=/);
   assert.equal(channels[2].href, "viber://chat?number=%2B37369123456");
-  assert.equal(channels[3].href, "https://t.me/+37369123456");
+  assert.equal(channels[3].href, `https://t.me/+37369123456?text=${encodeURIComponent(message)}`);
   assert.equal(channels[2].copyBeforeOpen, true);
-  assert.equal(channels[3].copyBeforeOpen, true);
+  assert.equal(channels[3].copyBeforeOpen, undefined);
   assert.ok(channels[0].href.includes("BMW%20X5"));
   assert.ok(channels[1].href.includes("BMW%20X5"));
+});
+
+test("normalizes Moldovan mobile numbers and rejects malformed local numbers", () => {
+  for (const phone of ["069 123 456", "0 (69) 123-456", "69 123 456", "+373 69 123 456", "00373 69 123 456"]) {
+    assert.equal(normalizePhoneForMessaging(phone), "37369123456");
+  }
+  assert.equal(normalizePhoneForMessaging("+40 721 234 567"), "40721234567");
+  assert.equal(normalizePhoneForMessaging("069 123 45"), "");
+  assert.ok(reminderChannelLinks("069 123 45", "Text").every(({ href }) => !href));
 });
 
 test("custom reminders replace documented variables and leave unknown tokens visible", () => {

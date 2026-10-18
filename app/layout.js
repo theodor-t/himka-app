@@ -61,8 +61,11 @@ export const metadata = {
   },
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/angel-logo.webp",
-    apple: "/angel-logo.webp",
+    icon: [
+      { url: "/angel-app-icon-192.webp", sizes: "192x192", type: "image/webp" },
+      { url: "/angel-app-icon.webp", sizes: "512x512", type: "image/webp" },
+    ],
+    apple: "/angel-app-icon-192.webp",
   },
   appleWebApp: {
     capable: true,

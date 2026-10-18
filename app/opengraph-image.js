@@ -5,7 +5,7 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default function OpenGraphImage() {
-  const logoUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/angel-logo.png`;
+  const logoUrl = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/angel-logo-og.png`;
   return new ImageResponse(
     <div
       style={{
@@ -22,37 +22,10 @@ export default function OpenGraphImage() {
     >
       <img
         src={logoUrl}
-        width="120"
-        height="120"
-        style={{ objectFit: "cover", borderRadius: 18 }}
+        width="220"
+        height="188"
+        style={{ objectFit: "contain" }}
       />
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "18px",
-          color: "#ff003c",
-          fontSize: 26,
-          fontWeight: 700,
-          letterSpacing: "4px",
-        }}
-      >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "2px solid #ff003c",
-            borderRadius: 12,
-            fontSize: 30,
-          }}
-        >
-          A
-        </div>
-        ANGEL DETAILING
-      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         <div style={{ fontSize: 68, fontWeight: 700, letterSpacing: "1px" }}>
           Система учета

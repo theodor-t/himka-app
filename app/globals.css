@@ -96,15 +96,13 @@ button {
     0 0 15px #ff003c26;
 }
 .auth-icon {
-  width: 58px;
-  height: 58px;
+  width: min(100%, 220px);
+  aspect-ratio: 881 / 753;
+  height: auto;
   margin: 0 auto 13px;
   display: grid;
   place-items: center;
-  color: var(--red);
-  background: #18181b;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  overflow: hidden;
 }
 .auth-icon img,
 .brand-icon img {
@@ -115,7 +113,8 @@ button {
   border-radius: inherit;
 }
 .auth-icon img {
-  object-fit: cover;
+  object-fit: contain;
+  border-radius: 0;
 }
 .auth-card h2 {
   margin: 0;

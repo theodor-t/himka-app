@@ -797,7 +797,7 @@ export default function Home() {
           <div className="sidebar-header">
             <div className="brand">
               <span className="brand-icon">
-                <img src="/angel-logo.webp" alt="ANGEL DETAILING" />
+                <img src="/angel-app-icon.webp" alt="ANGEL DETAILING" />
               </span>
               <span className="brand-text">
                 ANGEL <small>DETAILING</small>
@@ -2114,7 +2114,7 @@ function PrintReport({ db, totals, todayAppointments, monthly, reportYear }) {
           <h1>Операционный отчёт</h1>
           <p>Сформирован {dateText(new Date())}</p>
         </div>
-        <img src="/angel-logo.png" alt="ANGEL DETAILING" />
+        <img src="/angel-logo.webp" alt="ANGEL DETAILING" />
       </div>
       <div className="print-report-grid">
         <div>

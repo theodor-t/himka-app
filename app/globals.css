@@ -1021,6 +1021,35 @@ h1 {
   display: grid;
   gap: 3px;
 }
+.appointment-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.appointment-status-select {
+  max-width: 112px;
+  padding: 6px 19px 6px 7px;
+  border: 1px solid #ffffff16;
+  border-radius: 7px;
+  color: #dce6d7;
+  background: #111712;
+  font-size: 9px;
+}
+.appointment-reminder-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  flex: none;
+  place-items: center;
+  border: 1px solid #baff0024;
+  border-radius: 8px;
+  color: var(--red);
+  background: #baff0008;
+}
+.appointment-reminder-button:hover {
+  border-color: #baff0060;
+  background: #baff0014;
+}
 .appointment-item strong,
 .appointment-item span {
   overflow: hidden;
@@ -1589,6 +1618,65 @@ tr:last-child td {
   .dashboard-actions .action-btn,
   .dashboard-actions .file-btn {
     width: 100%;
+  }
+  .dashboard-mobile-quick-actions {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 16px;
+  }
+  .dashboard-mobile-quick-heading {
+    display: grid;
+    gap: 3px;
+  }
+  .dashboard-mobile-quick-heading strong {
+    color: var(--white);
+    font-size: 13px;
+  }
+  .dashboard-mobile-quick-heading span {
+    color: #899586;
+    font-size: 9px;
+  }
+  .dashboard-mobile-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .dashboard-mobile-quick-grid button {
+    min-width: 0;
+    min-height: 68px;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 6px;
+    padding: 8px 4px;
+    border: 1px solid #ffffff12;
+    border-radius: 9px;
+    color: #dce6d7;
+    background: linear-gradient(145deg, #151c16, #101510);
+    font-size: 9px;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .dashboard-mobile-quick-grid button svg {
+    width: 18px;
+    height: 18px;
+    color: var(--red);
+  }
+  .dashboard-mobile-quick-grid button:disabled {
+    opacity: 0.45;
+  }
+  .appointment-item-actions {
+    grid-column: 2;
+    justify-self: end;
+  }
+  .appointment-status-select {
+    max-width: 132px;
+    min-height: 38px;
+    font-size: 10px;
+  }
+  .appointment-reminder-button {
+    width: 40px;
+    height: 40px;
   }
   .dashboard-metrics {
     width: 100%;
@@ -2909,6 +2997,9 @@ th {
 }
 .dashboard-actions .action-btn:not(.btn-secondary) {
   padding-inline: 16px;
+}
+.dashboard-mobile-quick-actions {
+  display: none;
 }
 .dashboard-tools {
   position: relative;

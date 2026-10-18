@@ -1078,6 +1078,7 @@ function PageContent({
         importData={importData}
         addLog={addLog}
         navigate={navigate}
+        mutate={mutate}
         openModal={openModal}
       />
     );
@@ -1590,6 +1591,7 @@ function Dashboard({
   addLog,
   navigate,
   openModal,
+  mutate,
 }) {
   const today = new Date();
   const appointments = db.clients
@@ -1654,6 +1656,22 @@ function Dashboard({
           </details>
         </div>
       </section>
+      <nav className="dashboard-mobile-quick-actions" aria-label="Быстрые действия">
+        <div className="dashboard-mobile-quick-heading">
+          <strong>Быстрые действия</strong>
+          <span>Основные операции без поиска по меню</span>
+        </div>
+        <div className="dashboard-mobile-quick-grid">
+          <button type="button" disabled={!getUnpaidClients(db).length} onClick={() => openModal({ type: "income" })}><CircleDollarSign /><span>Оплата</span></button>
+          <button type="button" onClick={() => openModal({ type: "expense" })}><Receipt /><span>Расход</span></button>
+          <button type="button" onClick={() => openModal({ type: "withdrawal" })}><Wallet /><span>Вывод</span></button>
+          <button type="button" onClick={() => openModal({ type: "warehouse" })}><Package /><span>Товар</span></button>
+          <button type="button" onClick={() => openModal({ type: "debt" })}><CircleDollarSign /><span>Долг</span></button>
+          <button type="button" onClick={() => openModal({ type: "window" })}><CalendarPlus /><span>Свободное окно</span></button>
+          <button type="button" onClick={() => navigate("clients")}><Users /><span>Клиенты</span></button>
+          <button type="button" onClick={() => navigate("calendar")}><CalendarDays /><span>Календарь</span></button>
+        </div>
+      </nav>
       <section className="dashboard-metrics">
         {dashboardMetrics.map(([label, value, color, Icon]) => (
           <div className={`dashboard-metric ${color}`} key={label}>
@@ -3662,6 +3680,8 @@ function Logs({ db, sync }) {
 
 function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
   const isClient = type === "client";
+  const isExpense = type === "expense";
+  const isWithdrawal = type === "withdrawal";
   const isWarehouse = type === "warehouse";
   const isDebt = type === "debt";
   const isWindow = type === "window";
@@ -3689,7 +3709,23 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
             status: "В ожидании",
             comment: "",
           }
-        : isWarehouse
+        : isExpense
+          ? {
+              category: "",
+              amount: "",
+              month: currentMonth(),
+              year: String(new Date().getFullYear()),
+              source: "Общие",
+              comment: "",
+            }
+          : isWithdrawal
+            ? {
+                amount: "",
+                month: currentMonth(),
+                year: String(new Date().getFullYear()),
+                comment: "",
+              }
+            : isWarehouse
           ? { name: "", qty: "", minQty: 2 }
           : isDebt
             ? {
@@ -3764,6 +3800,10 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         Number(form.minQty ?? 2) < 0)
     )
       return alert("Заполните название и количество!");
+    if (isExpense && (!form.category.trim() || !validPositiveAmount(form.amount)))
+      return alert("Укажите категорию и положительную сумму в MDL!");
+    if (isWithdrawal && !validPositiveAmount(form.amount))
+      return alert("Введите положительную сумму вывода!");
     if (type === "income" && (!form.clientId || !validPositiveAmount(form.amount)))
       return alert("Выберите клиента и укажите положительную сумму оплаты!");
     if (isDebt && (!form.clientId || !validPositiveAmount(form.amount)))
@@ -3826,6 +3866,40 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         exclusionChanged
           ? `${value.paymentExcluded ? "Исключён из списка оплат" : "Возвращён в список оплат"}: ${form.car}`
           : `${item ? "Изменена запись" : "Добавлен клиент"}: ${form.car}`,
+      );
+    }
+    if (isExpense) {
+      const transactionDate = new Date();
+      const periodKey = `${form.year}-${String(MONTHS.indexOf(form.month) + 1).padStart(2, "0")}`;
+      const value = {
+        ...form,
+        id: createId(),
+        amount: centsToAmount(amountToCents(form.amount)),
+        date: transactionDate.toISOString(),
+        periodKey,
+        year: Number(form.year),
+        author: user,
+      };
+      mutate(
+        { expenses: [value, ...db.expenses] },
+        `Затрата: ${value.category} - ${money(value.amount)} (${value.source})`,
+      );
+    }
+    if (isWithdrawal) {
+      const transactionDate = new Date();
+      const periodKey = `${form.year}-${String(MONTHS.indexOf(form.month) + 1).padStart(2, "0")}`;
+      const value = {
+        ...form,
+        id: createId(),
+        amount: centsToAmount(amountToCents(form.amount)),
+        date: transactionDate.toISOString(),
+        periodKey,
+        year: Number(form.year),
+        author: user,
+      };
+      mutate(
+        { withdrawals: [value, ...db.withdrawals] },
+        `Вывод средств: -${money(value.amount)} MDL`,
       );
     }
     if (isWarehouse) {
@@ -3983,11 +4057,49 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
                 ? item
                   ? "Редактировать окно"
                   : "Новое свободное окно"
-                : "Добавить оплату"
+                : isExpense
+                  ? "Добавить расход"
+                  : isWithdrawal
+                    ? "Вывод денег из кассы"
+                    : "Добавить оплату"
       }
       onClose={onClose}
     >
       <form onSubmit={save}>
+        {isExpense && (
+          <>
+            <Field label="Категория расхода">
+              <input
+                name="category"
+                value={form.category}
+                onChange={update}
+                placeholder="Автохимия / Аренда"
+                autoFocus
+              />
+            </Field>
+            <Field label="Сумма (MDL)">
+              <input name="amount" type="number" min="0.01" step="0.01" value={form.amount} onChange={update} placeholder="1500" />
+            </Field>
+            <div className="form-grid">
+              <Field label="Месяц"><MonthSelect name="month" value={form.month} onChange={update} /></Field>
+              <Field label="Год"><select name="year" value={form.year} onChange={update}>{financeYears(db).map((year) => <option key={year} value={year}>{year}</option>)}</select></Field>
+              <Field label="Источник средств"><select name="source" value={form.source} onChange={update}><option>Общие</option><option>Личные средства</option></select></Field>
+            </div>
+            <Field label="Комментарий"><textarea name="comment" value={form.comment} onChange={update} placeholder="Детали расхода" /></Field>
+          </>
+        )}
+        {isWithdrawal && (
+          <>
+            <Field label="Сумма вывода (MDL)">
+              <input name="amount" type="number" min="0.01" step="0.01" value={form.amount} onChange={update} placeholder="2000" autoFocus />
+            </Field>
+            <div className="form-grid">
+              <Field label="Месяц"><MonthSelect name="month" value={form.month} onChange={update} /></Field>
+              <Field label="Год"><select name="year" value={form.year} onChange={update}>{financeYears(db).map((year) => <option key={year} value={year}>{year}</option>)}</select></Field>
+            </div>
+            <Field label="На что выведено"><textarea name="comment" value={form.comment} onChange={update} placeholder="Личные нужды / зарплата" /></Field>
+          </>
+        )}
         {isClient && (
           <>
             <Field label="Марка авто / Имя">

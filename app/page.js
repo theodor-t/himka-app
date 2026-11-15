@@ -164,6 +164,7 @@ const NAV = [
   ["debts", "Должники", Wallet],
   ["analytics", "Аналитика", ChartNoAxesCombined],
   ["businessAdvisor", "AI Бизнес-советник", BrainCircuit],
+  ["businessAdvisorChat", "AI-чат", MessageCircle],
   ["notifications", "Уведомления", Bell],
   ["weather", "Погода", CloudSun],
   ["videoDescriptions", "Описания для видео", Video],
@@ -176,7 +177,7 @@ const NAV_GROUPS = [
   { title: "МАСТЕРСКАЯ И КЛИЕНТЫ", items: ["calendar", "orders", "customers", "clients", "workPosts", "waitlist", "services"] },
   { title: "ОПЕРАЦИИ", items: ["warehouse", "suppliers", "windows"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "financialGoals", "withdrawals", "debts"] },
-  { title: "ДОПОЛНИТЕЛЬНО", items: ["businessAdvisor", "analytics", "notifications", "weather", "videoDescriptions", "reminderTemplates", "systemStatus"] },
+  { title: "ДОПОЛНИТЕЛЬНО", items: ["businessAdvisor", "businessAdvisorChat", "analytics", "notifications", "weather", "videoDescriptions", "reminderTemplates", "systemStatus"] },
   { title: "СИСТЕМА", items: ["logs"] },
 ];
 const MOBILE_PRIMARY_NAV = [
@@ -1465,7 +1466,7 @@ function PageContent({
         setReportYear={setReportYear}
       />
     );
-  if (page === "businessAdvisor")
+  if (page === "businessAdvisor" || page === "businessAdvisorChat")
     return (
       <BusinessAdvisor
         db={db}
@@ -1474,6 +1475,7 @@ function PageContent({
         openModal={openModal}
         role={role}
         user={user}
+        chatOnly={page === "businessAdvisorChat"}
       />
     );
   if (page === "services") return <ServicesPage db={db} mutate={mutate} user={user} />;

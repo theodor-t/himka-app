@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
@@ -15,6 +16,7 @@ import {
   Gauge,
   MessageCircle,
   RefreshCw,
+  RotateCcw,
   Send,
   Sparkles,
   Target,
@@ -44,12 +46,14 @@ const CHAT_PROMPTS = {
     "Сравни поступления с прошлым периодом",
     "Какие услуги самые популярные?",
     "Кто наши самые ценные клиенты?",
+    "Сколько в среднем тратит клиент?",
     "Какой день был самым загруженным?",
   ],
   ro: [
     "Compară veniturile cu perioada anterioară",
     "Care sunt cele mai populare servicii?",
     "Cine sunt clienții cu cele mai mari plăți?",
+    "Cât cheltuiește în medie un client?",
     "Care a fost cea mai aglomerată zi?",
   ],
 };
@@ -88,6 +92,7 @@ function downloadReport(analytics, insights, recommendations) {
     ["Операционная прибыль", analytics.current.profit, analytics.changes.profit],
     ["Завершённые заказы", analytics.current.completedOrders, analytics.changes.completedOrders],
     ["Средняя стоимость заказа", analytics.current.averageOrderValue ?? "", ""],
+    ["Средние оплаты на клиента", analytics.current.averageClientSpend ?? "", analytics.changes.averageClientSpend],
     ["Новые клиенты", analytics.current.newClients, analytics.changes.newClients],
     ["Вернувшиеся клиенты", analytics.current.returningClients, analytics.changes.returningClients],
     [],
@@ -99,8 +104,11 @@ function downloadReport(analytics, insights, recommendations) {
     ["Тренд", "Поступления", "Расходы", "Прибыль", "Заказы"],
     ...analytics.series.map((item) => [item.label, item.revenue, item.expenses, item.profit, item.completedOrders]),
     [],
-    ["Услуги", "Визиты", "Выручка заказов"],
-    ...analytics.services.map((item) => [item.name, item.visits, item.revenue]),
+    ["Услуги", "Визиты", "Выручка заказов", "Визиты за прошлый период", "Изменение спроса, %"],
+    ...analytics.services.map((item) => [item.name, item.visits, item.revenue, item.previousVisits, item.changePercent]),
+    [],
+    ["Операционные расходы по категориям", "Сумма", "Записей", "Предыдущий период", "Изменение"],
+    ...analytics.expenseCategories.map((item) => [item.name, item.amount, item.count, item.previousAmount, item.changePercent]),
     [],
     ["Клиенты с наибольшими оплатами", "Оплаты"],
     ...analytics.topClients.map((item) => [item.name, item.revenue]),
@@ -178,7 +186,7 @@ function TrendChart({ series }) {
   );
 }
 
-function MetricBars({ items, valueKey, formatValue, emptyText, labelKey = "name" }) {
+function MetricBars({ items, valueKey, formatValue, emptyText, labelKey = "name", secondaryText }) {
   const maximum = Math.max(1, ...items.map((item) => Number(item[valueKey]) || 0));
   if (!items.length) return <p className="advisor-muted">{emptyText}</p>;
   return (
@@ -187,13 +195,14 @@ function MetricBars({ items, valueKey, formatValue, emptyText, labelKey = "name"
         <div className="advisor-metric-bar" key={item.id || item[labelKey]}>
           <div><span>{item[labelKey]}</span><strong>{formatValue(item[valueKey])}</strong></div>
           <i><b style={{ width: `${Math.max(2, (Number(item[valueKey]) / maximum) * 100)}%` }} /></i>
+          {secondaryText && <small className="advisor-metric-secondary">{secondaryText(item)}</small>}
         </div>
       ))}
     </div>
   );
 }
 
-export default function BusinessAdvisor({ db, mutate, navigate, openModal, role, user }) {
+export default function BusinessAdvisor({ db, mutate, navigate, openModal, role, user, chatOnly = false }) {
   const [period, setPeriod] = useState("month");
   const [from, setFrom] = useState(() => {
     const date = new Date();
@@ -211,6 +220,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
   const [aiInsights, setAiInsights] = useState(null);
   const [chat, setChat] = useState([]);
   const chatEndRef = useRef(null);
+  const chatScreenRef = useRef(null);
   const canManageRecommendations = roleCanWriteCollection(role, "advisorRecommendations");
   const analytics = useMemo(
     () => buildAdvisorAnalytics(db, { period, from, to }),
@@ -231,7 +241,11 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
     .sort((first, second) => priorityOrder[first.priority] - priorityOrder[second.priority]);
   const effectiveInsights = aiInsights || insights;
   const smartNotifications = (db.notifications || [])
-    .filter((item) => item.smart && item.status === "active" && item.category === "ai-insights")
+    .filter((item) =>
+      item.smart &&
+      item.status === "active" &&
+      (item.category === "ai-insights" || item.kind === "expense-trend"),
+    )
     .slice(0, 3);
 
   useEffect(() => {
@@ -245,7 +259,30 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [chat]);
+  }, [chat, chatOnly]);
+
+  useEffect(() => {
+    if (!chatOnly) return undefined;
+    const viewport = window.visualViewport;
+    const updateHeight = () => {
+      const height = viewport?.height || window.innerHeight;
+      chatScreenRef.current?.style.setProperty("--advisor-visual-height", `${height}px`);
+    };
+    updateHeight();
+    viewport?.addEventListener("resize", updateHeight);
+    viewport?.addEventListener("scroll", updateHeight);
+    window.addEventListener("resize", updateHeight);
+    return () => {
+      viewport?.removeEventListener("resize", updateHeight);
+      viewport?.removeEventListener("scroll", updateHeight);
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, [chatOnly]);
+
+  useEffect(() => {
+    setAiInsights(null);
+    setAiError("");
+  }, [period, from, to]);
 
   const askAdvisor = async (prompt = question) => {
     const text = prompt.trim();
@@ -327,6 +364,101 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
     else navigate("customers");
   };
 
+  if (chatOnly) {
+    return (
+      <section className="advisor-chat-screen" ref={chatScreenRef}>
+        <header className="advisor-chat-screen-header">
+          <div className="advisor-chat-screen-title">
+            <button type="button" className="advisor-chat-back" onClick={() => navigate("businessAdvisor")} aria-label="Вернуться к бизнес-аналитике">
+              <ArrowLeft size={19} />
+            </button>
+            <span className="advisor-chat-avatar"><BrainCircuit size={20} /></span>
+            <div><strong>ANGEL AI</strong><small>Бизнес-советник · данные CRM</small></div>
+          </div>
+          <div className="advisor-chat-screen-actions">
+            <div className="advisor-language-toggle" aria-label="Язык ответов">
+              <button type="button" className={language === "ru" ? "active" : ""} onClick={() => setLanguage("ru")}>RU</button>
+              <button type="button" className={language === "ro" ? "active" : ""} onClick={() => setLanguage("ro")}>RO</button>
+            </div>
+            <button
+              type="button"
+              className="advisor-new-chat"
+              onClick={() => { setChat([]); setQuestion(""); setAiError(""); }}
+              disabled={!chat.length && !question}
+              aria-label="Начать новый чат"
+              title="Новый чат"
+            >
+              <RotateCcw size={17} /><span>Новый чат</span>
+            </button>
+          </div>
+        </header>
+
+        <div className="advisor-chat-screen-period">
+          <label><span>Период данных</span>
+            <select value={period} onChange={(event) => setPeriod(event.target.value)}>
+              {ADVISOR_PERIODS.map(([id, label]) => <option value={id} key={id}>{label}</option>)}
+            </select>
+          </label>
+          {period === "custom" ? (
+            <div className="advisor-chat-screen-dates">
+              <input aria-label="Начало периода" type="date" value={from} max={to} onChange={(event) => { if (event.target.value) setFrom(event.target.value); }} />
+              <span>—</span>
+              <input aria-label="Окончание периода" type="date" value={to} min={from} onChange={(event) => { if (event.target.value) setTo(event.target.value); }} />
+            </div>
+          ) : <small>{analytics.range.from} — {analytics.range.to}</small>}
+        </div>
+
+        <main className="advisor-chat-screen-messages" aria-live="polite">
+          {!chat.length && (
+            <div className="advisor-chat-screen-welcome">
+              <span><Sparkles size={20} /></span>
+              <h1>{language === "ro" ? "Cu ce te pot ajuta?" : "Чем помочь вашему бизнесу?"}</h1>
+              <p>{language === "ro"
+                ? "Întreabă despre venituri, clienți și servicii. Răspunsurile folosesc datele CRM disponibile."
+                : "Спрашивайте о доходах, клиентах и услугах. Факты в ответах рассчитаны по данным CRM."}</p>
+              <div className="advisor-chat-screen-prompts">
+                {CHAT_PROMPTS[language].map((prompt) => (
+                  <button type="button" key={prompt} onClick={() => void askAdvisor(prompt)}>{prompt}<ArrowRight size={14} /></button>
+                ))}
+              </div>
+            </div>
+          )}
+          {chat.map((message, index) => (
+            <article className={`advisor-chat-message ${message.role}`} key={`${index}:${message.content.slice(0, 30)}`}>
+              <div className="advisor-chat-bubble">
+                <p>{message.content}</p>
+                {message.table?.rows?.length > 0 && (
+                  <div className="advisor-chat-table-wrap"><table><thead><tr>{message.table.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{message.table.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
+                )}
+                {!!message.analysis && <p className="advisor-chat-analysis">{message.analysis}</p>}
+                {!!message.recommendation && <div className="advisor-chat-recommendation"><Sparkles size={13} /><span>{message.recommendation}</span></div>}
+              </div>
+            </article>
+          ))}
+          {chatBusy && <div className="advisor-chat-loading"><i /><i /><i /><span>ANGEL AI анализирует данные…</span></div>}
+          <div ref={chatEndRef} />
+        </main>
+
+        {!!aiError && <p className="advisor-ai-error advisor-chat-screen-error" role="status">{aiError}</p>}
+        <form className="advisor-chat-screen-composer" onSubmit={(event) => { event.preventDefault(); void askAdvisor(); }}>
+          <textarea
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            maxLength={600}
+            rows={1}
+            placeholder={language === "ro" ? "Scrie un mesaj…" : "Напишите сообщение…"}
+            aria-label={language === "ro" ? "Mesaj pentru ANGEL AI" : "Сообщение для ANGEL AI"}
+          />
+          <span>{question.length}/600</span>
+          <button type="submit" disabled={!question.trim() || chatBusy} aria-label="Отправить сообщение"><Send size={18} /></button>
+        </form>
+        <p className="advisor-chat-screen-privacy">{language === "ro"
+          ? "AI folosește date CRM agregate. Nu modifică datele și nu trimite mesaje."
+          : "AI использует агрегированные данные CRM. Не меняет записи и не отправляет сообщения."}</p>
+      </section>
+    );
+  }
+
   return (
     <div className="business-advisor-page">
       <section className="advisor-hero">
@@ -337,6 +469,9 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         </div>
         <div className="advisor-hero-actions">
           <span className="advisor-data-status"><i /> Данные CRM</span>
+          <button type="button" className="btn-sm advisor-chat-open-button" onClick={() => navigate("businessAdvisorChat")}>
+            <MessageCircle size={15} /> Открыть AI-чат
+          </button>
           <button type="button" className="btn-sm advisor-export-button" onClick={() => downloadReport(analytics, effectiveInsights, visibleRecommendations)}>
             <Download size={15} /> Экспорт отчёта
           </button>
@@ -352,8 +487,8 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         </label>
         {period === "custom" && (
           <div className="advisor-custom-range">
-            <label>С <input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} /></label>
-            <label>По <input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} /></label>
+            <label>С <input type="date" value={from} max={to} required onChange={(event) => { if (event.target.value) setFrom(event.target.value); }} /></label>
+            <label>По <input type="date" value={to} min={from} required onChange={(event) => { if (event.target.value) setTo(event.target.value); }} /></label>
           </div>
         )}
         <div className="advisor-period-note">
@@ -368,6 +503,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         <KpiCard label="Операционная прибыль" value={analytics.current.profit} change={analytics.changes.profit} Icon={TrendingUp} money />
         <KpiCard label="Завершённые заказы" value={analytics.current.completedOrders} change={analytics.changes.completedOrders} Icon={Check} />
         <KpiCard label="Средний заказ" value={analytics.current.averageOrderValue} change={null} Icon={Gauge} money />
+        <KpiCard label="Средние оплаты / клиент" value={analytics.current.averageClientSpend} change={analytics.changes.averageClientSpend} Icon={Users} money />
         <KpiCard label="Новые клиенты" value={analytics.current.newClients} change={analytics.changes.newClients} Icon={Users} />
         <KpiCard label="Вернувшиеся клиенты" value={analytics.current.returningClients} change={analytics.changes.returningClients} Icon={RefreshCw} />
       </section>
@@ -390,6 +526,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
               ["Расходы", analytics.current.expenses, analytics.changes.expenses],
               ["Прибыль", analytics.current.profit, analytics.changes.profit],
               ["Заказы", analytics.current.completedOrders, analytics.changes.completedOrders],
+              ["Оплаты / клиент", analytics.current.averageClientSpend, analytics.changes.averageClientSpend],
             ].map(([label, value, change]) => (
               <div key={label}><span>{label}</span><strong>{typeof value === "number" ? label === "Заказы" ? value : formatMoney(value) : "—"}</strong><small className={typeof change === "number" ? change >= 0 ? "trend-up" : "trend-down" : ""}>{percentage(change)}</small></div>
             ))}
@@ -403,13 +540,35 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
           <header className="advisor-section-heading">
             <div><span className="advisor-section-icon"><Sparkles size={16} /></span><div><h3>Популярность услуг</h3><p>По завершённым визитам за выбранный период</p></div></div>
           </header>
-          <MetricBars items={analytics.services} valueKey="visits" formatValue={(value) => `${value} виз.`} emptyText="Нет завершённых визитов за этот период." />
+          <MetricBars
+            items={analytics.services}
+            valueKey="visits"
+            formatValue={(value) => `${value} виз.`}
+            emptyText="Нет завершённых визитов за этот период."
+            secondaryText={(item) => item.previousVisits > 0
+              ? `${item.previousVisits} виз. в прошлом периоде${item.changePercent === null ? "" : ` · ${item.changePercent > 0 ? "+" : ""}${item.changePercent}%`}`
+              : "Нет визитов для сравнения в прошлом периоде"}
+          />
         </article>
         <article className="advisor-panel">
           <header className="advisor-section-heading">
             <div><span className="advisor-section-icon"><CircleDollarSign size={16} /></span><div><h3>Выручка по услугам</h3><p>Строки услуг из завершённых заказов</p></div></div>
           </header>
           <MetricBars items={[...analytics.services].sort((a, b) => b.revenue - a.revenue).filter((item) => item.revenue > 0)} valueKey="revenue" formatValue={formatMoney} emptyText="В завершённых заказах нет данных для распределения по услугам." />
+        </article>
+        <article className="advisor-panel">
+          <header className="advisor-section-heading">
+            <div><span className="advisor-section-icon"><Wallet size={16} /></span><div><h3>Расходы по категориям</h3><p>Сравнение с предыдущим равным периодом</p></div></div>
+          </header>
+          <MetricBars
+            items={analytics.expenseCategories}
+            valueKey="amount"
+            formatValue={formatMoney}
+            emptyText="За выбранный период нет расходов с указанной категорией."
+            secondaryText={(item) => item.changePercent === null
+              ? "Нет данных для сравнения"
+              : `${item.changePercent > 0 ? "+" : ""}${item.changePercent}% к предыдущему периоду`}
+          />
         </article>
         <article className="advisor-panel advisor-order-panel">
           <header className="advisor-section-heading">
@@ -425,6 +584,18 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
           {!!analytics.orders.busiestWeekdays.length && (
             <div className="advisor-busiest-day"><span>Больше всего записей</span><strong>{analytics.orders.busiestWeekdays[0].weekday} · {analytics.orders.busiestWeekdays[0].appointments}</strong></div>
           )}
+        </article>
+        <article className="advisor-panel">
+          <header className="advisor-section-heading">
+            <div><span className="advisor-section-icon"><TrendingUp size={16} /></span><div><h3>Завершённые заказы во времени</h3><p>Число завершений по дням или месяцам</p></div></div>
+          </header>
+          <MetricBars
+            items={analytics.series.filter((item) => item.completedOrders > 0)}
+            valueKey="completedOrders"
+            labelKey="label"
+            formatValue={(value) => `${value}`}
+            emptyText="Нет завершённых заказов для графика в этом периоде."
+          />
         </article>
       </section>
 
@@ -488,7 +659,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         )}
         {!!smartNotifications.length && (
           <div className="advisor-notification-bridge">
-            <div><BellIcon /><span><strong>Smart Notifications</strong><small>{smartNotifications.length} активных AI-сигнала из общего центра</small></span></div>
+            <div><BellIcon /><span><strong>Smart Notifications</strong><small>{smartNotifications.length} активных AI- и финансовых сигналов из общего центра</small></span></div>
             <button type="button" onClick={() => navigate("notifications")}>Открыть <ArrowRight size={14} /></button>
           </div>
         )}
@@ -515,48 +686,12 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         ) : <p className="advisor-muted">Сейчас нет рекомендаций, подтверждённых данными за выбранный период.</p>}
       </section>
 
-      <section className="advisor-chat-panel">
-        <header className="advisor-chat-header">
-          <div><span className="advisor-chat-avatar"><BrainCircuit size={19} /></span><div><h3>Спросите ANGEL AI</h3><p>Точные показатели вычисляются CRM; AI помогает интерпретировать их.</p></div></div>
-          <div className="advisor-language-toggle" aria-label="Язык ответов">
-            <button type="button" className={language === "ru" ? "active" : ""} onClick={() => setLanguage("ru")}>RU</button>
-            <button type="button" className={language === "ro" ? "active" : ""} onClick={() => setLanguage("ro")}>RO</button>
-          </div>
-        </header>
-        <div className="advisor-chat-messages" aria-live="polite">
-          {!chat.length && (
-            <div className="advisor-chat-welcome">
-              <Sparkles size={17} /><strong>{language === "ro" ? "Întreabă despre afacere" : "Задайте вопрос о бизнесе"}</strong>
-              <span>{language === "ro" ? "Asistentul folosește date CRM agregate, fără contacte personale." : "Ассистент использует агрегированные данные CRM без передачи контактных данных."}</span>
-            </div>
-          )}
-          {chat.map((message, index) => (
-            <article className={`advisor-chat-message ${message.role}`} key={`${index}:${message.content.slice(0, 30)}`}>
-              <div className="advisor-chat-bubble">
-                <p>{message.content}</p>
-                {message.table?.rows?.length > 0 && (
-                  <div className="advisor-chat-table-wrap"><table><thead><tr>{message.table.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{message.table.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
-                )}
-                {!!message.analysis && <p className="advisor-chat-analysis">{message.analysis}</p>}
-                {!!message.recommendation && <div className="advisor-chat-recommendation"><Sparkles size={13} /><span>{message.recommendation}</span></div>}
-              </div>
-            </article>
-          ))}
-          {chatBusy && <div className="advisor-chat-loading"><i /><i /><i /><span>ANGEL AI анализирует данные…</span></div>}
-          <div ref={chatEndRef} />
-        </div>
-        {!chat.length && (
-          <div className="advisor-prompt-chips">
-            {CHAT_PROMPTS[language].map((prompt) => <button type="button" key={prompt} onClick={() => askAdvisor(prompt)}>{prompt}</button>)}
-          </div>
-        )}
-        {!!aiError && <p className="advisor-ai-error" role="status">{aiError}</p>}
-        <form className="advisor-chat-form" onSubmit={(event) => { event.preventDefault(); void askAdvisor(); }}>
-          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={600} rows={2} placeholder={language === "ro" ? "Întreabă despre venituri, clienți sau servicii…" : "Например: почему в этом месяце снизилась прибыль?"} />
-          <button type="submit" disabled={!question.trim() || chatBusy} aria-label="Отправить вопрос"><Send size={17} /></button>
-          <span>{question.length}/600</span>
-        </form>
-        <p className="advisor-privacy-note"><MessageCircle size={13} /> AI получает только агрегированные показатели. Он не меняет CRM и не отправляет сообщения.</p>
+      <section className="advisor-chat-launch">
+        <span className="advisor-chat-avatar"><BrainCircuit size={20} /></span>
+        <div><strong>Обсудить показатели с ANGEL AI</strong><small>Отдельный чат с данными выбранного периода и историей диалога</small></div>
+        <button type="button" onClick={() => navigate("businessAdvisorChat")} aria-label="Открыть отдельный AI-чат">
+          Открыть чат <ArrowRight size={16} />
+        </button>
       </section>
     </div>
   );

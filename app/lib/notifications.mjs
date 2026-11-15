@@ -449,6 +449,40 @@ export function buildSystemNotifications(db, now = new Date()) {
     }
   }
 
+  const expenses = Array.isArray(db?.expenses) ? db.expenses : [];
+  const currentExpenseRecords = expenses.filter((item) => {
+    const time = parseRecordDate(item.date || item.datetime)?.getTime();
+    return item.source !== "Личные средства" &&
+      Number.isFinite(time) && time >= currentTime - 30 * DAY && time <= currentTime;
+  });
+  const previousExpenseRecords = expenses.filter((item) => {
+    const time = parseRecordDate(item.date || item.datetime)?.getTime();
+    return item.source !== "Личные средства" &&
+      Number.isFinite(time) && time >= currentTime - 60 * DAY && time < currentTime - 30 * DAY;
+  });
+  if (currentExpenseRecords.length >= 5 && previousExpenseRecords.length >= 5) {
+    const currentCents = amountToCents(sumAmounts(currentExpenseRecords));
+    const previousCents = amountToCents(sumAmounts(previousExpenseRecords));
+    const increasePercent = previousCents > 0
+      ? Math.round(((currentCents - previousCents) / previousCents) * 100)
+      : 0;
+    if (previousCents > 0 && currentCents >= previousCents * 1.4) {
+      notifications.push(candidate({
+        id: "smart:operating-expenses-trend",
+        kind: "expense-trend",
+        category: "finance",
+        priority: "high",
+        title: "Операционные расходы заметно выросли",
+        message: `${currentExpenseRecords.length} записей за последние 30 дней; сумма выше на ${increasePercent}% относительно предыдущих 30 дней.`,
+        explanation: "Сравнение включает только операционные расходы, исключает личные средства и требует не менее пяти записей в каждом равном периоде.",
+        recommendation: "Сверьте категории расходов и правильность записей; сигнал сам по себе не устанавливает причину роста.",
+        page: "expenses",
+        detectedAt: new Date(currentTime).toISOString(),
+        facts: { currentExpenseCents: currentCents, previousExpenseCents: previousCents, increasePercent },
+      }));
+    }
+  }
+
   return notifications.sort((first, second) =>
     PRIORITY_ORDER[first.priority] - PRIORITY_ORDER[second.priority] ||
     (parseRecordDate(first.detectedAt)?.getTime() || 0) -

@@ -65,13 +65,53 @@ test("advisor metrics reuse CRM payment and operating-expense facts without pers
   assert.equal(analytics.current.profit, 400);
   assert.equal(analytics.current.completedOrders, 1);
   assert.equal(analytics.current.averageOrderValue, 600);
+  assert.equal(analytics.current.averageClientSpend, 500);
+  assert.equal(analytics.current.payingClients, 1);
   assert.equal(analytics.current.newClients, 1);
   assert.equal(analytics.current.returningClients, 1);
   assert.equal(analytics.services[0].visits, 1);
   assert.equal(analytics.services[0].revenue, 600);
+  assert.equal(analytics.services[0].previousVisits, 1);
+  assert.equal(analytics.services[0].changePercent, 0);
+  assert.equal(analytics.series.reduce((count, item) => count + item.completedOrders, 0), 1);
   assert.equal(analytics.topClients[0].name, "Мария");
   assert.equal(analytics.inactiveClients.length, 1);
   assert.equal(analytics.inactiveClients[0].id, "customer-stale");
+});
+
+test("advisor calculates linked client spending and compares expense categories without personal funds", () => {
+  const now = new Date(2026, 2, 20, 12);
+  const db = {
+    incomes: [
+      { amount: 100, date: "2026-03-10", customerId: "customer-1" },
+      { amount: 200, date: "2026-03-11", customerId: "customer-1" },
+      { amount: 900, date: "2026-03-12" },
+    ],
+    expenses: [
+      { amount: 100, date: "2026-03-12", category: "Материалы" },
+      { amount: 50, date: "2026-02-12", category: "Материалы" },
+      { amount: 700, date: "2026-03-13", category: "Материалы", source: "Личные средства" },
+    ],
+    clients: [],
+    customers: [{ id: "customer-1", name: "Мария" }],
+    orders: [],
+    warehouse: [],
+  };
+  const analytics = buildAdvisorAnalytics(db, { period: "month" }, now);
+
+  assert.equal(analytics.current.revenue, 1200);
+  assert.equal(analytics.current.averageClientSpend, 300);
+  assert.equal(analytics.current.payingClients, 1);
+  assert.deepEqual(analytics.expenseCategories[0], {
+    name: "Материалы",
+    amount: 100,
+    count: 1,
+    previousAmount: 50,
+    previousCount: 1,
+    changePercent: 100,
+  });
+  assert.match(answerAdvisorQuestion(analytics, "средние траты клиента", "ru").text, /300/);
+  assert.match(answerAdvisorQuestion(analytics, "Cât cheltuiește în medie un client?", "ro").text, /300/);
 });
 
 test("advisor insights and recommendation statuses are evidence-backed and persistent", () => {

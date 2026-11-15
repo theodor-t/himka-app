@@ -131,6 +131,11 @@ test("smart rules use reliable CRM fields for client, overlap, payment and trend
       ...Array.from({ length: 5 }, (_, index) => ({ id: `income-now-${index}`, amount: 100, date: dated(-index - 1) })),
       ...Array.from({ length: 5 }, (_, index) => ({ id: `income-before-${index}`, amount: 200, date: dated(-31 - index) })),
     ],
+    expenses: [
+      ...Array.from({ length: 5 }, (_, index) => ({ id: `expense-now-${index}`, amount: 100, date: dated(-index - 1) })),
+      ...Array.from({ length: 5 }, (_, index) => ({ id: `expense-before-${index}`, amount: 50, date: dated(-31 - index) })),
+      { id: "personal-expense", amount: 5000, source: "Личные средства", date: dated(-2) },
+    ],
   };
   const result = buildSystemNotifications(db, now);
   const kinds = new Set(result.map((item) => item.kind));
@@ -140,6 +145,8 @@ test("smart rules use reliable CRM fields for client, overlap, payment and trend
   assert.ok(kinds.has("unpaid-order"));
   assert.ok(kinds.has("activity-trend"));
   assert.ok(kinds.has("income-trend"));
+  assert.ok(kinds.has("expense-trend"));
+  assert.equal(result.find((item) => item.kind === "expense-trend").facts.increasePercent, 100);
   assert.ok(kinds.has("new-client-no-appointment"));
   assert.equal(result.find((item) => item.kind === "inactive-client").facts.daysSinceVisit, 75);
 });

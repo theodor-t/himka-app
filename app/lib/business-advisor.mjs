@@ -185,6 +185,8 @@ function metricPeriod(db, range) {
   const returningKeys = new Set(previousVisits.map(customerKey).filter(Boolean));
   const currentVisitKeys = new Set(completed.map(customerKey).filter(Boolean));
   const returningClients = [...currentVisitKeys].filter((key) => returningKeys.has(key)).length;
+  const payingClients = clientPaymentTotals(db, range);
+  const linkedRevenueCents = payingClients.reduce((total, client) => total + client.revenueCents, 0);
 
   return {
     revenueCents,
@@ -199,6 +201,10 @@ function metricPeriod(db, range) {
     newClients,
     returningClients,
     completedVisits: completed.length,
+    payingClients: payingClients.length,
+    averageClientSpendCents: payingClients.length
+      ? Math.round(linkedRevenueCents / payingClients.length)
+      : null,
   };
 }
 
@@ -268,7 +274,7 @@ function seriesFor(db, range) {
   }));
 }
 
-function serviceAnalytics(db, range) {
+function serviceAnalytics(db, range, limit = 8) {
   const demand = new Map();
   completedVisits(db).filter((visit) => inRange(recordDate(visit), range)).forEach((visit) => {
     const name = String(visit.service || "").trim();
@@ -288,10 +294,10 @@ function serviceAnalytics(db, range) {
   return [...demand.values()]
     .map((item) => ({ ...item, revenue: centsToAmount(item.revenueCents) }))
     .sort((first, second) => second.visits - first.visits || second.revenueCents - first.revenueCents)
-    .slice(0, 8);
+    .slice(0, limit);
 }
 
-function topClients(db, range) {
+function clientPaymentTotals(db, range) {
   const customers = Array.isArray(db?.customers) ? db.customers : [];
   const visits = Array.isArray(db?.clients) ? db.clients : [];
   const orders = Array.isArray(db?.orders) ? db.orders : [];
@@ -309,10 +315,55 @@ function topClients(db, range) {
     current.name = customerByKey.get(key)?.name || booking?.name || current.name || "Без имени";
     totals.set(key, current);
   });
-  return [...totals.values()]
+  return [...totals.values()];
+}
+
+function topClients(db, range) {
+  return clientPaymentTotals(db, range)
     .sort((first, second) => second.revenueCents - first.revenueCents)
     .slice(0, 10)
     .map(({ key, name, revenueCents }) => ({ id: key, name, revenue: centsToAmount(revenueCents) }));
+}
+
+function expenseCategoryAnalytics(db, range, previousRange) {
+  const currentByCategory = new Map();
+  const previousByCategory = new Map();
+  (db?.expenses || [])
+    .filter((expense) => expense.source !== "Личные средства")
+    .forEach((expense) => {
+      const date = recordDate(expense);
+      if (!date) return;
+      const category = String(expense.category || "Без категории").trim() || "Без категории";
+      if (inRange(date, range)) {
+        const totals = currentByCategory.get(category) || { amountCents: 0, count: 0 };
+        totals.amountCents += amountToCents(expense.amount);
+        totals.count += 1;
+        currentByCategory.set(category, totals);
+      } else if (inRange(date, previousRange)) {
+        const totals = previousByCategory.get(category) || { amountCents: 0, count: 0 };
+        totals.amountCents += amountToCents(expense.amount);
+        totals.count += 1;
+        previousByCategory.set(category, totals);
+      }
+    });
+  const categories = new Set([...currentByCategory.keys(), ...previousByCategory.keys()]);
+  return [...categories]
+    .map((name) => {
+      const current = currentByCategory.get(name) || { amountCents: 0, count: 0 };
+      const previous = previousByCategory.get(name) || { amountCents: 0, count: 0 };
+      return {
+        name,
+        amount: centsToAmount(current.amountCents),
+        count: current.count,
+        previousAmount: centsToAmount(previous.amountCents),
+        previousCount: previous.count,
+        changePercent: percentChange(current.amountCents, previous.amountCents),
+      };
+    })
+    .sort((first, second) =>
+      Math.max(second.amount, second.previousAmount) - Math.max(first.amount, first.previousAmount),
+    )
+    .slice(0, 8);
 }
 
 function inactiveClients(db, now) {
@@ -391,7 +442,20 @@ export function buildAdvisorAnalytics(db, options = {}, now = new Date()) {
   const range = advisorDateRange(options.period, options.from, options.to, now);
   const current = metricPeriod(db, range);
   const previous = metricPeriod(db, { start: range.previousStart, end: range.previousEnd });
-  const services = serviceAnalytics(db, range);
+  const previousRange = { start: range.previousStart, end: range.previousEnd };
+  const previousServices = new Map(
+    serviceAnalytics(db, previousRange, Number.POSITIVE_INFINITY)
+      .map((item) => [item.name, item.visits]),
+  );
+  const services = serviceAnalytics(db, range).map((item) => {
+    const previousVisits = previousServices.get(item.name) || 0;
+    return {
+      ...item,
+      previousVisits,
+      changePercent: percentChange(item.visits, previousVisits),
+    };
+  });
+  const expenseCategories = expenseCategoryAnalytics(db, range, previousRange);
   const series = seriesFor(db, range);
   const orders = orderAnalytics(db, range);
   const inactive = inactiveClients(db, now);
@@ -405,6 +469,9 @@ export function buildAdvisorAnalytics(db, options = {}, now = new Date()) {
       averageOrderValue: current.averageOrderValueCents === null
         ? null
         : centsToAmount(current.averageOrderValueCents),
+      averageClientSpend: current.averageClientSpendCents === null
+        ? null
+        : centsToAmount(current.averageClientSpendCents),
     },
     previous: {
       ...previous,
@@ -414,6 +481,9 @@ export function buildAdvisorAnalytics(db, options = {}, now = new Date()) {
       averageOrderValue: previous.averageOrderValueCents === null
         ? null
         : centsToAmount(previous.averageOrderValueCents),
+      averageClientSpend: previous.averageClientSpendCents === null
+        ? null
+        : centsToAmount(previous.averageClientSpendCents),
     },
     changes: {
       revenue: percentChange(current.revenueCents, previous.revenueCents),
@@ -422,9 +492,11 @@ export function buildAdvisorAnalytics(db, options = {}, now = new Date()) {
       completedOrders: percentChange(current.completedOrders, previous.completedOrders),
       newClients: percentChange(current.newClients, previous.newClients),
       returningClients: percentChange(current.returningClients, previous.returningClients),
+      averageClientSpend: percentChange(current.averageClientSpendCents, previous.averageClientSpendCents),
     },
     series,
     services,
+    expenseCategories,
     topClients: topClients(db, range),
     inactiveClients: inactive,
     orders,
@@ -619,6 +691,8 @@ export function advisorFactsForAi(analytics, insights) {
       profit: analytics.current.profit,
       completedOrders: analytics.current.completedOrders,
       averageOrderValue: analytics.current.averageOrderValue,
+      averageClientSpend: analytics.current.averageClientSpend,
+      payingClients: analytics.current.payingClients,
       newClients: analytics.current.newClients,
       returningClients: analytics.current.returningClients,
       incomeRecords: analytics.current.incomeRecords,
@@ -631,8 +705,14 @@ export function advisorFactsForAi(analytics, insights) {
       ordersPercent: analytics.changes.completedOrders,
       newClientsPercent: analytics.changes.newClients,
       returningClientsPercent: analytics.changes.returningClients,
+      averageClientSpendPercent: analytics.changes.averageClientSpend,
     },
-    services: analytics.services.map(({ name, visits, revenue }) => ({ name, visits, revenue })),
+    services: analytics.services.map(({ name, visits, revenue, previousVisits, changePercent }) => ({
+      name, visits, revenue, previousVisits, changePercent,
+    })),
+    expenseCategories: analytics.expenseCategories.map(({ name, amount, count, previousAmount, changePercent }) => ({
+      name, amount, count, previousAmount, changePercent,
+    })),
     insights: insights.map(({ id, title, supportingData, facts }) => ({ id, title, supportingData, facts })),
     dataLimits: {
       clientsWithLongGap: analytics.inactiveClients.length,
@@ -692,6 +772,38 @@ export function answerAdvisorQuestion(analytics, question, language = "ru") {
         ? ro ? "Serviciile sunt ordonate după numărul vizitelor finalizate." : "Услуги отсортированы по числу завершённых визитов."
         : ro ? "Nu există vizite finalizate în perioada selectată." : "Нет завершённых визитов за выбранный период.",
       table: table(ro ? ["Serviciu", "Vizite"] : ["Услуга", "Визиты"], rows),
+    };
+  }
+  if (/average.*client|average.*spend|cheltuiel.*medii.*client|cheltuie.*medie.*client|medie.*client|spending per client|средн.*(трат|расход|клиент)|средний клиент/.test(text)) {
+    return {
+      text: analytics.current.averageClientSpend === null
+        ? ro
+          ? "Nu există plăți legate de clienți în perioada selectată."
+          : "Нет оплат, связанных с клиентами, за выбранный период."
+        : ro
+          ? `Cheltuiala medie per client care are plăți legate în CRM: ${money(analytics.current.averageClientSpend, language)}.`
+          : `Средние оплаты на клиента с привязанными платежами: ${money(analytics.current.averageClientSpend, language)}.`,
+      table: table(
+        ro ? ["Indicator", "Valoare"] : ["Показатель", "Значение"],
+        [
+          [ro ? "Clienți cu plăți legate" : "Клиенты со связанными оплатами", String(analytics.current.payingClients)],
+          [ro ? "Medie per client" : "Среднее на клиента", analytics.current.averageClientSpend === null ? "—" : money(analytics.current.averageClientSpend, language)],
+        ],
+      ),
+    };
+  }
+  if (/new.*return|return.*client|noi.*reven|clien.t.*noi|нов.*вернув|новых.*возвращ|вернувшихся.*новых/.test(text)) {
+    return {
+      text: ro
+        ? "Clienții noi se bazează pe data înregistrării; cei reveniți au vizite finalizate atât înainte, cât și în perioada selectată."
+        : "Новые клиенты считаются по дате регистрации; вернувшиеся — по завершённым визитам и до, и внутри выбранного периода.",
+      table: table(
+        ro ? ["Categorie", "Perioada curentă", "Perioada precedentă"] : ["Категория", "Текущий период", "Предыдущий период"],
+        [
+          [ro ? "Clienți noi" : "Новые клиенты", String(analytics.current.newClients), String(analytics.previous.newClients)],
+          [ro ? "Clienți reveniți" : "Вернувшиеся клиенты", String(analytics.current.returningClients), String(analytics.previous.returningClients)],
+        ],
+      ),
     };
   }
   if (/profitabil|generat.*venit|revenue by service|servici.*venit|услуг.*доход|выруч.*услуг/.test(text)) {

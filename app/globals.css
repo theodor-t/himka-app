@@ -10121,32 +10121,79 @@ tbody tr:hover td {
   font-size: 9px;
 }
 
-.dashboard-day-progress {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 18px 0 12px;
+.dashboard-speedometer {
+  position: relative;
+  width: min(100%, 210px);
+  margin: 4px auto 10px;
+  text-align: center;
 }
 
-.dashboard-day-progress > div {
-  display: grid;
+.dashboard-speedometer > svg {
+  width: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.dashboard-speedometer-track,
+.dashboard-speedometer-fill {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.dashboard-speedometer-track {
+  stroke: #ffffff12;
+}
+
+.dashboard-speedometer-fill {
+  stroke: #4f8cff;
+  transition: stroke-dasharray 500ms ease;
+}
+
+.dashboard-speedometer-mark {
+  fill: #8998ad;
+  font-size: 9px;
+}
+
+.dashboard-speedometer-needle {
+  stroke: #e7f0ff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transform-box: view-box;
+  transform-origin: 80px 82px;
+  transition: transform 500ms cubic-bezier(.2,.8,.2,1);
+}
+
+.dashboard-speedometer-hub {
+  fill: #dce9ff;
+  stroke: #4f8cff;
+  stroke-width: 2;
+}
+
+.dashboard-speedometer-readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
   gap: 6px;
-  padding: 10px;
-  border: 1px solid #ffffff0d;
-  border-radius: 9px;
-  background: #ffffff04;
+  margin-top: -6px;
 }
 
-.dashboard-day-progress span {
+.dashboard-speedometer-readout strong {
+  color: #eef4ff;
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-speedometer-readout span {
+  color: #9aabc3;
+  font-size: 11px;
+}
+
+.dashboard-speedometer p {
+  margin: 3px 0 0;
   color: #8998ad;
   font-size: 11px;
-  line-height: 1.3;
-}
-
-.dashboard-day-progress strong {
-  color: #eef4ff;
-  font-size: 22px;
-  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
 }
 
 .dashboard-panel-action {

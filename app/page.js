@@ -2727,6 +2727,9 @@ function Dashboard({
     return result;
   }, { offset: 0, parts: [] }).parts.join(", ");
   const completedToday = todayAppointments.filter((client) => client.status === "Выполнено").length;
+  const dailyProgressPercent = todayAppointments.length
+    ? Math.round((completedToday / todayAppointments.length) * 100)
+    : 0;
   return (
     <div className="dashboard-shell">
       <section className="dashboard-welcome">
@@ -2883,15 +2886,37 @@ function Dashboard({
           </div>
           <section className="dashboard-panel dashboard-completion-card">
             <div className="dashboard-panel-heading">
-              <div><span>РАСПИСАНИЕ НА СЕГОДНЯ</span><strong>Ход работ</strong></div>
+              <div><span>РАСПИСАНИЕ НА СЕГОДНЯ</span><strong>Прогресс записей</strong></div>
             </div>
-            <div className="dashboard-day-progress">
-              <div><span>Всего записей</span><strong>{todayAppointments.length}</strong></div>
-              <div><span>Завершено</span><strong>{completedToday}</strong></div>
-              <div><span>Осталось</span><strong>{Math.max(0, todayAppointments.length - completedToday)}</strong></div>
+            <div className="dashboard-speedometer" role="img" aria-label={`Выполнено ${dailyProgressPercent}% записей за сегодня`}>
+              <svg viewBox="0 0 160 100" aria-hidden="true">
+                <path className="dashboard-speedometer-track" d="M 12 82 A 68 68 0 0 1 148 82" pathLength="100" />
+                <path
+                  className="dashboard-speedometer-fill"
+                  d="M 12 82 A 68 68 0 0 1 148 82"
+                  pathLength="100"
+                  style={{ strokeDasharray: `${dailyProgressPercent} 100` }}
+                />
+                <text className="dashboard-speedometer-mark" x="12" y="98">0</text>
+                <text className="dashboard-speedometer-mark" x="148" y="98" textAnchor="end">100</text>
+                <line
+                  className="dashboard-speedometer-needle"
+                  x1="80"
+                  y1="82"
+                  x2="135"
+                  y2="82"
+                  style={{ transform: `rotate(${-180 + dailyProgressPercent * 1.8}deg)` }}
+                />
+                <circle className="dashboard-speedometer-hub" cx="80" cy="82" r="5" />
+              </svg>
+              <div className="dashboard-speedometer-readout">
+                <strong>{dailyProgressPercent}%</strong>
+                <span>выполнено</span>
+              </div>
+              <p>{completedToday} из {todayAppointments.length} записей завершено</p>
             </div>
             <button className="dashboard-panel-action" type="button" onClick={() => navigate("calendar")}>
-              {todayAppointments.length ? "Посмотреть расписание" : "Открыть календарь"}
+              Открыть календарь
               <ArrowRight size={14} />
             </button>
           </section>

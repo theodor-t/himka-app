@@ -38,7 +38,7 @@ test("local preview database is isolated, normalized and resettable", () => {
     clients: [{ id: "local-client" }],
   });
   assert.equal(updated.clients[0].id, "local-client");
-  assert.equal(updated.schemaVersion, 3);
+  assert.equal(updated.schemaVersion, 4);
 
   resetLocalPreviewDatabase();
   assert.deepEqual(getLocalPreviewDatabase().clients, []);

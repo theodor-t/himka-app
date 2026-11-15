@@ -46,52 +46,62 @@ export async function POST(request) {
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(model)) {
       throw new Error("Invalid GEMINI_MODEL configuration");
     }
+    const models = [...new Set([model, "gemini-3.6-flash"])];
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{
-              text: "Ты создаёшь короткие подписи для видео детейлинг-мастерской. Пиши по-русски. Не добавляй имена, телефоны, номера автомобилей, цены, гарантии или неподтверждённые факты. Верни только JSON по указанной схеме.",
-            }],
-          },
-          contents: [{
-            parts: [{
-              text: `Услуга: ${service.label}. Тон: ${tone.label}. Формат: ${style.label}. Создай естественную подпись без выдуманных деталей и 3–6 тематических хэштегов.`,
-            }],
-          }],
-          generationConfig: {
-            temperature: 0.65,
-            maxOutputTokens: 300,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                caption: { type: "STRING" },
-                hashtags: { type: "ARRAY", items: { type: "STRING" } },
-              },
-              required: ["caption", "hashtags"],
-            },
-          },
-        }),
-        signal: AbortSignal.timeout(55000),
+    const requestBody = JSON.stringify({
+      systemInstruction: {
+        parts: [{
+          text: "Ты создаёшь короткие подписи для видео детейлинг-мастерской. Пиши по-русски. Не добавляй имена, телефоны, номера автомобилей, цены, гарантии или неподтверждённые факты. Верни только JSON по указанной схеме.",
+        }],
       },
-    );
+      contents: [{
+        parts: [{
+          text: `Услуга: ${service.label}. Тон: ${tone.label}. Формат: ${style.label}. Создай естественную подпись без выдуманных деталей и 3–6 тематических хэштегов.`,
+        }],
+      }],
+      generationConfig: {
+        temperature: 0.65,
+        maxOutputTokens: 300,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            caption: { type: "STRING" },
+            hashtags: { type: "ARRAY", items: { type: "STRING" } },
+          },
+          required: ["caption", "hashtags"],
+        },
+      },
+    });
+
+    let response;
+    let providerMessage = "";
+    for (const [index, selectedModel] of models.entries()) {
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body: requestBody,
+          signal: AbortSignal.timeout(25000),
+        },
+      );
+      if (response.ok || response.status !== 503 || index === models.length - 1) break;
+    }
+
     if (!response.ok) {
-      let providerMessage = "";
-      try {
-        const providerError = await response.json();
-        providerMessage = typeof providerError?.error?.message === "string"
-          ? providerError.error.message.slice(0, 300)
-          : "";
-      } catch {
-        providerMessage = "";
+      if (!providerMessage) {
+        try {
+          const providerError = await response.json();
+          providerMessage = typeof providerError?.error?.message === "string"
+            ? providerError.error.message.slice(0, 300)
+            : "";
+        } catch {
+          providerMessage = "";
+        }
       }
       return NextResponse.json(
         {

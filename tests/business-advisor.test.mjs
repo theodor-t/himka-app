@@ -7,6 +7,7 @@ import {
   buildAdvisorAnalytics,
   buildAdvisorInsights,
   buildAdvisorRecommendations,
+  inferAdvisorQuestionPeriod,
 } from "../app/lib/business-advisor.mjs";
 
 test("advisor date presets compare the same elapsed part of today and week", () => {
@@ -21,6 +22,39 @@ test("advisor date presets compare the same elapsed part of today and week", () 
   assert.equal(week.previousStart.getTime(), week.start.getTime() - 7 * 86400000);
   assert.equal(week.previousEnd.getTime(), now.getTime() - 7 * 86400000);
   assert.throws(() => advisorDateRange("custom", "2026-02-30", "2026-03-01", now), /корректные даты/);
+});
+
+test("advisor infers an explicitly named month and year from chat questions", () => {
+  const now = new Date(2026, 10, 15, 12);
+
+  assert.deepEqual(inferAdvisorQuestionPeriod("Сколько я заработал за август?", now), {
+    period: "custom",
+    from: "2026-08-01",
+    to: "2026-08-31",
+  });
+  assert.deepEqual(inferAdvisorQuestionPeriod("Care a fost venitul în martie 2025?", now), {
+    period: "custom",
+    from: "2025-03-01",
+    to: "2025-03-31",
+  });
+  assert.deepEqual(inferAdvisorQuestionPeriod("Что было в феврале прошлого года?", now), {
+    period: "custom",
+    from: "2025-02-01",
+    to: "2025-02-28",
+  });
+  assert.equal(inferAdvisorQuestionPeriod("Сравни поступления", now), null);
+
+  const question = "Сколько я заработал за август?";
+  const augustPeriod = inferAdvisorQuestionPeriod(question, now);
+  const augustAnalytics = buildAdvisorAnalytics({
+    incomes: [{ amount: 420, periodKey: "2026-08" }],
+    expenses: [],
+    orders: [],
+    clients: [],
+    customers: [],
+    warehouse: [],
+  }, augustPeriod, now);
+  assert.match(answerAdvisorQuestion(augustAnalytics, question).text, /420/);
 });
 
 test("advisor metrics reuse CRM payment and operating-expense facts without personal funds", () => {
@@ -112,6 +146,67 @@ test("advisor calculates linked client spending and compares expense categories 
   });
   assert.match(answerAdvisorQuestion(analytics, "средние траты клиента", "ru").text, /300/);
   assert.match(answerAdvisorQuestion(analytics, "Cât cheltuiește în medie un client?", "ro").text, /300/);
+});
+
+test("advisor follows CRM financial periods when transaction dates differ or are legacy month-only", () => {
+  const now = new Date(2026, 2, 20, 12);
+  const db = {
+    incomes: [
+      { amount: 100, date: "2026-03-15", periodKey: "2026-02", customerId: "customer-1" },
+      { amount: 50, month: "Февраль", year: 2026, customerId: "customer-1" },
+    ],
+    expenses: [
+      { amount: 20, date: "2026-03-16", periodKey: "2026-02", category: "Материалы" },
+      { amount: 10, month: "Февраль", year: 2026, category: "Материалы" },
+    ],
+    clients: [],
+    customers: [{ id: "customer-1", name: "Мария" }],
+    orders: [],
+    warehouse: [],
+  };
+  const february = buildAdvisorAnalytics(db, {
+    period: "custom",
+    from: "2026-02-01",
+    to: "2026-02-28",
+  }, now);
+  const march = buildAdvisorAnalytics(db, {
+    period: "custom",
+    from: "2026-03-01",
+    to: "2026-03-31",
+  }, now);
+
+  assert.equal(february.current.revenue, 150);
+  assert.equal(february.current.expenses, 30);
+  assert.equal(february.current.profit, 120);
+  assert.equal(february.current.averageClientSpend, 150);
+  assert.equal(february.expenseCategories[0].amount, 30);
+  assert.equal(february.series.reduce((total, item) => total + item.revenue, 0), 150);
+  assert.equal(march.current.revenue, 0);
+  assert.equal(march.current.expenses, 0);
+});
+
+test("advisor answers data-source and best-month questions from CRM facts", () => {
+  const now = new Date(2026, 2, 20, 12);
+  const db = {
+    incomes: [
+      { amount: 100, periodKey: "2026-01" },
+      { amount: 300, periodKey: "2026-02" },
+    ],
+    expenses: [{ amount: 50, periodKey: "2026-02", category: "Материалы" }],
+    clients: [],
+    customers: [],
+    orders: [],
+    warehouse: [],
+  };
+  const analytics = buildAdvisorAnalytics(db, { period: "month" }, now);
+
+  const sourceAnswer = answerAdvisorQuestion(analytics, "Откуда ты берёшь информацию?", "ru");
+  assert.match(sourceAnswer.text, /записей CRM/);
+  assert.match(JSON.stringify(sourceAnswer.table), /2026-01/);
+  const productiveMonth = answerAdvisorQuestion(analytics, "Care lună a fost cea mai productivă?", "ro");
+  assert.match(productiveMonth.text, /februarie 2026/i);
+  assert.match(JSON.stringify(productiveMonth.table), /300/);
+  assert.match(answerAdvisorQuestion(analytics, "что нового?", "ru").text, /Не могу уверенно ответить/);
 });
 
 test("advisor insights and recommendation statuses are evidence-backed and persistent", () => {

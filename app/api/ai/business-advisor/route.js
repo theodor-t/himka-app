@@ -8,6 +8,7 @@ import {
   answerAdvisorQuestion,
   buildAdvisorAnalytics,
   buildAdvisorInsights,
+  inferAdvisorQuestionPeriod,
 } from "../../../lib/business-advisor.mjs";
 import { consumeRateLimit } from "../../../lib/ai-rate-limit.mjs";
 import {
@@ -73,6 +74,10 @@ function cleanAiNarrative(value, fallback) {
   return text || fallback;
 }
 
+function asksForRecommendation(question) {
+  return /рекоменд|совет|что (?:делать|улучшить|стоит)|как (?:увеличить|улучшить)|предложи|порекомендуй|recomand|ce ar trebui|ce să fac|ce putem face|cum putem|sfat/i.test(question);
+}
+
 function sanitizeConversation(history, customers) {
   if (!Array.isArray(history)) return [];
   return history.slice(-6).flatMap((message) => {
@@ -82,16 +87,24 @@ function sanitizeConversation(history, customers) {
   });
 }
 
-function geminiErrorMessage(status) {
+function geminiErrorMessage(status, mode = "crm") {
   if (status === 429) return "Достигнут лимит запросов Gemini. Попробуйте позже.";
-  if (status === 503) return "Gemini временно недоступен. Фактические данные CRM рассчитаны.";
+  if (status === 503) {
+    return mode === "general"
+      ? "Gemini временно недоступен. Попробуйте позже."
+      : "Gemini временно недоступен. Фактические данные CRM рассчитаны.";
+  }
   if (status === 401 || status === 403) return "Google отклонил API-ключ Gemini.";
   if (status === 404) return "Модель Gemini не найдена. Проверьте GEMINI_MODEL.";
-  if (status === 504) return "Gemini не ответил вовремя. Фактические данные CRM рассчитаны.";
+  if (status === 504) {
+    return mode === "general"
+      ? "Gemini не ответил вовремя. Попробуйте ещё раз."
+      : "Gemini не ответил вовремя. Фактические данные CRM рассчитаны.";
+  }
   return "Не удалось получить анализ Gemini. Фактические данные CRM рассчитаны.";
 }
 
-async function requestGemini({ apiKey, model, schema, instruction, contents }) {
+async function requestGemini({ apiKey, model, schema, instruction, contents, mode = "crm" }) {
   if (!/^[A-Za-z0-9._-]{1,100}$/.test(model)) {
     throw new Error("Invalid GEMINI_MODEL configuration");
   }
@@ -131,7 +144,7 @@ async function requestGemini({ apiKey, model, schema, instruction, contents }) {
     lastStatus = response.status;
     if (![429, 503].includes(response.status) || index === 1) break;
   }
-  const error = new Error(geminiErrorMessage(lastStatus));
+  const error = new Error(geminiErrorMessage(lastStatus, mode));
   error.status = lastStatus;
   throw error;
 }
@@ -142,7 +155,13 @@ const CHAT_SCHEMA = {
     analysis: { type: "STRING" },
     recommendation: { type: "STRING" },
   },
-  required: ["analysis", "recommendation"],
+  required: ["analysis"],
+};
+
+const GENERAL_CHAT_SCHEMA = {
+  type: "OBJECT",
+  properties: { answer: { type: "STRING" } },
+  required: ["answer"],
 };
 
 const INSIGHTS_SCHEMA = {
@@ -181,6 +200,10 @@ export async function POST(request) {
     }
     const action = input?.action || "chat";
     if (!["chat", "analyze"].includes(action)) return jsonError("Неизвестное действие.", 400);
+    const mode = input?.mode || "crm";
+    if (action === "chat" && !["crm", "general"].includes(mode)) {
+      return jsonError("Неизвестный режим чата.", 400);
+    }
     const period = ALLOWED_PERIODS.has(input?.period) ? input.period : "month";
     const language = ["ru", "ro"].includes(input?.language) ? input.language : "ru";
     const question = cleanText(input?.question, 600);
@@ -199,14 +222,50 @@ export async function POST(request) {
       );
     }
 
+    const apiKey = process.env.GEMINI_API_KEY;
+    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+    if (action === "chat" && mode === "general") {
+      if (!apiKey) return jsonError("Общий AI-режим недоступен: Gemini не настроен на сервере.", 503);
+      const history = sanitizeConversation(input?.history, []);
+      const generated = await requestGemini({
+        apiKey,
+        model,
+        schema: GENERAL_CHAT_SCHEMA,
+        mode: "general",
+        instruction: "Ты обычный универсальный AI-ассистент. Отвечай на конкретный вопрос пользователя на языке ru или ro из запроса, учитывай предыдущие сообщения и сохраняй контекст диалога. Помогай с объяснениями, идеями, письмом, переводом, обучением и планированием. В этом режиме у тебя нет доступа к CRM и веб-поиску: не утверждай, что проверил внешние источники или актуальные данные. Если вопрос требует свежей информации, честно обозначь ограничение. Не добавляй нерелевантные советы.",
+        contents: [{
+          role: "user",
+          parts: [{
+            text: JSON.stringify({
+              language,
+              history,
+              question,
+            }),
+          }],
+        }],
+      });
+      const answer = cleanText(generated?.answer, 2500);
+      if (!answer) return jsonError("Gemini вернул пустой ответ.", 502);
+      return NextResponse.json({
+        ok: true,
+        aiAvailable: true,
+        mode: "general",
+        answer: { text: answer },
+        analysis: "",
+        recommendation: "",
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const database = await readDatabase(request);
+    const inferredPeriod = action === "chat" && mode === "crm"
+      ? inferAdvisorQuestionPeriod(question)
+      : null;
     const analytics = buildAdvisorAnalytics(database, {
-      period,
-      from: input?.from,
-      to: input?.to,
+      period: inferredPeriod?.period || period,
+      from: inferredPeriod?.from || input?.from,
+      to: inferredPeriod?.to || input?.to,
     });
     const insights = buildAdvisorInsights(analytics, database);
-    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({
         ok: true,
@@ -216,7 +275,6 @@ export async function POST(request) {
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
     const evidence = advisorFactsForAi(analytics, insights);
     if (action === "analyze") {
       if (!insights.length) {
@@ -281,11 +339,13 @@ export async function POST(request) {
         apiKey,
         model,
         schema: CHAT_SCHEMA,
-        instruction: "Ты AI бизнес-советник ANGEL DETAILING. Дай краткое качественное объяснение и один безопасный совет только на основе агрегированных подтверждённых данных. Не выдумывай цифры, клиентов, заказы, платежи или причины. Не предлагай автоматически менять данные и не отправляй сообщения. Не пиши имена клиентов, числа, суммы, даты, проценты или номера: точные факты CRM показывает отдельно. Язык ru или ro указан в запросе.",
+        instruction: "Ты AI бизнес-советник ANGEL DETAILING. Сначала ответь именно на заданный вопрос, используя только verifiedEvidence и контекст диалога. Если доказательств недостаточно — прямо укажи, каких данных не хватает; не подменяй ответ общими советами и не повторяй сводку показателей. Для вопроса об источнике объясни, что цифры рассчитываются сервером по записям CRM за выбранный период, а тебе передаются агрегированные факты. Не выдумывай клиентов, заказы, платежи или причины. Не предлагай менять CRM или отправлять сообщения. В recommendation дай совет только если пользователь просит рекомендацию или совет действительно следует из вопроса; иначе верни пустую строку. Не включай цифры, даты, проценты или имена: точные факты отображаются отдельно. Язык ru или ro указан в запросе.",
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
       analysis = cleanAiNarrative(generated?.analysis, "");
-      recommendation = cleanAiNarrative(generated?.recommendation, "");
+      if (asksForRecommendation(question)) {
+        recommendation = cleanAiNarrative(generated?.recommendation, "");
+      }
     } catch (error) {
       aiError = error instanceof Error ? error.message : "Gemini временно недоступен.";
     }
@@ -301,6 +361,9 @@ export async function POST(request) {
     if (error instanceof Error && /даты начала и окончания/.test(error.message)) {
       return jsonError(error.message, 400);
     }
-    return jsonError(error instanceof Error ? error.message : "Business Advisor failed.", 500);
+    return jsonError(
+      error instanceof Error ? error.message : "Business Advisor failed.",
+      error?.status || 500,
+    );
   }
 }

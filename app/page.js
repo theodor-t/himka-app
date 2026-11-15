@@ -164,7 +164,6 @@ const NAV = [
   ["debts", "Должники", Wallet],
   ["analytics", "Аналитика", ChartNoAxesCombined],
   ["businessAdvisor", "AI Бизнес-советник", BrainCircuit],
-  ["businessAdvisorChat", "AI-чат", MessageCircle],
   ["notifications", "Уведомления", Bell],
   ["weather", "Погода", CloudSun],
   ["videoDescriptions", "Описания для видео", Video],
@@ -177,7 +176,7 @@ const NAV_GROUPS = [
   { title: "МАСТЕРСКАЯ И КЛИЕНТЫ", items: ["calendar", "orders", "customers", "clients", "workPosts", "waitlist", "services"] },
   { title: "ОПЕРАЦИИ", items: ["warehouse", "suppliers", "windows"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "financialGoals", "withdrawals", "debts"] },
-  { title: "ДОПОЛНИТЕЛЬНО", items: ["businessAdvisor", "businessAdvisorChat", "analytics", "notifications", "weather", "videoDescriptions", "reminderTemplates", "systemStatus"] },
+  { title: "ДОПОЛНИТЕЛЬНО", items: ["businessAdvisor", "analytics", "notifications", "weather", "videoDescriptions", "reminderTemplates", "systemStatus"] },
   { title: "СИСТЕМА", items: ["logs"] },
 ];
 const MOBILE_PRIMARY_NAV = [
@@ -1028,7 +1027,7 @@ export default function Home() {
               </span>
               <div className="mobile-header-title">
                 <span>ANGEL DETAILING</span>
-                <h1>{NAV.find((item) => item[0] === page)?.[1] || "Панель"}</h1>
+                <h1>{page === "businessAdvisorChat" ? "AI-чат" : NAV.find((item) => item[0] === page)?.[1] || "Панель"}</h1>
               </div>
               <button
                 className="mobile-menu-btn"
@@ -1103,6 +1102,17 @@ export default function Home() {
                 </div>
               )}
             </div>
+            {roleCanViewPage(role, "businessAdvisor") && (
+              <button
+                type="button"
+                className={`topbar-ai-chat${page === "businessAdvisorChat" ? " active" : ""}`}
+                onClick={() => navigate("businessAdvisorChat")}
+                aria-label="Открыть AI-чат"
+                title="AI-чат"
+              >
+                <MessageCircle size={18} />
+              </button>
+            )}
             <div className="top-bar-actions">
               <button
                 type="button"

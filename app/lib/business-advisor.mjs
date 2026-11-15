@@ -2,6 +2,7 @@ import {
   amountToCents,
   centsToAmount,
   parseRecordDate,
+  periodKeyFor,
   sumAmounts,
 } from "./finance.mjs";
 import { orderTotalCents } from "./work-orders.mjs";
@@ -126,6 +127,54 @@ export function advisorDateRange(period = "month", from = "", to = "", now = new
   };
 }
 
+const MONTH_WORDS = [
+  ["январ", "ianuarie", "january"],
+  ["феврал", "februarie", "february"],
+  ["март", "martie", "march"],
+  ["апрел", "aprilie", "april"],
+  ["май", "мая", "mai", "may"],
+  ["июн", "iunie", "june"],
+  ["июл", "iulie", "july"],
+  ["август", "august"],
+  ["сентябр", "septembrie", "september"],
+  ["октябр", "octombrie", "october"],
+  ["ноябр", "noiembrie", "november"],
+  ["декабр", "decembrie", "december"],
+];
+
+export function inferAdvisorQuestionPeriod(question, now = new Date()) {
+  const text = String(question || "").toLocaleLowerCase();
+  const current = new Date(now);
+  const lastYear = /прошл(?:ом|ого|ый|ую)? года|anul trecut|last year/.test(text);
+  const yearMatch = text.match(/\b(19\d{2}|20\d{2})\b/);
+  let year = yearMatch ? Number(yearMatch[1]) : current.getFullYear() - Number(lastYear);
+  let month = MONTH_WORDS.findIndex((words) => words.some((word) => text.includes(word)));
+
+  if (month < 0 && /прошл(?:ом|ый|ого) месяц|last month|luna trecută|luna trecuta/.test(text)) {
+    const previous = new Date(current.getFullYear(), current.getMonth() - 1, 1);
+    month = previous.getMonth();
+    if (!yearMatch && !lastYear) year = previous.getFullYear();
+  } else if (month < 0 && /эт(?:от|ом) меся|this month|luna aceasta|luna curent/.test(text)) {
+    month = current.getMonth();
+  }
+
+  if (month < 0 && lastYear) {
+    return {
+      period: "custom",
+      from: `${year}-01-01`,
+      to: `${year}-12-31`,
+    };
+  }
+  if (month < 0) return null;
+  if (!yearMatch && !lastYear && month > current.getMonth()) year -= 1;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return {
+    period: "custom",
+    from: `${year}-${String(month + 1).padStart(2, "0")}-01`,
+    to: `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
 function formatDateInput(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -136,6 +185,24 @@ function recordDate(record, fields = ["date", "datetime", "createdAt"]) {
     if (value) return value;
   }
   return null;
+}
+
+function financialRecordDate(record) {
+  const hasPeriodKey = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(record?.periodKey || ""));
+  const hasLegacyPeriod = typeof record?.month === "string" &&
+    /^\d{4}$/.test(String(record?.year || ""));
+  if (!hasPeriodKey && !hasLegacyPeriod) return recordDate(record);
+
+  const period = periodKeyFor(record);
+  const match = period.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return recordDate(record);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return recordDate(record);
+
+  const date = recordDate(record);
+  if (date && date.getFullYear() === year && date.getMonth() === month - 1) return date;
+  return new Date(year, month - 1, 1);
 }
 
 function inRange(date, range) {
@@ -161,10 +228,10 @@ function completedVisits(db) {
 
 function metricPeriod(db, range) {
   const incomes = (Array.isArray(db?.incomes) ? db.incomes : []).filter((item) =>
-    inRange(recordDate(item), range),
+    inRange(financialRecordDate(item), range),
   );
   const expenses = (Array.isArray(db?.expenses) ? db.expenses : []).filter((item) =>
-    item.source !== "Личные средства" && inRange(recordDate(item), range),
+    item.source !== "Личные средства" && inRange(financialRecordDate(item), range),
   );
   const revenueCents = amountToCents(sumAmounts(incomes));
   const expenseCents = amountToCents(sumAmounts(expenses));
@@ -246,14 +313,14 @@ function seriesFor(db, range) {
       : dateKey(date);
   };
   (db.incomes || []).forEach((item) => {
-    const date = recordDate(item);
+    const date = financialRecordDate(item);
     if (inRange(date, range)) {
       const bucket = byKey.get(bucketKey(date));
       if (bucket) bucket.revenueCents += amountToCents(item.amount);
     }
   });
   (db.expenses || []).forEach((item) => {
-    const date = recordDate(item);
+    const date = financialRecordDate(item);
     if (item.source !== "Личные средства" && inRange(date, range)) {
       const bucket = byKey.get(bucketKey(date));
       if (bucket) bucket.expenseCents += amountToCents(item.amount);
@@ -272,6 +339,61 @@ function seriesFor(db, range) {
     expenses: centsToAmount(bucket.expenseCents),
     profit: centsToAmount(bucket.revenueCents - bucket.expenseCents),
   }));
+}
+
+function monthlyBusinessPerformance(db) {
+  const months = new Map();
+  const bucketFor = (date) => {
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    if (!months.has(key)) months.set(key, { period: key, revenueCents: 0, expenseCents: 0, completedOrders: 0 });
+    return months.get(key);
+  };
+  (db.incomes || []).forEach((item) => {
+    const date = financialRecordDate(item);
+    if (date) bucketFor(date).revenueCents += amountToCents(item.amount);
+  });
+  (db.expenses || []).forEach((item) => {
+    const date = financialRecordDate(item);
+    if (date && item.source !== "Личные средства") {
+      bucketFor(date).expenseCents += amountToCents(item.amount);
+    }
+  });
+  (db.orders || []).forEach((order) => {
+    const date = completedOrderDate(order);
+    if (date) bucketFor(date).completedOrders += 1;
+  });
+  return [...months.values()]
+    .sort((first, second) => first.period.localeCompare(second.period))
+    .map((item) => ({
+      period: item.period,
+      revenue: centsToAmount(item.revenueCents),
+      expenses: centsToAmount(item.expenseCents),
+      profit: centsToAmount(item.revenueCents - item.expenseCents),
+      completedOrders: item.completedOrders,
+    }));
+}
+
+function dataCoverage(db) {
+  const dated = (records, getDate) => records
+    .map(getDate)
+    .filter(Boolean)
+    .sort((first, second) => first - second);
+  const incomes = dated(db.incomes || [], financialRecordDate);
+  const expenses = dated(
+    (db.expenses || []).filter((item) => item.source !== "Личные средства"),
+    financialRecordDate,
+  );
+  const completedOrders = dated(db.orders || [], completedOrderDate);
+  const coverage = (dates) => ({
+    records: dates.length,
+    from: dates.length ? dateKey(dates[0]) : null,
+    to: dates.length ? dateKey(dates.at(-1)) : null,
+  });
+  return {
+    income: coverage(incomes),
+    operatingExpenses: coverage(expenses),
+    completedOrders: coverage(completedOrders),
+  };
 }
 
 function serviceAnalytics(db, range, limit = 8) {
@@ -305,7 +427,7 @@ function clientPaymentTotals(db, range) {
   const ordersById = new Map(orders.map((order) => [String(order.id), order]));
   const customerByKey = new Map(customers.map((customer) => [String(customer.id), customer]));
   const totals = new Map();
-  (db.incomes || []).filter((income) => inRange(recordDate(income), range)).forEach((income) => {
+  (db.incomes || []).filter((income) => inRange(financialRecordDate(income), range)).forEach((income) => {
     const booking = visitsById.get(String(income.clientId));
     const order = ordersById.get(String(income.orderId));
     const key = String(order?.customerId || booking?.customerId || income.customerId || income.clientId || "");
@@ -331,7 +453,7 @@ function expenseCategoryAnalytics(db, range, previousRange) {
   (db?.expenses || [])
     .filter((expense) => expense.source !== "Личные средства")
     .forEach((expense) => {
-      const date = recordDate(expense);
+      const date = financialRecordDate(expense);
       if (!date) return;
       const category = String(expense.category || "Без категории").trim() || "Без категории";
       if (inRange(date, range)) {
@@ -457,6 +579,8 @@ export function buildAdvisorAnalytics(db, options = {}, now = new Date()) {
   });
   const expenseCategories = expenseCategoryAnalytics(db, range, previousRange);
   const series = seriesFor(db, range);
+  const monthlyPerformance = monthlyBusinessPerformance(db);
+  const dataAvailability = dataCoverage(db);
   const orders = orderAnalytics(db, range);
   const inactive = inactiveClients(db, now);
   return {
@@ -495,6 +619,8 @@ export function buildAdvisorAnalytics(db, options = {}, now = new Date()) {
       averageClientSpend: percentChange(current.averageClientSpendCents, previous.averageClientSpendCents),
     },
     series,
+    monthlyPerformance,
+    dataAvailability,
     services,
     expenseCategories,
     topClients: topClients(db, range),
@@ -707,6 +833,8 @@ export function advisorFactsForAi(analytics, insights) {
       returningClientsPercent: analytics.changes.returningClients,
       averageClientSpendPercent: analytics.changes.averageClientSpend,
     },
+    monthlyPerformance: analytics.monthlyPerformance,
+    dataAvailability: analytics.dataAvailability,
     services: analytics.services.map(({ name, visits, revenue, previousVisits, changePercent }) => ({
       name, visits, revenue, previousVisits, changePercent,
     })),
@@ -731,6 +859,82 @@ export function answerAdvisorQuestion(analytics, question, language = "ru") {
   const text = String(question || "").toLocaleLowerCase(language === "ro" ? "ro" : "ru");
   const ro = language === "ro";
   const table = (headers, rows) => ({ headers, rows });
+  if (/откуда.*(информац|данн|цифр)|источник.*данн|на чем.*осн|de unde.*(informa|date|cifre)|surs.*dat/.test(text)) {
+    const availability = analytics.dataAvailability || {};
+    const coverage = (item) => item?.records
+      ? `${item.records} · ${item.from} — ${item.to}`
+      : ro ? "fără înregistrări cu perioadă cunoscută" : "нет записей с известным периодом";
+    return {
+      text: ro
+        ? `Datele vin din înregistrările CRM pentru perioada ${analytics.range.from} — ${analytics.range.to}. CRM calculează cifrele pe server; Gemini primește doar indicatori agregați, nu baza brută sau date personale.`
+        : `Данные берутся из записей CRM за период ${analytics.range.from} — ${analytics.range.to}. Показатели рассчитываются на сервере; Gemini получает только агрегированные метрики, а не базу целиком или персональные данные.`,
+      table: table(
+        ro ? ["Sursa", "Înregistrări / acoperire"] : ["Данные CRM", "Записей / охват"],
+        [
+          [ro ? "Venituri" : "Поступления", coverage(availability.income)],
+          [ro ? "Cheltuieli operaționale" : "Операционные расходы", coverage(availability.operatingExpenses)],
+          [ro ? "Comenzi finalizate" : "Завершённые заказы", coverage(availability.completedOrders)],
+        ],
+      ),
+    };
+  }
+  if (/de ce.*(zero|zerouri|0)|de ce.*(venit|cheltu|profit).*(lips|zero|0)|почему.*(нул|0|пуст)|нул.*(доход|выруч|расход|прибыл)|почему.*(доход|выруч|расход|прибыл).*(нет|пуст|0)/.test(text)) {
+    const availability = analytics.dataAvailability || {};
+    const rows = [
+      [ro ? "Indicator" : "Показатель", ro ? "În perioada selectată" : "За выбранный период", ro ? "În tot CRM" : "Во всей CRM"],
+      [ro ? "Încasări" : "Поступления", `${analytics.current.incomeRecords}`, `${availability.income?.records || 0}`],
+      [ro ? "Cheltuieli operaționale" : "Операционные расходы", `${analytics.current.expenseRecords}`, `${availability.operatingExpenses?.records || 0}`],
+      [ro ? "Comenzi finalizate" : "Завершённые заказы", `${analytics.current.completedOrders}`, `${availability.completedOrders?.records || 0}`],
+    ];
+    const hasRecordsOutsideRange = rows.slice(1).some((row) => Number(row[2]) > Number(row[1]));
+    return {
+      text: hasRecordsOutsideRange
+        ? ro
+          ? `Perioada selectată (${analytics.range.from} — ${analytics.range.to}) nu conține aceste înregistrări, deși CRM are date în afara ei. Verifică intervalul selectat.`
+          : `В выбранном интервале (${analytics.range.from} — ${analytics.range.to}) записей нет, но в CRM есть записи за другие даты. Проверьте выбранный период.`
+        : ro
+          ? "Analiza nu a găsit înregistrări datate pentru acești indicatori în datele CRM primite."
+          : "В полученных данных CRM не найдено записей с датами для этих показателей.",
+      table: table(rows[0], rows.slice(1)),
+    };
+  }
+  if (/care lun[aă].*(productiv|profit|venit|aglomer)|cea mai productiv|cel mai productiv|most productive month|best.*month|сам(ый|ый) продуктивн.*месяц|какой.*месяц.*(продуктив|прибыл|выруч|загруж)|сам(ый|ый) прибыльн.*месяц/.test(text)) {
+    const months = analytics.monthlyPerformance || [];
+    const monthName = (period) => {
+      const [year, month] = period.split("-").map(Number);
+      return new Date(year, month - 1, 1).toLocaleDateString(ro ? "ro-RO" : "ru-RU", {
+        month: "long",
+        year: "numeric",
+      });
+    };
+    const topMonth = (field) => months.reduce(
+      (best, item) => item[field] > (best?.[field] ?? -Infinity) ? item : best,
+      null,
+    );
+    if (months.length < 2) {
+      return {
+        text: ro
+          ? "Nu există cel puțin două luni cu date în CRM pentru a compara productivitatea."
+          : "В CRM нет данных как минимум за два месяца, поэтому сравнить продуктивность пока нельзя.",
+        table: null,
+      };
+    }
+    const bestRevenue = topMonth("revenue");
+    const bestProfit = topMonth("profit");
+    const bestOrders = topMonth("completedOrders");
+    const rows = months.slice().sort((first, second) => second.revenue - first.revenue)
+      .slice(0, 5)
+      .map((item) => [monthName(item.period), money(item.revenue, language), money(item.profit, language), String(item.completedOrders)]);
+    return {
+      text: ro
+        ? `Pe baza întregii istorii datate din CRM: venitul maxim a fost în ${monthName(bestRevenue.period)} (${money(bestRevenue.revenue, language)}); profitul operațional maxim în ${monthName(bestProfit.period)} (${money(bestProfit.profit, language)}); cele mai multe comenzi finalizate în ${monthName(bestOrders.period)} (${bestOrders.completedOrders}).`
+        : `По всей датированной истории CRM: максимум поступлений был в месяце «${monthName(bestRevenue.period)}» (${money(bestRevenue.revenue, language)}); максимум операционной прибыли — в «${monthName(bestProfit.period)}» (${money(bestProfit.profit, language)}); больше всего завершённых заказов — в «${monthName(bestOrders.period)}» (${bestOrders.completedOrders}).`,
+      table: table(
+        ro ? ["Luna", "Venituri", "Profit", "Comenzi"] : ["Месяц", "Поступления", "Прибыль", "Заказы"],
+        rows,
+      ),
+    };
+  }
   if (/top|топ|сам(ый|ая|ые) цен|cei mai profit|clien.t.*valoro/.test(text)) {
     return {
       text: ro
@@ -865,10 +1069,28 @@ export function answerAdvisorQuestion(analytics, question, language = "ru") {
       ),
     };
   }
+  if (/profit|profitabil|прибыл|venit|încas|incas|c[aâ]știg|castig|revenue|income|earn|заработ|выруч|доход|поступлен/.test(text)) {
+    const asksProfit = /profit|profitabil|прибыл/.test(text);
+    const current = asksProfit ? analytics.current.profit : analytics.current.revenue;
+    const previous = asksProfit ? analytics.previous.profit : analytics.previous.revenue;
+    const change = asksProfit ? analytics.changes.profit : analytics.changes.revenue;
+    return {
+      text: ro
+        ? `${asksProfit ? "Profitul operațional" : "Venitul"} în perioada selectată (${analytics.range.from} — ${analytics.range.to}) este ${money(current, language)}; față de perioada precedentă: ${percentLabel(change)}.`
+        : `${asksProfit ? "Операционная прибыль" : "Поступления"} за выбранный период (${analytics.range.from} — ${analytics.range.to}) — ${money(current, language)}; к предыдущему равному периоду: ${percentLabel(change)}.`,
+      table: table(
+        ro ? ["Perioadă", asksProfit ? "Profit" : "Venit"] : ["Период", asksProfit ? "Прибыль" : "Поступления"],
+        [
+          [ro ? "Selectată" : "Выбранный", money(current, language)],
+          [ro ? "Precedentă" : "Предыдущий", money(previous, language)],
+        ],
+      ),
+    };
+  }
   return {
     text: ro
-      ? `Pentru perioada selectată: venit ${money(analytics.current.revenue, language)}, cheltuieli operaționale ${money(analytics.current.expenses, language)}, profit ${money(analytics.current.profit, language)} și ${analytics.current.completedOrders} comenzi finalizate.`
-      : `За выбранный период: поступления ${money(analytics.current.revenue, language)}, операционные расходы ${money(analytics.current.expenses, language)}, прибыль ${money(analytics.current.profit, language)}, завершённых заказов — ${analytics.current.completedOrders}.`,
+      ? "Nu pot răspunde cu încredere la această întrebare din indicatorii agregați disponibili. Încearcă să întrebi despre venituri, profit, cheltuieli, servicii, clienți sau comenzi."
+      : "Не могу уверенно ответить на этот вопрос по доступным агрегированным показателям. Спросите о поступлениях, прибыли, расходах, услугах, клиентах или заказах.",
     table: null,
   };
 }

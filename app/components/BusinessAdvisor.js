@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   ArrowDownRight,
@@ -56,6 +57,10 @@ const CHAT_PROMPTS = {
     "Cât cheltuiește în medie un client?",
     "Care a fost cea mai aglomerată zi?",
   ],
+};
+const GENERAL_CHAT_PROMPTS = {
+  ru: ["Объясни сложную тему простыми словами", "Помоги составить план", "Переведи текст на румынский"],
+  ro: ["Explică-mi un subiect simplu", "Ajută-mă să fac un plan", "Tradu un text în rusă"],
 };
 
 function percentage(value) {
@@ -204,6 +209,7 @@ function MetricBars({ items, valueKey, formatValue, emptyText, labelKey = "name"
 
 export default function BusinessAdvisor({ db, mutate, navigate, openModal, role, user, chatOnly = false }) {
   const [period, setPeriod] = useState("month");
+  const [chatPeriod, setChatPeriod] = useState("year");
   const [from, setFrom] = useState(() => {
     const date = new Date();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
@@ -212,19 +218,31 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
     const date = new Date();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   });
+  const [chatFrom, setChatFrom] = useState(() => `${new Date().getFullYear()}-01-01`);
+  const [chatTo, setChatTo] = useState(() => {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  });
+  const [chatMode, setChatMode] = useState("crm");
   const [language, setLanguage] = useState("ru");
   const [question, setQuestion] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiInsights, setAiInsights] = useState(null);
-  const [chat, setChat] = useState([]);
+  const [chats, setChats] = useState({ crm: [], general: [] });
+  const chat = chats[chatMode] || [];
   const chatEndRef = useRef(null);
   const chatScreenRef = useRef(null);
+  const [chatPortalTarget, setChatPortalTarget] = useState(null);
   const canManageRecommendations = roleCanWriteCollection(role, "advisorRecommendations");
   const analytics = useMemo(
     () => buildAdvisorAnalytics(db, { period, from, to }),
     [db, period, from, to],
+  );
+  const chatAnalytics = useMemo(
+    () => buildAdvisorAnalytics(db, { period: chatPeriod, from: chatFrom, to: chatTo }),
+    [db, chatPeriod, chatFrom, chatTo],
   );
   const insights = useMemo(
     () => buildAdvisorInsights(analytics, db),
@@ -258,15 +276,37 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
   }, [canManageRecommendations, db.advisorRecommendations, mutate, recommendations]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [chat, chatOnly]);
+    if (!chatOnly) {
+      setChatPortalTarget(null);
+      return;
+    }
+    setChatPortalTarget(document.body);
+  }, [chatOnly]);
 
   useEffect(() => {
-    if (!chatOnly) return undefined;
+    if (!chatOnly || !chatPortalTarget) return undefined;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
+    };
+  }, [chatOnly, chatPortalTarget]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [chat, chatOnly, chatPortalTarget]);
+
+  useEffect(() => {
+    if (!chatOnly || !chatPortalTarget) return undefined;
     const viewport = window.visualViewport;
     const updateHeight = () => {
       const height = viewport?.height || window.innerHeight;
+      const top = viewport?.offsetTop || 0;
       chatScreenRef.current?.style.setProperty("--advisor-visual-height", `${height}px`);
+      chatScreenRef.current?.style.setProperty("--advisor-visual-top", `${top}px`);
     };
     updateHeight();
     viewport?.addEventListener("resize", updateHeight);
@@ -277,7 +317,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
       viewport?.removeEventListener("scroll", updateHeight);
       window.removeEventListener("resize", updateHeight);
     };
-  }, [chatOnly]);
+  }, [chatOnly, chatPortalTarget]);
 
   useEffect(() => {
     setAiInsights(null);
@@ -288,7 +328,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
     const text = prompt.trim();
     if (!text || chatBusy) return;
     const nextChat = [...chat, { role: "user", content: text }].slice(-20);
-    setChat(nextChat);
+    setChats((current) => ({ ...current, [chatMode]: nextChat }));
     setQuestion("");
     setChatBusy(true);
     setAiError("");
@@ -299,12 +339,13 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         signal: AbortSignal.timeout(45_000),
         body: JSON.stringify({
           action: "chat",
+          mode: chatMode,
           question: text,
-          history: nextChat.slice(-7),
+          history: chat.slice(-6),
           language,
-          period,
-          from,
-          to,
+          period: chatPeriod,
+          from: chatFrom,
+          to: chatTo,
         }),
       });
       const result = await response.json();
@@ -316,10 +357,16 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         analysis: result.analysis || "",
         recommendation: result.recommendation || "",
       };
-      setChat((current) => [...current, answer].slice(-20));
+      setChats((current) => ({ ...current, [chatMode]: [...(current[chatMode] || []), answer].slice(-20) }));
       if (result.aiError) setAiError(result.aiError);
     } catch (error) {
-      setChat((current) => current.filter((item, index) => !(index === current.length - 1 && item.role === "user" && item.content === text)));
+      setChats((current) => {
+        const currentChat = current[chatMode] || [];
+        return {
+          ...current,
+          [chatMode]: currentChat.filter((item, index) => !(index === currentChat.length - 1 && item.role === "user" && item.content === text)),
+        };
+      });
       setQuestion(text);
       setAiError(error instanceof Error ? error.message : "Ошибка связи с бизнес-советником.");
     } finally {
@@ -365,15 +412,15 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
   };
 
   if (chatOnly) {
-    return (
-      <section className="advisor-chat-screen" ref={chatScreenRef}>
+    const chatScreen = (
+      <section className={`advisor-chat-screen${chatMode === "general" ? " is-general" : ""}`} ref={chatScreenRef}>
         <header className="advisor-chat-screen-header">
           <div className="advisor-chat-screen-title">
             <button type="button" className="advisor-chat-back" onClick={() => navigate("businessAdvisor")} aria-label="Вернуться к бизнес-аналитике">
               <ArrowLeft size={19} />
             </button>
             <span className="advisor-chat-avatar"><BrainCircuit size={20} /></span>
-            <div><strong>ANGEL AI</strong><small>Бизнес-советник · данные CRM</small></div>
+            <div><strong>ANGEL AI</strong><small>{chatMode === "general" ? "Универсальный AI" : "Бизнес-советник · данные CRM"}</small></div>
           </div>
           <div className="advisor-chat-screen-actions">
             <div className="advisor-language-toggle" aria-label="Язык ответов">
@@ -383,7 +430,11 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
             <button
               type="button"
               className="advisor-new-chat"
-              onClick={() => { setChat([]); setQuestion(""); setAiError(""); }}
+              onClick={() => {
+                setChats((current) => ({ ...current, [chatMode]: [] }));
+                setQuestion("");
+                setAiError("");
+              }}
               disabled={!chat.length && !question}
               aria-label="Начать новый чат"
               title="Новый чат"
@@ -393,31 +444,58 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
           </div>
         </header>
 
-        <div className="advisor-chat-screen-period">
-          <label><span>Период данных</span>
-            <select value={period} onChange={(event) => setPeriod(event.target.value)}>
-              {ADVISOR_PERIODS.map(([id, label]) => <option value={id} key={id}>{label}</option>)}
-            </select>
-          </label>
-          {period === "custom" ? (
-            <div className="advisor-chat-screen-dates">
-              <input aria-label="Начало периода" type="date" value={from} max={to} onChange={(event) => { if (event.target.value) setFrom(event.target.value); }} />
-              <span>—</span>
-              <input aria-label="Окончание периода" type="date" value={to} min={from} onChange={(event) => { if (event.target.value) setTo(event.target.value); }} />
-            </div>
-          ) : <small>{analytics.range.from} — {analytics.range.to}</small>}
+        <div className="advisor-chat-mode-row">
+          <div className="advisor-chat-mode-toggle" role="group" aria-label="Режим AI-чата">
+            <button type="button" aria-pressed={chatMode === "crm"} className={chatMode === "crm" ? "active" : ""} onClick={() => setChatMode("crm")}>
+              {language === "ro" ? "Date CRM" : "Данные CRM"}
+            </button>
+            <button type="button" aria-pressed={chatMode === "general"} className={chatMode === "general" ? "active" : ""} onClick={() => setChatMode("general")}>
+              {language === "ro" ? "AI general" : "Общий AI"}
+            </button>
+          </div>
+          <p>{chatMode === "general"
+            ? language === "ro" ? "Modul general nu accesează CRM." : "Общий режим не использует данные CRM."
+            : language === "ro" ? "Întreabă despre afacere; poți preciza luna în mesaj." : "Вопросы о бизнесе; месяц можно указать прямо в сообщении."}</p>
         </div>
+
+        {chatMode === "crm" && (
+          <div className="advisor-chat-screen-period">
+            <label><span>{language === "ro" ? "Perioada CRM" : "Период CRM"}</span>
+              <select value={chatPeriod} onChange={(event) => setChatPeriod(event.target.value)}>
+                {ADVISOR_PERIODS.map(([id, label]) => <option value={id} key={id}>{label}</option>)}
+              </select>
+            </label>
+            {chatPeriod === "custom" ? (
+              <div className="advisor-chat-screen-dates">
+                <input aria-label="Начало периода" type="date" value={chatFrom} max={chatTo} onChange={(event) => { if (event.target.value) setChatFrom(event.target.value); }} />
+                <span>—</span>
+                <input aria-label="Окончание периода" type="date" value={chatTo} min={chatFrom} onChange={(event) => { if (event.target.value) setChatTo(event.target.value); }} />
+              </div>
+            ) : <small>{chatPeriod === "year"
+              ? `${chatAnalytics.range.from} — ${chatAnalytics.range.to}`
+              : chatAnalytics.range.from === chatAnalytics.range.to
+                ? chatAnalytics.range.from
+                : `${chatAnalytics.range.from} — ${chatAnalytics.range.to}`}</small>}
+            <small className="advisor-chat-period-hint">{language === "ro" ? "Perioada menționată în întrebare are prioritate." : "Период из формулировки вопроса имеет приоритет."}</small>
+          </div>
+        )}
 
         <main className="advisor-chat-screen-messages" aria-live="polite">
           {!chat.length && (
             <div className="advisor-chat-screen-welcome">
               <span><Sparkles size={20} /></span>
-              <h1>{language === "ro" ? "Cu ce te pot ajuta?" : "Чем помочь вашему бизнесу?"}</h1>
-              <p>{language === "ro"
-                ? "Întreabă despre venituri, clienți și servicii. Răspunsurile folosesc datele CRM disponibile."
-                : "Спрашивайте о доходах, клиентах и услугах. Факты в ответах рассчитаны по данным CRM."}</p>
+              <h1>{chatMode === "general"
+                ? language === "ro" ? "Întreabă-mă orice" : "Спросите о чём угодно"
+                : language === "ro" ? "Cu ce te pot ajuta în afacere?" : "Что разберём в бизнесе?"}</h1>
+              <p>{chatMode === "general"
+                ? language === "ro"
+                  ? "Ajutor general pentru idei, explicații, traduceri și planuri. Fără acces la CRM sau căutare web."
+                  : "Общие вопросы, идеи, объяснения, переводы и планы. Без доступа к CRM и веб-поиску."
+                : language === "ro"
+                  ? "Analizez datele CRM pentru perioada aleasă sau menționată în întrebare."
+                  : "Анализирую данные CRM за выбранный период или период, указанный в вопросе."}</p>
               <div className="advisor-chat-screen-prompts">
-                {CHAT_PROMPTS[language].map((prompt) => (
+                {(chatMode === "general" ? GENERAL_CHAT_PROMPTS : CHAT_PROMPTS)[language].map((prompt) => (
                   <button type="button" key={prompt} onClick={() => void askAdvisor(prompt)}>{prompt}<ArrowRight size={14} /></button>
                 ))}
               </div>
@@ -435,7 +513,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
               </div>
             </article>
           ))}
-          {chatBusy && <div className="advisor-chat-loading"><i /><i /><i /><span>ANGEL AI анализирует данные…</span></div>}
+          {chatBusy && <div className="advisor-chat-loading"><i /><i /><i /><span>{chatMode === "general" ? "ANGEL AI отвечает…" : "ANGEL AI анализирует CRM…"}</span></div>}
           <div ref={chatEndRef} />
         </main>
 
@@ -446,17 +524,24 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
             onChange={(event) => setQuestion(event.target.value)}
             maxLength={600}
             rows={1}
-            placeholder={language === "ro" ? "Scrie un mesaj…" : "Напишите сообщение…"}
+            placeholder={chatMode === "general"
+              ? language === "ro" ? "Scrie orice întrebare…" : "Напишите любой вопрос…"
+              : language === "ro" ? "Întreabă despre CRM…" : "Спросите о данных CRM…"}
             aria-label={language === "ro" ? "Mesaj pentru ANGEL AI" : "Сообщение для ANGEL AI"}
           />
           <span>{question.length}/600</span>
           <button type="submit" disabled={!question.trim() || chatBusy} aria-label="Отправить сообщение"><Send size={18} /></button>
         </form>
-        <p className="advisor-chat-screen-privacy">{language === "ro"
-          ? "AI folosește date CRM agregate. Nu modifică datele și nu trimite mesaje."
-          : "AI использует агрегированные данные CRM. Не меняет записи и не отправляет сообщения."}</p>
+        <p className="advisor-chat-screen-privacy">{chatMode === "general"
+          ? language === "ro"
+            ? "Modul general nu vede date CRM și nu are căutare pe internet."
+            : "Общий режим не видит данные CRM и не выполняет поиск в интернете."
+          : language === "ro"
+            ? "În modul CRM folosesc indicatori agregați. Nu modific date și nu trimit mesaje."
+            : "В режиме CRM использую агрегированные показатели. Не меняю записи и не отправляю сообщения."}</p>
       </section>
     );
+    return chatPortalTarget ? createPortal(chatScreen, chatPortalTarget) : null;
   }
 
   return (

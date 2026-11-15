@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   Activity,
+  Archive,
   ArrowRight,
   ArrowUpDown,
   Bell,
@@ -18,6 +19,7 @@ import {
   CalendarPlus,
   ChartNoAxesCombined,
   CarFront,
+  ClipboardList,
   Check,
   Cloud,
   CloudDrizzle,
@@ -88,23 +90,19 @@ import {
   reminderChannelLinks,
 } from "./lib/messages.mjs";
 import { sortAuditLogsNewestFirst } from "./lib/audit.mjs";
+import {
+  DB_SCHEMA_VERSION,
+  EMPTY_DB,
+  normalizeDatabase,
+} from "./lib/database.mjs";
+import {
+  customerSummary,
+  visitsForVehicle,
+} from "./lib/customer-records.mjs";
+import WorkOrders from "./components/WorkOrders";
 
 const SCRIPT_URL = "/api/db";
 const BACKUP_KEY = "angel-detailing-auto-backup";
-const EMPTY_DB = {
-  clients: [],
-  expenses: [],
-  incomes: [],
-  warehouse: [],
-  withdrawals: [],
-  debts: [],
-  windows: [],
-  logs: [],
-  stockMovements: [],
-  services: [],
-  videoDescriptions: [],
-  messageTemplates: [],
-};
 const WEATHER_LOCATIONS = [
   { id: "balti", name: "Бельцы", latitude: 47.753994, longitude: 27.918414 },
   { id: "chisinau", name: "Кишинёв", latitude: 47.0105, longitude: 28.8638 },
@@ -126,7 +124,9 @@ const NAV = [
   ["videoDescriptions", "Описания для видео", Video],
   ["reminderTemplates", "Шаблоны напоминаний", MessageSquareText],
   ["calendar", "Календарь", CalendarDays],
-  ["clients", "1. Записи клиентов", Users],
+  ["orders", "Заказы мастерской", ClipboardList],
+  ["customers", "Клиенты и автомобили", Users],
+  ["clients", "Записи клиентов", CalendarPlus],
   ["expenses", "2. Затраты", Receipt],
   ["profit", "3. Прибыль", TrendingUp],
   ["warehouse", "4. Склад", Package],
@@ -137,7 +137,7 @@ const NAV = [
 ];
 const NAV_GROUPS = [
   { title: "ОБЗОР", items: ["home", "analytics", "weather"] },
-  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "clients", "services", "videoDescriptions", "reminderTemplates"] },
+  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "orders", "customers", "clients", "services", "videoDescriptions", "reminderTemplates"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "withdrawals", "debts"] },
   { title: "ОПЕРАЦИИ", items: ["warehouse", "windows", "logs"] },
 ];
@@ -227,17 +227,11 @@ const isSameDay = (value, reference = new Date()) => {
     date.getDate() === reference.getDate()
   );
 };
-const normalizeDb = (data) => ({
-  ...EMPTY_DB,
-  ...(data || {}),
-  debts: data?.debts || [],
-  windows: data?.windows || [],
-  logs: sortAuditLogsNewestFirst(Array.isArray(data?.logs) ? data.logs : []),
-  stockMovements: data?.stockMovements || [],
-  services: data?.services || [],
-  videoDescriptions: data?.videoDescriptions || [],
-  messageTemplates: data?.messageTemplates || [],
-});
+const normalizeDb = (data) => {
+  const normalized = normalizeDatabase(data);
+  normalized.logs = sortAuditLogsNewestFirst(normalized.logs);
+  return normalized;
+};
 
 function Button({
   children,
@@ -482,7 +476,8 @@ export default function Home() {
     try {
       const response = await fetch(SCRIPT_URL, { cache: "no-store" });
       if (!response.ok) throw new Error();
-      const freshDb = normalizeDb(await response.json());
+      const payload = await response.json();
+      const freshDb = normalizeDb(payload);
       if (revision !== dataRevision.current || pendingSaves.current > 0) return;
       dbRef.current = freshDb;
       setDb(freshDb);
@@ -490,6 +485,13 @@ export default function Home() {
         localStorage.setItem("angel-detailing-db", JSON.stringify(freshDb));
       } catch {
         // Browser cache is optional; Google remains the source of truth.
+      }
+      if (
+        !Number.isSafeInteger(payload?.schemaVersion) ||
+        payload.schemaVersion < DB_SCHEMA_VERSION
+      ) {
+        await persist(freshDb);
+        return;
       }
       setSync("✓ Google OK");
     } catch {
@@ -948,7 +950,81 @@ export default function Home() {
           </header>
           <div className="page-container">{pageContent}</div>
         </main>
-        {modal?.type === "client-profile" ? (
+        {modal?.type === "customer-profile" ? (
+          <CustomerProfile
+            customer={modal.item}
+            db={db}
+            onClose={() => setModal(null)}
+            onEdit={() => setModal({ type: "customer", item: modal.item })}
+            onAddVehicle={() => setModal({ type: "vehicle", preset: { customerId: modal.item.id } })}
+            onOpenVehicle={(vehicle) => setModal({ type: "vehicle-profile", item: vehicle })}
+            onBook={(vehicle) => setModal({
+              type: "client",
+              preset: {
+                customerId: modal.item.id,
+                vehicleId: vehicle.id,
+                car: vehicle.makeModel,
+                phone: modal.item.phone,
+              },
+            })}
+            onArchiveVehicle={(vehicle) => {
+              const nextArchived = !vehicle.archived;
+              if (nextArchived && !confirm(`Архивировать автомобиль ${vehicle.makeModel || vehicle.plate || ""}? История визитов сохранится.`)) return;
+              mutate(
+                { vehicles: db.vehicles.map((row) => row.id === vehicle.id ? { ...row, archived: nextArchived } : row) },
+                `${nextArchived ? "Архивирован" : "Восстановлен из архива"} автомобиль: ${vehicle.makeModel || vehicle.plate || vehicle.id}`,
+              );
+              setModal(null);
+            }}
+            onArchive={() => {
+              const nextArchived = !modal.item.archived;
+              if (nextArchived && !confirm(`Архивировать клиента ${modal.item.name || modal.item.phone || "без имени"}? История и записи сохранятся.`)) return;
+              mutate(
+                { customers: db.customers.map((customer) => customer.id === modal.item.id ? { ...customer, archived: nextArchived } : customer) },
+                `${nextArchived ? "Архивирован" : "Восстановлен из архива"} клиент: ${modal.item.name || modal.item.phone || modal.item.id}`,
+              );
+              setModal(null);
+            }}
+          />
+        ) : modal?.type === "vehicle-profile" ? (
+          <VehicleProfile
+            vehicle={modal.item}
+            db={db}
+            onClose={() => setModal(null)}
+            onEdit={() => setModal({ type: "vehicle", item: modal.item })}
+            onArchive={() => {
+              const nextArchived = !modal.item.archived;
+              if (nextArchived && !confirm(`Архивировать автомобиль ${modal.item.makeModel || modal.item.plate || ""}? История визитов сохранится.`)) return;
+              mutate(
+                { vehicles: db.vehicles.map((vehicle) => vehicle.id === modal.item.id ? { ...vehicle, archived: nextArchived } : vehicle) },
+                `${nextArchived ? "Архивирован" : "Восстановлен из архива"} автомобиль: ${modal.item.makeModel || modal.item.plate || modal.item.id}`,
+              );
+              setModal(null);
+            }}
+            onBook={() => {
+              const customer = db.customers.find((row) => row.id === modal.item.customerId);
+              setModal({
+                type: "client",
+                preset: {
+                  customerId: modal.item.customerId,
+                  vehicleId: modal.item.id,
+                  car: modal.item.makeModel,
+                  phone: customer?.phone || "",
+                },
+              });
+            }}
+          />
+        ) : modal?.type === "customer" || modal?.type === "vehicle" ? (
+          <CustomerRecordEditor
+            type={modal.type}
+            item={modal.item}
+            preset={modal.preset}
+            db={db}
+            user={user}
+            mutate={mutate}
+            onClose={() => setModal(null)}
+          />
+        ) : modal?.type === "client-profile" ? (
           <ClientProfile
             client={modal.item}
             db={db}
@@ -960,6 +1036,8 @@ export default function Home() {
               preset: {
                 car: modal.item.car,
                 phone: modal.item.phone,
+                customerId: modal.item.customerId || "",
+                vehicleId: modal.item.vehicleId || "",
                 seatType: modal.item.seatType,
                 service: modal.item.service,
                 servicePrice: modal.item.servicePrice,
@@ -1113,6 +1191,15 @@ function PageContent({
         openProfile={(client) => openModal({ type: "client-profile", item: client })}
       />
     );
+  if (page === "customers")
+    return (
+      <CustomersPage
+        db={db}
+        openModal={openModal}
+      />
+    );
+  if (page === "orders")
+    return <WorkOrders db={db} mutate={mutate} user={user} />;
   if (page === "weather") return <WeatherPage />;
   if (page === "calendar")
     return <CalendarPage db={db} openModal={openModal} />;
@@ -1572,6 +1659,470 @@ function ClientProfile({ client, db, onClose, onEdit, onDelete, onRebook, onPaym
       <section className="profile-section"><div className="card-header">Последние визиты</div>{relatedClients.slice().sort((a, b) => (parseDate(b.datetime)?.getTime() || 0) - (parseDate(a.datetime)?.getTime() || 0)).map((visit) => <div className="profile-history-row" key={visit.id}><span><strong>{visit.service || "Услуга не указана"}</strong><small>{dateText(visit.datetime)} <ClientWeatherBadge datetime={visit.datetime} /></small></span><Badge status={statusClass(visit.status)}>{visit.status}</Badge><strong>{visit.servicePrice ? money(visit.servicePrice) : "Цена не указана"}</strong></div>)}</section>
       <section className="profile-section"><div className="card-header">История оплат</div>{payments.length ? payments.slice(0, 8).map((payment) => <div className="profile-history-row" key={payment.id}><span><strong>{payment.debtId ? "Погашение долга" : payment.debtAllocations?.length ? "Платёж с погашением долга" : "Оплата услуги"}</strong><small>{dateText(payment.date)} <ClientWeatherBadge datetime={payment.date} /></small></span><strong className="positive">+{money(payment.amount)}</strong></div>) : <div className="empty-reminder">Оплат пока нет</div>}</section>
       {client.phone && <a className="client-call-link" href={`tel:${client.phone}`}>Позвонить клиенту <ArrowRight size={14} /></a>}
+    </Modal>
+  );
+}
+
+function CustomersPage({ db, openModal }) {
+  const [query, setQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const customers = db.customers
+    .filter((customer) => Boolean(customer.archived) === showArchived)
+    .filter((customer) => {
+      if (!normalizedQuery) return true;
+      const vehicles = db.vehicles.filter((vehicle) => vehicle.customerId === customer.id);
+      return [
+        customer.name,
+        customer.phone,
+        customer.alternateContact,
+        ...vehicles.flatMap((vehicle) => [
+          vehicle.makeModel,
+          vehicle.plate,
+          vehicle.vin,
+        ]),
+      ].some((value) =>
+        String(value || "").toLocaleLowerCase("ru").includes(normalizedQuery),
+      );
+    })
+    .sort((first, second) =>
+      RU_COLLATOR.compare(first.name || first.phone || "", second.name || second.phone || ""),
+    );
+
+  return (
+    <div className="customers-page">
+      <section className="customers-hero">
+        <div>
+          <span className="dashboard-kicker">CUSTOMER & VEHICLE RECORDS</span>
+          <h2>Клиенты и автомобили</h2>
+          <p>Профили клиентов, их автомобили и связанная история визитов и оплат.</p>
+        </div>
+        <Button icon={Plus} onClick={() => openModal({ type: "customer" })}>
+          Добавить клиента
+        </Button>
+      </section>
+      <section className="customers-toolbar card">
+        <label className="clients-search">
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Имя, телефон, госномер или VIN"
+            aria-label="Поиск клиентов и автомобилей"
+          />
+        </label>
+        <label className="customers-archive-toggle">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.target.checked)}
+          />
+          <span>Архив ({db.customers.filter((customer) => customer.archived).length})</span>
+        </label>
+        <span className="customers-result-count">{customers.length} клиентов</span>
+      </section>
+      {customers.length ? (
+        <section className="customers-grid">
+          {customers.map((customer) => {
+            const summary = customerSummary(db, customer);
+            const vehicles = db.vehicles.filter(
+              (vehicle) => vehicle.customerId === customer.id && !vehicle.archived,
+            );
+            return (
+              <button
+                className="customer-card"
+                key={customer.id}
+                type="button"
+                onClick={() => openModal({ type: "customer-profile", item: customer })}
+              >
+                <span className="customer-card-top">
+                  <span className="customer-avatar"><User size={19} /></span>
+                  {customer.archived && <Badge status="cancelled">Архив</Badge>}
+                  <span className="customer-vehicle-count"><CarFront size={14} /> {vehicles.length}</span>
+                </span>
+                <strong className="customer-card-name">{customer.name || "Имя не указано"}</strong>
+                <span className="customer-card-phone">{customer.phone || "Телефон не указан"}</span>
+                {customer.alternateContact && (
+                  <span className="customer-card-contact">{customer.alternateContact}</span>
+                )}
+                <span className="customer-card-stats">
+                  <span>{summary.visitCount} визитов</span>
+                  <span>{money(summary.totalPaid)}</span>
+                </span>
+                <span className="customer-card-last-visit">
+                  Последний визит: {summary.lastVisit ? dateText(summary.lastVisit.datetime) : "—"}
+                </span>
+              </button>
+            );
+          })}
+        </section>
+      ) : (
+        <section className="card customers-empty">
+          <Users size={26} />
+          <h3>{query ? "Совпадений не найдено" : "Клиентская база пока пуста"}</h3>
+          <p>{query ? "Попробуйте изменить запрос." : "Создайте профиль клиента, чтобы добавлять автомобили и вести историю посещений."}</p>
+          {!query && <Button icon={Plus} onClick={() => openModal({ type: "customer" })}>Добавить клиента</Button>}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function CustomerProfile({
+  customer,
+  db,
+  onClose,
+  onEdit,
+  onAddVehicle,
+  onOpenVehicle,
+  onBook,
+  onArchiveVehicle,
+  onArchive,
+}) {
+  const summary = customerSummary(db, customer);
+  const visits = summary.visits
+    .slice()
+    .sort((first, second) =>
+      (parseDate(second.datetime)?.getTime() || 0) -
+      (parseDate(first.datetime)?.getTime() || 0),
+    );
+  const visitIds = new Set(summary.visits.map((visit) => String(visit.id)));
+  const vehicles = db.vehicles
+    .filter((vehicle) => vehicle.customerId === customer.id)
+    .sort((first, second) => Number(Boolean(first.archived)) - Number(Boolean(second.archived)));
+
+  return (
+    <Modal title="Карточка клиента" onClose={onClose}>
+      <div className="customer-profile-heading">
+        <span className="customer-avatar large"><User size={23} /></span>
+        <div>
+          <span className="dashboard-kicker">CLIENT PROFILE</span>
+          <h2>{customer.name || "Имя не указано"}</h2>
+          <p>{customer.phone || "Телефон не указан"}</p>
+        </div>
+        {customer.status && <Badge>{customer.status}</Badge>}
+        {customer.archived && <Badge status="cancelled">В архиве</Badge>}
+      </div>
+      {customer.comment && <p className="customer-profile-note">{customer.comment}</p>}
+      <div className="customer-profile-actions">
+        <Button variant="secondary" icon={Pencil} onClick={onEdit}>Изменить профиль</Button>
+        {!customer.archived && <Button icon={Plus} onClick={onAddVehicle}>Добавить автомобиль</Button>}
+        <Button variant="secondary" icon={customer.archived ? RotateCcw : Archive} onClick={onArchive}>
+          {customer.archived ? "Восстановить" : "В архив"}
+        </Button>
+      </div>
+      <div className="customer-profile-stats">
+        <div><span>Оплачено</span><strong>{money(summary.totalPaid)}</strong></div>
+        <div><span>Визитов</span><strong>{summary.visitCount}</strong></div>
+        <div><span>Средняя оплата / визит</span><strong>{money(summary.averagePaidPerVisit)}</strong></div>
+        <div><span>Последний визит</span><strong>{summary.lastVisit ? dateText(summary.lastVisit.datetime).slice(0, 10) : "—"}</strong></div>
+      </div>
+      <section className="customer-profile-section">
+        <div className="card-header"><span>Автомобили</span><span>{vehicles.length}</span></div>
+        {vehicles.length ? (
+          <div className="customer-vehicles-grid">
+            {vehicles.map((vehicle) => {
+              const vehicleVisits = visitsForVehicle(db, vehicle);
+              const vehicleVisitIds = new Set(vehicleVisits.map((visit) => String(visit.id)));
+              const vehicleSpend = sumAmounts(
+                db.incomes.filter((payment) => vehicleVisitIds.has(String(payment.clientId))),
+              );
+              const lastVisit = vehicleVisits
+                .slice()
+                .sort((first, second) =>
+                  (parseDate(second.datetime)?.getTime() || 0) -
+                  (parseDate(first.datetime)?.getTime() || 0),
+                )[0];
+              return (
+                <article className={`customer-vehicle-card ${vehicle.archived ? "archived" : ""}`} key={vehicle.id}>
+                  <button className="customer-vehicle-main" type="button" onClick={() => onOpenVehicle(vehicle)}>
+                    <span className="customer-vehicle-icon"><CarFront size={21} /></span>
+                    <span className="customer-vehicle-title">
+                      <strong>{vehicle.makeModel || "Автомобиль без марки"}</strong>
+                      <small>{[vehicle.year, vehicle.color].filter(Boolean).join(" · ") || "Характеристики не указаны"}</small>
+                      <small>{vehicle.plate || "Госномер не указан"}{vehicle.vin ? ` · VIN ${vehicle.vin}` : ""}</small>
+                    </span>
+                    {vehicle.archived && <Badge status="cancelled">Архив</Badge>}
+                    <ArrowRight size={16} />
+                  </button>
+                  <div className="customer-vehicle-metrics">
+                    <span>{vehicleVisits.length} визитов</span>
+                    <strong>{money(vehicleSpend)}</strong>
+                    <small>Последнее обслуживание: {lastVisit ? dateText(lastVisit.datetime).slice(0, 10) : "—"}</small>
+                  </div>
+                  {!vehicle.archived && (
+                    <Button variant="secondary" icon={CalendarPlus} onClick={() => onBook(vehicle)}>
+                      Создать запись
+                    </Button>
+                  )}
+                  <button
+                    className="customer-vehicle-archive"
+                    type="button"
+                    onClick={() => onArchiveVehicle(vehicle)}
+                  >
+                    {vehicle.archived ? <RotateCcw size={14} /> : <Archive size={14} />}
+                    {vehicle.archived ? "Восстановить" : "В архив"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-reminder">Автомобили ещё не добавлены</div>
+        )}
+      </section>
+      <section className="customer-profile-section">
+        <div className="card-header"><span>История визитов</span><span>{visits.length}</span></div>
+        {visits.length ? visits.map((visit) => (
+          <div className="profile-history-row" key={visit.id}>
+            <span>
+              <strong>{visit.car || "Автомобиль"} · {visit.service || "Услуга не указана"}</strong>
+              <small>{dateText(visit.datetime)}</small>
+            </span>
+            <Badge status={statusClass(visit.status)}>{visit.status || "В ожидании"}</Badge>
+            <strong>{visit.servicePrice ? money(visit.servicePrice) : "—"}</strong>
+          </div>
+        )) : <div className="empty-reminder">История визитов появится после создания записи</div>}
+      </section>
+      <section className="customer-profile-section">
+        <div className="card-header"><span>История оплат</span><span>{summary.payments.length}</span></div>
+        {summary.payments.length ? summary.payments
+          .slice()
+          .sort((first, second) =>
+            (parseDate(second.date)?.getTime() || 0) -
+            (parseDate(first.date)?.getTime() || 0),
+          )
+          .map((payment) => (
+            <div className="profile-history-row" key={payment.id}>
+              <span><strong>Оплата</strong><small>{dateText(payment.date)}</small></span>
+              <span>{visitIds.has(String(payment.clientId)) ? "Визит клиента" : ""}</span>
+              <strong className="positive">+{money(payment.amount)}</strong>
+            </div>
+          )) : <div className="empty-reminder">Оплат пока нет</div>}
+      </section>
+    </Modal>
+  );
+}
+
+function VehicleProfile({ vehicle, db, onClose, onEdit, onArchive, onBook }) {
+  const customer = db.customers.find((row) => row.id === vehicle.customerId);
+  const visits = visitsForVehicle(db, vehicle)
+    .slice()
+    .sort((first, second) =>
+      (parseDate(second.datetime)?.getTime() || 0) -
+      (parseDate(first.datetime)?.getTime() || 0),
+    );
+  const visitIds = new Set(visits.map((visit) => String(visit.id)));
+  const payments = db.incomes
+    .filter((payment) => visitIds.has(String(payment.clientId)))
+    .sort((first, second) =>
+      (parseDate(second.date)?.getTime() || 0) -
+      (parseDate(first.date)?.getTime() || 0),
+    );
+  const totalPaid = sumAmounts(payments);
+
+  return (
+    <Modal title="Карточка автомобиля" onClose={onClose}>
+      <div className="customer-profile-heading">
+        <span className="customer-avatar large"><CarFront size={23} /></span>
+        <div>
+          <span className="dashboard-kicker">VEHICLE PROFILE</span>
+          <h2>{vehicle.makeModel || "Автомобиль без марки"}</h2>
+          <p>{customer?.name || customer?.phone || "Клиент не найден"}</p>
+        </div>
+        {vehicle.archived && <Badge status="cancelled">В архиве</Badge>}
+      </div>
+      <div className="vehicle-details-grid">
+        <div><span>Год</span><strong>{vehicle.year || "—"}</strong></div>
+        <div><span>Цвет</span><strong>{vehicle.color || "—"}</strong></div>
+        <div><span>Госномер</span><strong>{vehicle.plate || "—"}</strong></div>
+        <div><span>VIN</span><strong>{vehicle.vin || "—"}</strong></div>
+        <div><span>Дата добавления</span><strong>{vehicle.createdAt ? dateText(vehicle.createdAt).slice(0, 10) : "—"}</strong></div>
+        <div><span>Всего оплачено</span><strong>{money(totalPaid)}</strong></div>
+      </div>
+      {vehicle.notes && <p className="customer-profile-note">{vehicle.notes}</p>}
+      <div className="customer-profile-actions">
+        <Button variant="secondary" icon={Pencil} onClick={onEdit}>Изменить автомобиль</Button>
+        <Button variant="secondary" icon={vehicle.archived ? RotateCcw : Archive} onClick={onArchive}>
+          {vehicle.archived ? "Восстановить" : "В архив"}
+        </Button>
+        {!vehicle.archived && <Button icon={CalendarPlus} onClick={onBook}>Создать запись для автомобиля</Button>}
+      </div>
+      <section className="customer-profile-section">
+        <div className="card-header"><span>Временная шкала обслуживания</span><span>{visits.length}</span></div>
+        {visits.length ? visits.map((visit) => (
+          <div className="profile-history-row" key={visit.id}>
+            <span>
+              <strong>{visit.service || "Услуга не указана"}</strong>
+              <small>{dateText(visit.datetime)}{visit.comment ? ` · ${visit.comment}` : ""}</small>
+            </span>
+            <Badge status={statusClass(visit.status)}>{visit.status || "В ожидании"}</Badge>
+            <strong>{visit.servicePrice ? money(visit.servicePrice) : "—"}</strong>
+          </div>
+        )) : <div className="empty-reminder">История обслуживания пока пуста</div>}
+      </section>
+      <section className="customer-profile-section">
+        <div className="card-header"><span>Оплаты по автомобилю</span><span>{payments.length}</span></div>
+        {payments.length ? payments.map((payment) => (
+          <div className="profile-history-row" key={payment.id}>
+            <span><strong>Оплата</strong><small>{dateText(payment.date)}</small></span>
+            <span>{payment.author || ""}</span>
+            <strong className="positive">+{money(payment.amount)}</strong>
+          </div>
+        )) : <div className="empty-reminder">Оплат пока нет</div>}
+      </section>
+    </Modal>
+  );
+}
+
+function CustomerRecordEditor({ type, item, preset, db, user, mutate, onClose }) {
+  const isVehicle = type === "vehicle";
+  const existingCustomer = !isVehicle && item;
+  const [form, setForm] = useState(
+    item
+      ? { ...item }
+      : isVehicle
+        ? { customerId: preset?.customerId || "", makeModel: "", year: "", color: "", plate: "", vin: "", notes: "" }
+        : { name: "", phone: "", alternateContact: "", comment: "", status: "Активный" },
+  );
+  const update = (event) =>
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  const save = (event) => {
+    event.preventDefault();
+    if (isVehicle) {
+      if (!form.customerId || !form.makeModel?.trim()) {
+        alert("Выберите клиента и укажите марку и модель автомобиля.");
+        return;
+      }
+      const owner = db.customers.find((customer) => customer.id === form.customerId);
+      if (!owner || (!item && owner.archived)) {
+        alert("Выберите активного клиента, чтобы добавить автомобиль.");
+        return;
+      }
+      const value = {
+        ...form,
+        id: item?.id || createId(),
+        customerId: item?.customerId || form.customerId,
+        makeModel: form.makeModel.trim(),
+        year: form.year ? Number(form.year) : "",
+        color: form.color?.trim() || "",
+        plate: form.plate?.trim().toLocaleUpperCase("ru") || "",
+        vin: form.vin?.trim().toLocaleUpperCase("ru") || "",
+        createdAt: item?.createdAt || new Date().toISOString(),
+        author: item?.author || user,
+      };
+      if (value.year && (!Number.isInteger(value.year) || value.year < 1886 || value.year > new Date().getFullYear() + 1)) {
+        alert("Проверьте год выпуска автомобиля.");
+        return;
+      }
+      const duplicatePlate = value.plate && db.vehicles.some(
+        (vehicle) => vehicle.id !== item?.id && vehicle.plate?.toLocaleUpperCase("ru") === value.plate,
+      );
+      if (duplicatePlate) {
+        alert("Автомобиль с таким госномером уже зарегистрирован.");
+        return;
+      }
+      mutate(
+        { vehicles: item
+          ? db.vehicles.map((vehicle) => vehicle.id === item.id ? value : vehicle)
+          : [value, ...db.vehicles] },
+        `${item ? "Изменён автомобиль" : "Добавлен автомобиль"}: ${value.makeModel}${value.plate ? ` (${value.plate})` : ""}`,
+      );
+      onClose();
+      return;
+    }
+
+    const name = form.name?.trim() || "";
+    const phone = form.phone?.trim() || "";
+    if (!name && !phone) {
+      alert("Укажите имя клиента или номер телефона.");
+      return;
+    }
+    const normalizedPhone = normalizePhoneForMessaging(phone);
+    if (normalizedPhone && db.customers.some((customer) =>
+      customer.id !== item?.id &&
+      normalizePhoneForMessaging(customer.phone) === normalizedPhone,
+    )) {
+      alert("Клиент с таким номером уже существует. Откройте его профиль, чтобы добавить автомобиль.");
+      return;
+    }
+    const value = {
+      ...form,
+      id: item?.id || createId(),
+      name,
+      phone,
+      alternateContact: form.alternateContact?.trim() || "",
+      comment: form.comment?.trim() || "",
+      createdAt: item?.createdAt || new Date().toISOString(),
+      author: item?.author || user,
+    };
+    mutate(
+      { customers: item
+        ? db.customers.map((customer) => customer.id === item.id ? value : customer)
+        : [value, ...db.customers] },
+      `${item ? "Изменён профиль клиента" : "Добавлен клиент"}: ${value.name || value.phone}`,
+    );
+    onClose();
+  };
+
+  return (
+    <Modal
+      title={isVehicle ? (item ? "Изменить автомобиль" : "Новый автомобиль") : (existingCustomer ? "Изменить клиента" : "Новый клиент")}
+      onClose={onClose}
+    >
+      <form className="customer-record-form" onSubmit={save}>
+        {isVehicle ? (
+          <>
+            <Field label="Клиент">
+              <select
+                name="customerId"
+                value={form.customerId}
+                onChange={update}
+                disabled={Boolean(item)}
+                required
+              >
+                <option value="">Выберите клиента</option>
+                {db.customers.filter((customer) => !customer.archived).map((customer) => (
+                  <option value={customer.id} key={customer.id}>
+                    {customer.name || customer.phone || "Клиент"}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Марка и модель">
+              <input name="makeModel" value={form.makeModel || ""} onChange={update} placeholder="BMW X5" required autoFocus />
+            </Field>
+            <div className="form-grid">
+              <Field label="Год выпуска"><input name="year" type="number" min="1886" max={new Date().getFullYear() + 1} value={form.year || ""} onChange={update} placeholder="2022" /></Field>
+              <Field label="Цвет"><input name="color" value={form.color || ""} onChange={update} placeholder="Чёрный" /></Field>
+            </div>
+            <div className="form-grid">
+              <Field label="Государственный номер"><input name="plate" value={form.plate || ""} onChange={update} placeholder="KAA 123" /></Field>
+              <Field label="VIN (необязательно)"><input name="vin" value={form.vin || ""} onChange={update} /></Field>
+            </div>
+            <Field label="Примечания"><textarea name="notes" value={form.notes || ""} onChange={update} /></Field>
+          </>
+        ) : (
+          <>
+            <Field label="Имя и фамилия"><input name="name" value={form.name || ""} onChange={update} placeholder="Иван Попеску" autoFocus /></Field>
+            <Field label="Телефон"><input name="phone" type="tel" value={form.phone || ""} onChange={update} placeholder="+373 69 123 456" /></Field>
+            <Field label="Дополнительный контакт"><input name="alternateContact" value={form.alternateContact || ""} onChange={update} placeholder="Дополнительный телефон или контакт" /></Field>
+            <Field label="Заметки о клиенте"><textarea name="comment" value={form.comment || ""} onChange={update} placeholder="Предпочтения и важная информация" /></Field>
+            <Field label="Статус клиента">
+              <select name="status" value={form.status || "Активный"} onChange={update}>
+                <option>Активный</option>
+                <option>Постоянный</option>
+                <option>VIP</option>
+                <option>Неактивный</option>
+              </select>
+            </Field>
+          </>
+        )}
+        <div className="modal-actions">
+          <Button variant="secondary" type="button" onClick={onClose}>Отмена</Button>
+          <Button icon={Save}>Сохранить</Button>
+        </div>
+      </form>
     </Modal>
   );
 }
@@ -3699,6 +4250,8 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         ? {
             car: preset?.car || "",
             phone: preset?.phone || "",
+            customerId: preset?.customerId || "",
+            vehicleId: preset?.vehicleId || "",
             seatType: preset?.seatType || "",
             service: preset?.service || "",
             servicePrice: preset?.servicePrice ?? "",
@@ -3776,6 +4329,19 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
     if (isClient && (!form.car || !form.datetime))
       return alert("Заполните марку авто и дату/время!");
     if (isClient) {
+      const linkedVehicle = form.vehicleId
+        ? db.vehicles.find((vehicle) => vehicle.id === form.vehicleId)
+        : null;
+      const linkedCustomer = form.customerId
+        ? db.customers.find((customer) => customer.id === form.customerId)
+        : null;
+      if (form.vehicleId && (
+        !linkedVehicle ||
+        linkedVehicle.archived ||
+        linkedVehicle.customerId !== form.customerId
+      )) return alert("Выбранный автомобиль больше не доступен для записи.");
+      if (form.customerId && !linkedCustomer)
+        return alert("Выбранный клиент не найден. Обновите список и повторите попытку.");
       const appointmentTime = parseDate(form.datetime)?.getTime();
       if (!appointmentTime) return alert("Укажите корректную дату и время записи.");
       if (
@@ -3842,12 +4408,16 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
       const value = {
         ...form,
         id: item?.id || createId(),
+        car: linkedVehicle?.makeModel || form.car,
+        phone: linkedCustomer?.phone || form.phone,
         servicePrice:
           form.servicePrice === ""
             ? ""
             : centsToAmount(amountToCents(form.servicePrice)),
         serviceDuration: serviceDurationMinutes(form, db.services),
         paymentExcluded: Boolean(form.paymentExcluded),
+        customerId: form.customerId || "",
+        vehicleId: form.vehicleId || "",
         author: item?.author || user,
       };
       const exclusionChanged =

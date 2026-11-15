@@ -4,7 +4,7 @@
  */
 const SPREADSHEET_ID = "1oeCmLQMyshlypcv0oZ_xy0v_jouelNv8pG71_BuoA1o";
 const DATABASE_SHEET = "Database";
-const DB_SCHEMA_VERSION = 4;
+const DB_SCHEMA_VERSION = 5;
 const REQUIRED_COLLECTIONS = [
   "clients",
   "expenses",
@@ -36,6 +36,7 @@ const EXTENDED_COLLECTIONS = [
   "financialGoals",
   "employeeProfiles",
   "systemEvents",
+  "advisorRecommendations",
 ];
 
 function doGet(e) {

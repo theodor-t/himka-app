@@ -16,6 +16,7 @@ import {
   ArrowRight,
   ArrowUpDown,
   Bell,
+  BrainCircuit,
   CalendarDays,
   CalendarPlus,
   ChartNoAxesCombined,
@@ -111,6 +112,7 @@ import Waitlist from "./components/Waitlist";
 import Suppliers from "./components/Suppliers";
 import FinancialGoals from "./components/FinancialGoals";
 import NotificationCenter from "./components/NotificationCenter";
+import BusinessAdvisor from "./components/BusinessAdvisor";
 import SystemStatus from "./components/SystemStatus";
 import { availableWorkPost } from "./lib/appointments.mjs";
 import {
@@ -161,6 +163,7 @@ const NAV = [
   ["withdrawals", "Вывод денег", Wallet],
   ["debts", "Должники", Wallet],
   ["analytics", "Аналитика", ChartNoAxesCombined],
+  ["businessAdvisor", "AI Бизнес-советник", BrainCircuit],
   ["notifications", "Уведомления", Bell],
   ["weather", "Погода", CloudSun],
   ["videoDescriptions", "Описания для видео", Video],
@@ -173,7 +176,7 @@ const NAV_GROUPS = [
   { title: "МАСТЕРСКАЯ И КЛИЕНТЫ", items: ["calendar", "orders", "customers", "clients", "workPosts", "waitlist", "services"] },
   { title: "ОПЕРАЦИИ", items: ["warehouse", "suppliers", "windows"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "financialGoals", "withdrawals", "debts"] },
-  { title: "ДОПОЛНИТЕЛЬНО", items: ["analytics", "notifications", "weather", "videoDescriptions", "reminderTemplates", "systemStatus"] },
+  { title: "ДОПОЛНИТЕЛЬНО", items: ["businessAdvisor", "analytics", "notifications", "weather", "videoDescriptions", "reminderTemplates", "systemStatus"] },
   { title: "СИСТЕМА", items: ["logs"] },
 ];
 const MOBILE_PRIMARY_NAV = [
@@ -1460,6 +1463,17 @@ function PageContent({
         years={years}
         reportYear={reportYear}
         setReportYear={setReportYear}
+      />
+    );
+  if (page === "businessAdvisor")
+    return (
+      <BusinessAdvisor
+        db={db}
+        mutate={mutate}
+        navigate={navigate}
+        openModal={openModal}
+        role={role}
+        user={user}
       />
     );
   if (page === "services") return <ServicesPage db={db} mutate={mutate} user={user} />;

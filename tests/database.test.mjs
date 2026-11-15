@@ -95,13 +95,13 @@ test("database normalization rejects invalid collection shapes", () => {
 
 test("database normalization fills missing required collections without breaking partial snapshots", () => {
   const normalized = normalizeDatabase({
-    schemaVersion: 4,
+    schemaVersion: DB_SCHEMA_VERSION,
     customers: [{ id: "c-1" }],
   });
 
   assert.ok(Array.isArray(normalized.clients));
   assert.deepEqual(normalized.customers, [{ id: "c-1" }]);
-  assert.equal(normalized.schemaVersion, 4);
+  assert.equal(normalized.schemaVersion, DB_SCHEMA_VERSION);
 });
 
 test("empty database includes every supported collection", () => {

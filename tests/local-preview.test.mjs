@@ -6,6 +6,7 @@ import {
   resetLocalPreviewDatabase,
   setLocalPreviewDatabase,
 } from "../app/lib/local-preview.mjs";
+import { DB_SCHEMA_VERSION } from "../app/lib/database.mjs";
 
 test("local preview requires development mode and a loopback hostname", () => {
   assert.equal(
@@ -38,7 +39,7 @@ test("local preview database is isolated, normalized and resettable", () => {
     clients: [{ id: "local-client" }],
   });
   assert.equal(updated.clients[0].id, "local-client");
-  assert.equal(updated.schemaVersion, 4);
+  assert.equal(updated.schemaVersion, DB_SCHEMA_VERSION);
 
   resetLocalPreviewDatabase();
   assert.deepEqual(getLocalPreviewDatabase().clients, []);

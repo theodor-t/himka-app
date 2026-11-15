@@ -55,6 +55,7 @@ export function readableDatabaseForRole(database, role, username) {
     ...Object.fromEntries(FINANCIAL_COLLECTIONS.map((collection) => [collection, []])),
     employeeProfiles: [],
     systemEvents: [],
+    advisorRecommendations: [],
     notifications: (scoped.notifications || []).filter(
       (item) => item.category !== "finance",
     ),

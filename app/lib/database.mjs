@@ -1,6 +1,6 @@
 import { normalizePhoneForMessaging } from "./messages.mjs";
 
-export const DB_SCHEMA_VERSION = 3;
+export const DB_SCHEMA_VERSION = 4;
 
 export const DATABASE_COLLECTIONS = [
   "clients",
@@ -24,6 +24,7 @@ export const DATABASE_COLLECTIONS = [
   "loyaltyTransactions",
   "reminders",
   "notifications",
+  "notificationPreferences",
   "suppliers",
   "supplierPayments",
   "workPosts",

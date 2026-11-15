@@ -4,7 +4,7 @@
  */
 const SPREADSHEET_ID = "1oeCmLQMyshlypcv0oZ_xy0v_jouelNv8pG71_BuoA1o";
 const DATABASE_SHEET = "Database";
-const DB_SCHEMA_VERSION = 3;
+const DB_SCHEMA_VERSION = 4;
 const REQUIRED_COLLECTIONS = [
   "clients",
   "expenses",
@@ -29,6 +29,7 @@ const EXTENDED_COLLECTIONS = [
   "loyaltyTransactions",
   "reminders",
   "notifications",
+  "notificationPreferences",
   "suppliers",
   "supplierPayments",
   "workPosts",
@@ -66,9 +67,16 @@ function doPost(e) {
 
   try {
     if (!e?.postData?.contents) throw new Error("Request body is empty");
+    if (e?.parameter?.action === "mergeNotifications") {
+      return mergeNotifications(e.postData.contents);
+    }
+    if (e?.parameter?.action === "claimNotificationAiSlot") {
+      return claimNotificationAiSlot();
+    }
     if (e?.parameter?.action === "uploadInspectionFile") {
       return uploadInspectionFile(e.postData.contents);
     }
+
     if (e?.parameter?.action === "deleteInspectionFile") {
       return deleteInspectionFile(e.postData.contents);
     }
@@ -87,8 +95,17 @@ function doPost(e) {
       const existingExpirationLogs = current.database.logs.filter(function (log) {
         return String(log.id).indexOf("system-expired-window:") === 0;
       });
+      const existingSmartNotificationLogs = current.database.logs.filter(function (log) {
+        return String(log.id).indexOf("system-smart-notification:") === 0;
+      });
       incoming.database.logs = existingExpirationLogs
-        .filter(function (log) { return !incomingLogIds.has(String(log.id)); })
+        .concat(existingSmartNotificationLogs)
+        .filter(function (log, index, logs) {
+          return !incomingLogIds.has(String(log.id)) &&
+            logs.findIndex(function (candidate) {
+              return String(candidate.id) === String(log.id);
+            }) === index;
+        })
         .concat(incoming.database.logs);
       writeDatabase(incoming.database);
     } finally {
@@ -97,6 +114,98 @@ function doPost(e) {
     return jsonResponse({ ok: true });
   } catch (error) {
     return jsonResponse({ error: error.message }, 400);
+  }
+}
+
+function mergeNotifications(contents) {
+  const payload = JSON.parse(contents);
+  if (!payload || !Array.isArray(payload.notifications)) {
+    return jsonResponse({ error: "Invalid notifications payload" }, 400);
+  }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const database = readDatabase();
+    const existing = Array.isArray(database.notifications) ? database.notifications : [];
+    const existingById = new Map(existing.map(function (item) {
+      return [String(item.id), item];
+    }));
+    const incomingById = new Map(payload.notifications.map(function (item) {
+      return [String(item.id), item];
+    }));
+    const merged = existing.map(function (item) {
+      const update = incomingById.get(String(item.id));
+      if (!update) return item;
+      incomingById.delete(String(item.id));
+      if (!update.smart) return item;
+      return Object.assign({}, update, {
+        readBy: Object.assign({}, item.readBy || {}, update.readBy || {}),
+        archivedBy: Object.assign({}, item.archivedBy || {}, update.archivedBy || {}),
+        dismissedBy: Object.assign({}, item.dismissedBy || {}, update.dismissedBy || {}),
+      });
+    });
+    incomingById.forEach(function (item) {
+      if (item && item.smart === true && typeof item.id === "string") merged.push(item);
+    });
+    const notificationLogs = payload.notifications.filter(function (item) {
+      if (!item || item.smart !== true) return false;
+      const previous = existingById.get(String(item.id));
+      return !previous ||
+        previous.status !== item.status ||
+        previous.fingerprint !== item.fingerprint;
+    }).map(function (item) {
+      const updatedAt = String(item.updatedAt || new Date().toISOString());
+      const parsedDate = new Date(updatedAt);
+      const logDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+      return {
+        id: "system-smart-notification:" + String(item.id) + ":" + updatedAt,
+        datetime: Utilities.formatDate(
+          logDate,
+          Session.getScriptTimeZone(),
+          "dd.MM.yyyy HH:mm",
+        ),
+        user: "Система",
+        action: (existingById.has(String(item.id)) ? "Обновлён сигнал" : "Создан сигнал") +
+          ": " + String(item.title || "уведомление").slice(0, 120),
+      };
+    });
+    const currentSmartLogs = (database.logs || []).filter(function (log) {
+      return String(log.id).indexOf("system-smart-notification:") === 0;
+    });
+    const smartLogIds = new Set(currentSmartLogs.map(function (log) {
+      return String(log.id);
+    }));
+    const newSmartLogs = notificationLogs.filter(function (log) {
+      return !smartLogIds.has(String(log.id));
+    });
+    database.logs = newSmartLogs.concat(database.logs || []);
+    database.notifications = merged;
+    writeDatabase(database);
+    return jsonResponse({ ok: true, count: merged.length });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function claimNotificationAiSlot() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const key = "LAST_NOTIFICATION_AI_REQUEST_AT";
+    const now = Date.now();
+    const lastRequest = Number(properties.getProperty(key)) || 0;
+    const cooldown = 5 * 60 * 1000;
+    if (now - lastRequest < cooldown) {
+      return jsonResponse({
+        granted: false,
+        retryAfterSeconds: Math.ceil((cooldown - (now - lastRequest)) / 1000),
+      });
+    }
+    properties.setProperty(key, String(now));
+    return jsonResponse({ granted: true });
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -268,6 +377,40 @@ function installWindowExpirationTrigger() {
   });
   if (alreadyInstalled) return;
   ScriptApp.newTrigger("cleanupExpiredWindows").timeBased().everyHours(1).create();
+}
+
+function refreshSmartNotifications() {
+  const properties = PropertiesService.getScriptProperties();
+  const url = properties.getProperty("NOTIFICATION_REFRESH_URL");
+  const secret = properties.getProperty("NOTIFICATION_CRON_SECRET");
+  if (!url || !secret) throw new Error("Set NOTIFICATION_REFRESH_URL and NOTIFICATION_CRON_SECRET");
+  const response = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + secret },
+    payload: "{}",
+    muteHttpExceptions: true,
+  });
+  const status = response.getResponseCode();
+  const body = response.getContentText();
+  if (status < 200 || status >= 300) {
+    throw new Error("Smart notification refresh failed (" + status + "): " + body.slice(0, 300));
+  }
+  return body;
+}
+
+function installSmartNotificationTrigger() {
+  const properties = PropertiesService.getScriptProperties();
+  if (!properties.getProperty("NOTIFICATION_REFRESH_URL") ||
+      !properties.getProperty("NOTIFICATION_CRON_SECRET")) {
+    throw new Error("Set NOTIFICATION_REFRESH_URL and NOTIFICATION_CRON_SECRET first");
+  }
+  const alreadyInstalled = ScriptApp.getProjectTriggers().some(function (trigger) {
+    return trigger.getHandlerFunction() === "refreshSmartNotifications";
+  });
+  if (!alreadyInstalled) {
+    ScriptApp.newTrigger("refreshSmartNotifications").timeBased().everyHours(1).create();
+  }
 }
 
 function removeExpiredWindowsFromDatabase(database, now) {

@@ -124,7 +124,7 @@ function initialServices(appointment, services) {
     : [];
 }
 
-export default function WorkOrders({ db, mutate, user }) {
+export default function WorkOrders({ db, mutate, user, focusOrderId, clearFocusedOrder }) {
   const [selectedBookingId, setSelectedBookingId] = useState("");
   const [serviceIds, setServiceIds] = useState([]);
   const [discountType, setDiscountType] = useState("fixed");
@@ -137,6 +137,20 @@ export default function WorkOrders({ db, mutate, user }) {
   const [draggedOrderId, setDraggedOrderId] = useState("");
   const [printOrderId, setPrintOrderId] = useState("");
   const [error, setError] = useState("");
+  const [highlightedOrderId, setHighlightedOrderId] = useState("");
+
+  useEffect(() => {
+    if (!focusOrderId) return undefined;
+    const timer = window.setTimeout(() => {
+      const card = document.getElementById(`work-order-${encodeURIComponent(focusOrderId)}`);
+      if (card) {
+        setHighlightedOrderId(focusOrderId);
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      clearFocusedOrder?.();
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [focusOrderId]);
 
   useEffect(() => {
     if (!printOrderId) return undefined;
@@ -573,7 +587,8 @@ export default function WorkOrders({ db, mutate, user }) {
                   const paid = Math.max(0, orderTotal(order) - orderBalance(db.incomes, order));
                   return (
                     <article
-                      className="work-order-card"
+                      id={`work-order-${encodeURIComponent(order.id)}`}
+                      className={`work-order-card${highlightedOrderId === order.id ? " notification-focused-order" : ""}`}
                       key={order.id}
                       draggable
                       onDragStart={() => setDraggedOrderId(order.id)}

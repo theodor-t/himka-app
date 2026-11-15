@@ -44,7 +44,7 @@ export async function GET(request) {
     const role = getUserRole(username);
     if (isLocalPreviewRequest(request)) {
       return NextResponse.json(
-        readableDatabaseForRole(getLocalPreviewDatabase(), role),
+        readableDatabaseForRole(getLocalPreviewDatabase(), role, username),
         {
           headers: {
             "Cache-Control": "no-store",
@@ -70,7 +70,7 @@ export async function GET(request) {
     const status = payload.status >= 400 || payload.error ? payload.status || 502 : 200;
     return status >= 400
       ? NextResponse.json(payload, { status })
-      : NextResponse.json(readableDatabaseForRole(payload, role));
+      : NextResponse.json(readableDatabaseForRole(payload, role, username));
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -89,7 +89,7 @@ export async function POST(request) {
         return NextResponse.json({ error: "Invalid database payload" }, { status: 400 });
       }
       const current = getLocalPreviewDatabase();
-      const update = databaseForRoleWrite(current, incoming, role);
+      const update = databaseForRoleWrite(current, incoming, role, undefined, username);
       if (update.forbidden.length) {
         return NextResponse.json(
           { error: `Недостаточно прав для изменения данных: ${update.forbidden.join(", ")}` },
@@ -97,7 +97,7 @@ export async function POST(request) {
         );
       }
       const database = setLocalPreviewDatabase(update.database);
-      return NextResponse.json(readableDatabaseForRole(database, role), {
+      return NextResponse.json(readableDatabaseForRole(database, role, username), {
         headers: {
           "Cache-Control": "no-store",
           "X-Database-Mode": "local-preview",
@@ -130,7 +130,7 @@ export async function POST(request) {
     if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
       return NextResponse.json({ error: "Invalid database payload" }, { status: 400 });
     }
-    const update = databaseForRoleWrite(current, incoming, role);
+    const update = databaseForRoleWrite(current, incoming, role, undefined, username);
     if (update.forbidden.length) {
       return NextResponse.json(
         { error: `Недостаточно прав для изменения данных: ${update.forbidden.join(", ")}` },

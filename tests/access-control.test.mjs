@@ -61,3 +61,68 @@ test("non-admin roles cannot edit protected collections or financial records", (
   assert.equal(result.database, null);
   assert.deepEqual(result.forbidden, ["incomes"]);
 });
+
+test("notification writes only change the signed-in employee state and preferences", () => {
+  const stored = {
+    notifications: [{
+      id: "smart:stock:1",
+      smart: true,
+      title: "Original",
+      status: "active",
+      readBy: { DAN: "old-read" },
+      archivedBy: {},
+      dismissedBy: {},
+    }],
+    notificationPreferences: [
+      { id: "prefs:DAN", username: "DAN", dailyDigest: false },
+      { id: "prefs:TUDOR", username: "TUDOR", dailyDigest: false },
+    ],
+  };
+  const staleIncoming = {
+    ...stored,
+    notifications: [
+      {
+        ...stored.notifications[0],
+        title: "Forged title",
+        readBy: { DAN: "forged-read", TUDOR: "new-read" },
+      },
+    ],
+    notificationPreferences: [
+      { id: "prefs:DAN", username: "DAN", dailyDigest: true },
+      { id: "prefs:TUDOR", username: "TUDOR", dailyDigest: true },
+    ],
+  };
+  const result = databaseForRoleWrite(stored, staleIncoming, "admin", undefined, "TUDOR");
+
+  assert.equal(result.database.notifications[0].title, "Original");
+  assert.equal(result.database.notifications[0].readBy.DAN, "old-read");
+  assert.equal(result.database.notifications[0].readBy.TUDOR, "new-read");
+  assert.equal(result.database.notificationPreferences.find((item) => item.username === "DAN").dailyDigest, false);
+  assert.equal(result.database.notificationPreferences.find((item) => item.username === "TUDOR").dailyDigest, true);
+});
+
+test("stale employee snapshots cannot remove scheduled smart notifications", () => {
+  const stored = {
+    notifications: [{ id: "smart:current", smart: true, status: "active" }],
+    notificationPreferences: [],
+  };
+  const result = databaseForRoleWrite(stored, { notifications: [], notificationPreferences: [] }, "admin", undefined, "TUDOR");
+
+  assert.deepEqual(result.database.notifications, stored.notifications);
+});
+
+test("technicians cannot read financial notifications or another employee's preferences", () => {
+  const visible = readableDatabaseForRole({
+    notifications: [
+      { id: "finance-1", smart: true, category: "finance" },
+      { id: "stock-1", smart: true, category: "inventory" },
+    ],
+    notificationPreferences: [
+      { id: "prefs:DAN", username: "DAN" },
+      { id: "prefs:TUDOR", username: "TUDOR" },
+    ],
+  }, "technician", "DAN");
+
+  assert.deepEqual(visible.notifications.map((item) => item.id), ["stock-1"]);
+  assert.deepEqual(visible.notificationPreferences.map((item) => item.username), ["DAN"]);
+});

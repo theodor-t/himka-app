@@ -113,7 +113,12 @@ import FinancialGoals from "./components/FinancialGoals";
 import NotificationCenter from "./components/NotificationCenter";
 import SystemStatus from "./components/SystemStatus";
 import { availableWorkPost } from "./lib/appointments.mjs";
-import { buildSystemNotifications, unreadSystemNotificationCount } from "./lib/notifications.mjs";
+import {
+  buildSystemNotifications,
+  notificationState,
+  unreadNotificationCount,
+  unreadSystemNotificationCount,
+} from "./lib/notifications.mjs";
 import { searchRecords } from "./lib/global-search.mjs";
 import { roleCanViewPage } from "./lib/access-control.mjs";
 import {
@@ -366,6 +371,7 @@ export default function Home() {
   const [loadingMessage, setLoadingMessage] = useState(null);
   const [db, setDb] = useState(EMPTY_DB);
   const [page, setPage] = useState("home");
+  const [focusOrderId, setFocusOrderId] = useState("");
   const [sync, setSync] = useState("Загрузка...");
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -671,10 +677,31 @@ export default function Home() {
   const searchResults = searchRecords(db, globalSearch).filter((result) =>
     roleCanViewPage(role, searchPageByType[result.type]),
   );
-  const unreadNotifications = unreadSystemNotificationCount(
-    buildSystemNotifications(db),
-    db.notifications,
+  const activeSmartNotifications = db.notifications.filter(
+    (item) => item.smart === true && item.status === "active",
   );
+  const activeSmartKeys = new Set(activeSmartNotifications.map((item) => item.dedupeKey));
+  const legacyUnreadNotifications = buildSystemNotifications(db).filter((item) =>
+    !activeSmartKeys.has(item.dedupeKey || item.id),
+  );
+  const unreadNotifications = (() => {
+    const preference = db.notificationPreferences.find((item) => item.username === user);
+    if (preference?.inApp === false) return 0;
+    const allowedCategories = new Set(preference?.categories || []);
+    const allowedPriorities = new Set(preference?.priorities || []);
+    const persistedUnread = activeSmartNotifications.filter((item) =>
+      (!preference || allowedCategories.has(item.category)) &&
+      (!preference || allowedPriorities.has(item.priority)) &&
+      !notificationState(item, user).read &&
+      !notificationState(item, user).archived &&
+      !notificationState(item, user).dismissed,
+    ).length;
+    const legacyUnread = unreadSystemNotificationCount(
+      legacyUnreadNotifications,
+      db.notifications,
+    );
+    return persistedUnread + legacyUnread;
+  })();
   const openSearchResult = (result) => {
     setGlobalSearch("");
     setMobileSearchOpen(false);
@@ -861,6 +888,8 @@ export default function Home() {
         clientStatus={clientStatus}
         setClientStatus={setClientStatus}
         navigate={navigate}
+        focusOrderId={focusOrderId}
+        setFocusOrderId={setFocusOrderId}
         sort={sorted}
         sortBy={sortBy}
         openModal={setModal}
@@ -890,6 +919,7 @@ export default function Home() {
       clientQuery,
       clientStatus,
       navigate,
+      focusOrderId,
       sort,
     ],
   );
@@ -1381,6 +1411,8 @@ function PageContent({
   clientStatus,
   setClientStatus,
   navigate,
+  focusOrderId,
+  setFocusOrderId,
   sort,
   sortBy,
   openModal,
@@ -1458,7 +1490,15 @@ function PageContent({
       />
     );
   if (page === "orders")
-    return <WorkOrders db={db} mutate={mutate} user={user} />;
+    return (
+      <WorkOrders
+        db={db}
+        mutate={mutate}
+        user={user}
+        focusOrderId={focusOrderId}
+        clearFocusedOrder={() => setFocusOrderId("")}
+      />
+    );
   if (page === "workPosts")
     return <WorkPosts db={db} mutate={mutate} user={user} />;
   if (page === "waitlist")
@@ -1468,7 +1508,21 @@ function PageContent({
   if (page === "financialGoals")
     return <FinancialGoals db={db} mutate={mutate} />;
   if (page === "notifications")
-    return <NotificationCenter db={db} mutate={mutate} navigate={navigate} />;
+    return (
+      <NotificationCenter
+        db={db}
+        mutate={mutate}
+        navigate={navigate}
+        openModal={openModal}
+        openOrder={(id) => {
+          setFocusOrderId(id);
+          navigate("orders");
+        }}
+        reload={reload}
+        user={user}
+        role={role}
+      />
+    );
   if (page === "systemStatus")
     return <SystemStatus db={db} role={role} sync={sync} lastSyncedAt={lastSyncedAt} reload={reload} exportData={exportData} />;
   if (page === "weather") return <WeatherPage />;

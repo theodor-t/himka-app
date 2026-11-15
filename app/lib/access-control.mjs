@@ -17,6 +17,7 @@ const TECHNICIAN_WRITE_COLLECTIONS = [
   "clients", "customers", "vehicles", "warehouse", "windows", "logs",
   "stockMovements", "services", "orders", "inspections", "waitlistEntries",
   "notifications", "workPosts",
+  "notificationPreferences",
 ];
 
 export function roleCanWriteCollection(role, collection) {
@@ -40,13 +41,23 @@ export function roleCanViewPage(role, page) {
   ].includes(page);
 }
 
-export function readableDatabaseForRole(database, role) {
-  if (role !== "technician") return database;
+export function readableDatabaseForRole(database, role, username) {
+  const scoped = username
+    ? {
+        ...database,
+        notificationPreferences: (database.notificationPreferences || [])
+          .filter((item) => item.username === username),
+      }
+    : database;
+  if (role !== "technician") return scoped;
   return {
-    ...database,
+    ...scoped,
     ...Object.fromEntries(FINANCIAL_COLLECTIONS.map((collection) => [collection, []])),
     employeeProfiles: [],
     systemEvents: [],
+    notifications: (scoped.notifications || []).filter(
+      (item) => item.category !== "finance",
+    ),
   };
 }
 
@@ -58,8 +69,52 @@ export function changedDatabaseCollections(current, incoming, collections = ALL_
   );
 }
 
-export function databaseForRoleWrite(current, incoming, role, collections = ALL_COLLECTIONS) {
-  const visibleCurrent = readableDatabaseForRole(current, role);
+export function mergeNotificationUserChanges(current, incoming, username) {
+  if (!username) return incoming;
+  const currentNotifications = Array.isArray(current?.notifications) ? current.notifications : [];
+  const incomingNotifications = Array.isArray(incoming?.notifications) ? incoming.notifications : [];
+  const incomingById = new Map(incomingNotifications.map((item) => [String(item.id), item]));
+  const notifications = currentNotifications.map((stored) => {
+    if (stored?.smart !== true) return stored;
+    const changed = incomingById.get(String(stored.id));
+    if (!changed) return stored;
+    const mergeOwnState = (field) => {
+      const state = { ...(stored[field] || {}) };
+      if (username && changed[field] && typeof changed[field] === "object") {
+        if (Object.hasOwn(changed[field], username)) state[username] = changed[field][username];
+        else delete state[username];
+      }
+      return state;
+    };
+    return {
+      ...stored,
+      readBy: mergeOwnState("readBy"),
+      archivedBy: mergeOwnState("archivedBy"),
+      dismissedBy: mergeOwnState("dismissedBy"),
+    };
+  });
+
+  const currentPreferences = Array.isArray(current?.notificationPreferences)
+    ? current.notificationPreferences
+    : [];
+  const incomingPreferences = Array.isArray(incoming?.notificationPreferences)
+    ? incoming.notificationPreferences
+    : [];
+  const ownPreference = incomingPreferences.find((item) => item.username === username);
+  const notificationPreferences = [
+    ...currentPreferences.filter((item) => item.username !== username),
+    ...(ownPreference ? [ownPreference] : []),
+  ];
+  return {
+    ...incoming,
+    notifications,
+    notificationPreferences,
+  };
+}
+
+export function databaseForRoleWrite(current, incoming, role, collections = ALL_COLLECTIONS, username) {
+  incoming = mergeNotificationUserChanges(current, incoming, username);
+  const visibleCurrent = readableDatabaseForRole(current, role, username);
   const changed = changedDatabaseCollections(visibleCurrent, incoming, collections);
   const forbidden = changed.filter(
     (collection) => !roleCanWriteCollection(role, collection),

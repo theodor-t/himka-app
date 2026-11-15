@@ -6,8 +6,8 @@ export default function manifest() {
       "Система учета и управления Angel Detailing: записи клиентов, финансы и склад.",
     start_url: "/",
     display: "standalone",
-    background_color: "#0a0a0c",
-    theme_color: "#0a0a0c",
+    background_color: "#080d18",
+    theme_color: "#080d18",
     icons: [
       {
         src: "/angel-app-icon-192.webp",

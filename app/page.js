@@ -2730,6 +2730,16 @@ function Dashboard({
   return (
     <div className="dashboard-shell">
       <section className="dashboard-welcome">
+        <div className="dashboard-identity">
+          <strong>ANGEL DETAILING</strong>
+          <span>
+            {today.toLocaleDateString("ru-RU", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            })}
+          </span>
+        </div>
         <div className={`dashboard-live ${sync.includes("Ошибка") ? "sync-error" : sync.includes("Сохранено") || sync.includes("Google OK") || sync.includes("Локальный тест") ? "" : "sync-pending"}`}>
           <span /> {sync}
         </div>
@@ -2852,7 +2862,6 @@ function Dashboard({
               <div className="dashboard-orders-empty">
                 <ClipboardList size={18} />
                 <div><strong>Активных заказов нет</strong><span>Новые работы появятся здесь</span></div>
-                <button type="button" onClick={() => navigate("orders")}>Открыть заказы <ArrowRight size={13} /></button>
               </div>
             )}
           </section>
@@ -2875,7 +2884,6 @@ function Dashboard({
           <section className="dashboard-panel dashboard-completion-card">
             <div className="dashboard-panel-heading">
               <div><span>РАСПИСАНИЕ НА СЕГОДНЯ</span><strong>Ход работ</strong></div>
-              <button type="button" aria-label="Открыть календарь" onClick={() => navigate("calendar")}><ArrowRight size={15} /></button>
             </div>
             <div className="dashboard-day-progress">
               <div><span>Всего записей</span><strong>{todayAppointments.length}</strong></div>

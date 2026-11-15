@@ -7,7 +7,7 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title>ANGEL DETAILING — Учет</title>
-    <meta name="theme-color" content="#0a0a0c" />
+    <meta name="theme-color" content="#080d18" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="ANGEL DETAILING" />
@@ -33,19 +33,19 @@
       }
 
       :root {
-        --bg-main: #0a0a0c;
-        --bg-panel: #121214;
-        --bg-card: rgba(24, 24, 27, 0.7);
-        --border-color: rgba(63, 63, 70, 0.5);
-        --m-red: #ff003c;
-        --m-blue: #00f0ff;
-        --primary: #ff003c;
-        --success: #10b981;
+        --bg-main: #080d18;
+        --bg-panel: #0d1422;
+        --bg-card: rgba(16, 25, 42, 0.9);
+        --border-color: rgba(90, 119, 166, 0.35);
+        --m-red: #4f8cff;
+        --m-blue: #5bc4df;
+        --primary: #4f8cff;
+        --success: #64a7f4;
         --danger: #ef4444;
-        --warning: #f59e0b;
-        --info: #3b82f6;
-        --text-light: #f4f4f5;
-        --text-muted: #94a3b8;
+        --warning: #f2b95f;
+        --info: #a78bfa;
+        --text-light: #f1f5fc;
+        --text-muted: #9aaac1;
       }
 
       body {
@@ -182,7 +182,7 @@
       }
 
       .brand-icon {
-        background: #18181b;
+        background: #111c30;
         border: 1px solid var(--border-color);
         padding: 8px;
         border-radius: 8px;
@@ -236,7 +236,7 @@
       }
 
       .nav-item.active {
-        background-color: #18181b;
+        background-color: #111c30;
         color: #fff;
         border: 1px solid var(--border-color);
       }
@@ -290,7 +290,7 @@
 
       .mobile-menu-btn {
         display: none;
-        background: #18181b;
+        background: #111c30;
         border: 1px solid var(--border-color);
         color: #fff;
         padding: 8px;
@@ -309,7 +309,7 @@
             rgba(255, 0, 60, 0.03),
             transparent 40%
           ),
-          linear-gradient(to bottom, #0a0a0c, #121214);
+          linear-gradient(to bottom, #080d18, #0d1422);
       }
 
       .page {
@@ -380,7 +380,7 @@
         padding: 12px 14px;
         border-radius: 8px;
         border: 1px solid var(--border-color);
-        background: #18181b;
+        background: #111c30;
         color: #fff;
         font-size: 15px;
         box-sizing: border-box;
@@ -403,7 +403,7 @@
 
       /* BUTOANE F90 */
       .action-btn {
-        background: linear-gradient(135deg, #ff003c, #b3002a);
+        background: linear-gradient(135deg, #6ca3ff, #3478f6);
         color: #fff;
         border: none;
         padding: 13px 20px;
@@ -427,7 +427,7 @@
       }
 
       .btn-secondary {
-        background: #18181b;
+        background: #111c30;
         border: 1px solid var(--border-color);
         color: #fff;
         box-shadow: none;
@@ -493,7 +493,7 @@
       th {
         color: var(--text-muted);
         font-weight: 700;
-        background: #18181b;
+        background: #111c30;
         text-transform: uppercase;
         font-size: 11px;
         letter-spacing: 0.5px;
@@ -531,9 +531,9 @@
         border: 1px solid rgba(148, 163, 184, 0.3);
       }
       .status-done {
-        background: rgba(16, 185, 129, 0.15);
+        background: rgba(79, 140, 255, 0.15);
         color: var(--success);
-        border: 1px solid rgba(16, 185, 129, 0.3);
+        border: 1px solid rgba(79, 140, 255, 0.3);
       }
 
       .user-badge {
@@ -592,7 +592,7 @@
         display: flex;
       }
       .modal-content {
-        background: #121214;
+        background: #0d1422;
         border: 1px solid var(--border-color);
         padding: 24px;
         border-radius: 16px;
@@ -673,7 +673,7 @@
         >
           <div
             style="
-              background: #18181b;
+              background: #111c30;
               padding: 12px;
               border-radius: 12px;
               border: 1px solid var(--border-color);
@@ -2225,7 +2225,7 @@
                         <td><strong>${clientName}</strong></td>
                         <td style="color:var(--success); font-weight:bold;">+${inc.amount.toLocaleString()} MDL</td>
                         <td>
-                            <select style="background:#18181b; color:#fff; border:1px solid var(--border-color); padding:3px; border-radius:4px; font-size:11px;" onchange="changeIncomeStatus(${inc.clientId}, this.value)">
+                            <select style="background:#111c30; color:#fff; border:1px solid var(--border-color); padding:3px; border-radius:4px; font-size:11px;" onchange="changeIncomeStatus(${inc.clientId}, this.value)">
                                 <option value="В ожидании" ${currentStatus === "В ожидании" ? "selected" : ""}>В ожидании</option>
                                 <option value="Не пришел" ${currentStatus === "Не пришел" ? "selected" : ""}>Не пришел</option>
                                 <option value="Отменен" ${currentStatus === "Отменен" ? "selected" : ""}>Отменен</option>

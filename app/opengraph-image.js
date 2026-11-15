@@ -22,8 +22,8 @@ export default async function OpenGraphImage() {
         flexDirection: "column",
         justifyContent: "space-between",
         padding: "72px 82px",
-        color: "#f4f4f5",
-        background: "#0a0a0c",
+        color: "#f1f5fc",
+        background: "#080d18",
         fontFamily: "Arial",
       }}
     >
@@ -41,7 +41,7 @@ export default async function OpenGraphImage() {
           Клиенты · финансы · склад
         </div>
       </div>
-      <div style={{ color: "#ff003c", fontSize: 24, fontWeight: 700 }}>
+      <div style={{ color: "#4f8cff", fontSize: 24, fontWeight: 700 }}>
         angel-detailing
       </div>
     </div>,

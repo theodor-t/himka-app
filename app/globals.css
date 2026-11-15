@@ -11138,6 +11138,86 @@ tbody tr:hover td {
   }
 }
 
+.suppliers-page,
+.waitlist-page,
+.work-posts-page,
+.work-orders-page {
+  min-width: 0;
+}
+
+.suppliers-workflow {
+  align-items: start;
+}
+
+.suppliers-workflow > .supplier-form,
+.suppliers-page > .supplier-profile-form {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+}
+
+.waitlist-page > .waitlist-form {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.work-posts-page > .work-post-create {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.work-orders-board {
+  grid-auto-columns: minmax(190px, 1fr);
+  overscroll-behavior-x: contain;
+  scrollbar-color: #3b67a5 #0b1322;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+
+.work-orders-board::-webkit-scrollbar {
+  height: 8px;
+}
+
+.work-orders-board::-webkit-scrollbar-track {
+  border-radius: 8px;
+  background: #0b1322;
+}
+
+.work-orders-board::-webkit-scrollbar-thumb {
+  border: 2px solid #0b1322;
+  border-radius: 8px;
+  background: #3b67a5;
+}
+
+.work-orders-board:focus-visible {
+  outline: 2px solid #3478f6;
+  outline-offset: 3px;
+}
+
+.work-order-column {
+  scroll-snap-align: start;
+}
+
+.dashboard-windows-empty {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-windows-empty > div {
+  min-width: 0;
+}
+
+.dashboard-windows-empty .action-btn {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
 .business-advisor-page {
   display: grid;
   gap: 16px;

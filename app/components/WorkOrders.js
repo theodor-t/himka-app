@@ -557,7 +557,28 @@ export default function WorkOrders({ db, mutate, user, focusOrderId, clearFocuse
         {!bookingsWithoutOrders.length && <p className="work-order-hint">Нет активных записей без заказа. Создайте запись в календаре.</p>}
       </form>
 
-      <section className="work-orders-board" aria-label="Канбан-доска заказов">
+      <section
+        className="work-orders-board"
+        aria-label="Канбан-доска заказов"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          const board = event.currentTarget;
+          const step = Math.max(160, Math.round(board.clientWidth * 0.75));
+          if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+            event.preventDefault();
+            board.scrollBy({
+              left: event.key === "ArrowRight" ? step : -step,
+              behavior: "smooth",
+            });
+          } else if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            board.scrollTo({
+              left: event.key === "End" ? board.scrollWidth : 0,
+              behavior: "smooth",
+            });
+          }
+        }}
+      >
         {WORK_ORDER_STATUSES.map((status) => {
           const orders = db.orders
             .filter((order) => (order.status || "Ожидает приезда") === status)

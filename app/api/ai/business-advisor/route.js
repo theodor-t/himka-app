@@ -166,12 +166,21 @@ async function loadChatAttachment(request, username, conversationId, attachment)
   };
 }
 
-function geminiErrorMessage(status, mode = "crm") {
+function geminiErrorMessage(status, mode = "crm", detail = "") {
   if (status === 429) return "Достигнут лимит запросов Gemini. Попробуйте позже.";
   if (status === 503) {
     return mode === "general"
       ? "Gemini временно недоступен. Попробуйте позже."
       : "Gemini временно недоступен. Фактические данные CRM рассчитаны.";
+  }
+  if (status === 400 && /API_KEY_INVALID|API key not valid|invalid API key/i.test(detail)) {
+    return "Gemini отклонил API-ключ. Проверьте GEMINI_API_KEY в настройках Vercel.";
+  }
+  if (status === 400) {
+    const reason = cleanText(detail, 300);
+    return reason
+      ? `Gemini отклонил запрос: ${reason}`
+      : "Gemini отклонил запрос (HTTP 400). Проверьте настройки модели и запроса.";
   }
   if (status === 401 || status === 403) return "Google отклонил API-ключ Gemini.";
   if (status === 404) return "Модель Gemini не найдена. Проверьте GEMINI_MODEL.";
@@ -180,6 +189,8 @@ function geminiErrorMessage(status, mode = "crm") {
       ? "Gemini не ответил вовремя. Попробуйте ещё раз."
       : "Gemini не ответил вовремя. Фактические данные CRM рассчитаны.";
   }
+  const reason = cleanText(detail, 300);
+  if (reason) return `Ошибка Gemini (HTTP ${status}): ${reason}`;
   return "Не удалось получить анализ Gemini. Фактические данные CRM рассчитаны.";
 }
 
@@ -191,6 +202,7 @@ async function requestGemini({ apiKey, model, schema, instruction, contents, mod
     ? "gemini-3.5-flash-lite"
     : "gemini-3.8-flash";
   let lastStatus = 502;
+  let lastErrorDetail = "";
   for (const [index, selectedModel] of [...new Set([model, fallbackModel])].entries()) {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`,
@@ -221,9 +233,17 @@ async function requestGemini({ apiKey, model, schema, instruction, contents, mod
       }
     }
     lastStatus = response.status;
+    try {
+      const payload = await response.json();
+      lastErrorDetail = typeof payload?.error?.message === "string"
+        ? payload.error.message
+        : "";
+    } catch {
+      lastErrorDetail = "";
+    }
     if (![429, 503].includes(response.status) || index === 1) break;
   }
-  const error = new Error(geminiErrorMessage(lastStatus, mode));
+  const error = new Error(geminiErrorMessage(lastStatus, mode, lastErrorDetail));
   error.status = lastStatus;
   throw error;
 }

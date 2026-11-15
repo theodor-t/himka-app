@@ -15,15 +15,21 @@ import {
   Download,
   FileText,
   Gauge,
+  History,
   MessageCircle,
+  Paperclip,
+  Pencil,
   RefreshCw,
   RotateCcw,
+  Search,
   Send,
   Sparkles,
   Target,
+  Trash2,
   TrendingUp,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 import {
   ADVISOR_PERIODS,
@@ -84,6 +90,29 @@ function KpiCard({ label, value, change, Icon, featured, money = false, inverted
 
 function csvCell(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function chatAttachmentUrl(attachment, conversationId) {
+  const params = new URLSearchParams({
+    id: attachment.id,
+    conversationId,
+  });
+  return `/api/ai/conversation-attachments?${params.toString()}`;
+}
+
+function restoreChatMessage(message, conversationId) {
+  const metadata = message.metadata || {};
+  return {
+    ...message,
+    content: metadata.answer?.text || message.content || "",
+    table: metadata.answer?.table || null,
+    analysis: metadata.analysis || "",
+    recommendation: metadata.recommendation || "",
+    attachments: (message.attachments || []).map((attachment) => ({
+      ...attachment,
+      url: chatAttachmentUrl(attachment, conversationId),
+    })),
+  };
 }
 
 function downloadReport(analytics, insights, recommendations) {
@@ -231,7 +260,25 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
   const [aiError, setAiError] = useState("");
   const [aiInsights, setAiInsights] = useState(null);
   const [chats, setChats] = useState({ crm: [], general: [] });
+  const [conversationIds, setConversationIds] = useState({ crm: null, general: null });
+  const [savedConversations, setSavedConversations] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [renamingConversation, setRenamingConversation] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [pendingAttachmentsByMode, setPendingAttachmentsByMode] = useState({ crm: [], general: [] });
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadLabel, setUploadLabel] = useState("");
+  const fileInputRef = useRef(null);
+  const historyLoadStarted = useRef(false);
   const chat = chats[chatMode] || [];
+  const conversationId = conversationIds[chatMode];
+  const pendingAttachments = pendingAttachmentsByMode[chatMode] || [];
+  const visibleConversations = savedConversations.filter((item) =>
+    `${item.title || ""} ${item.preview || ""}`.toLowerCase().includes(historyQuery.trim().toLowerCase()),
+  );
   const chatEndRef = useRef(null);
   const chatScreenRef = useRef(null);
   const [chatPortalTarget, setChatPortalTarget] = useState(null);
@@ -284,6 +331,62 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
   }, [chatOnly]);
 
   useEffect(() => {
+    if (!chatOnly || !chatPortalTarget || historyLoadStarted.current) return undefined;
+    historyLoadStarted.current = true;
+    let cancelled = false;
+    const loadHistory = async () => {
+      setHistoryBusy(true);
+      setHistoryError("");
+      try {
+        const response = await fetch("/api/ai/conversations", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(20_000),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Не удалось загрузить историю чатов.");
+        const list = Array.isArray(payload.conversations) ? payload.conversations : [];
+        if (cancelled) return;
+        setSavedConversations(list);
+        const latestByMode = {
+          crm: list.find((item) => item.mode === "crm") || null,
+          general: list.find((item) => item.mode === "general") || null,
+        };
+        const loaded = await Promise.all(Object.entries(latestByMode).map(async ([mode, item]) => {
+          if (!item) return [mode, null, [], []];
+          const detailResponse = await fetch(
+            `/api/ai/conversations?id=${encodeURIComponent(item.id)}`,
+            { cache: "no-store", signal: AbortSignal.timeout(20_000) },
+          );
+          const detail = await detailResponse.json();
+          if (!detailResponse.ok) throw new Error(detail.error || "Не удалось открыть сохранённый чат.");
+          return [
+            mode,
+            item.id,
+            (detail.messages || []).map((message) => restoreChatMessage(message, item.id)),
+            (detail.pendingAttachments || []).map((attachment) => ({
+              ...attachment,
+              url: chatAttachmentUrl(attachment, item.id),
+            })),
+          ];
+        }));
+        if (cancelled) return;
+        setConversationIds(Object.fromEntries(loaded.map(([mode, id]) => [mode, id])));
+        setChats(Object.fromEntries(loaded.map(([mode, , messages]) => [mode, messages])));
+        setPendingAttachmentsByMode(Object.fromEntries(loaded.map(([mode, , , attachments]) => [mode, attachments])));
+      } catch (error) {
+        if (!cancelled) setHistoryError(error instanceof Error ? error.message : "Ошибка загрузки истории.");
+      } finally {
+        if (!cancelled) setHistoryBusy(false);
+      }
+    };
+    void loadHistory();
+    return () => {
+      cancelled = true;
+      historyLoadStarted.current = false;
+    };
+  }, [chatOnly, chatPortalTarget]);
+
+  useEffect(() => {
     if (!chatOnly || !chatPortalTarget) return undefined;
     const previousBodyOverflow = document.body.style.overflow;
     const previousRootOverflow = document.documentElement.style.overflow;
@@ -330,24 +433,237 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
     setAiError("");
   }, [period, from, to]);
 
+  const setModeAttachments = (mode, next) => {
+    setPendingAttachmentsByMode((current) => ({
+      ...current,
+      [mode]: typeof next === "function" ? next(current[mode] || []) : next,
+    }));
+  };
+
+  const refreshSavedConversations = async () => {
+    const response = await fetch("/api/ai/conversations", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Не удалось обновить историю чатов.");
+    setSavedConversations(Array.isArray(payload.conversations) ? payload.conversations : []);
+  };
+
+  const ensureConversation = async (mode, title) => {
+    const existingId = conversationIds[mode];
+    if (existingId) return existingId;
+    const response = await fetch("/api/ai/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(20_000),
+      body: JSON.stringify({ mode, title: title || "Новый чат" }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Не удалось создать чат.");
+    setConversationIds((current) => ({ ...current, [mode]: payload.conversation.id }));
+    setSavedConversations((current) => [payload.conversation, ...current]);
+    return payload.conversation.id;
+  };
+
+  const loadSavedConversation = async (item) => {
+    setHistoryBusy(true);
+    setHistoryError("");
+    try {
+      const response = await fetch(`/api/ai/conversations?id=${encodeURIComponent(item.id)}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Не удалось открыть чат.");
+      setChatMode(item.mode);
+      setConversationIds((current) => ({ ...current, [item.mode]: item.id }));
+      setChats((current) => ({
+        ...current,
+        [item.mode]: (payload.messages || []).map((message) => restoreChatMessage(message, item.id)),
+      }));
+      setModeAttachments(item.mode, (payload.pendingAttachments || []).map((attachment) => ({
+        ...attachment,
+        url: chatAttachmentUrl(attachment, item.id),
+      })));
+      setHistoryOpen(false);
+      setRenamingConversation(null);
+      setQuestion("");
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Ошибка загрузки чата.");
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
+
+  const startNewChat = async () => {
+    const id = conversationId;
+    if (id) {
+      for (const attachment of pendingAttachments) {
+        try {
+          const response = await fetch("/api/ai/conversation-attachments", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: attachment.id, conversationId: id }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "Не удалось удалить вложение.");
+        } catch (error) {
+          setAiError(error instanceof Error ? error.message : "Не удалось удалить временное вложение.");
+          return;
+        }
+      }
+    }
+    setConversationIds((current) => ({ ...current, [chatMode]: null }));
+    setChats((current) => ({ ...current, [chatMode]: [] }));
+    setModeAttachments(chatMode, []);
+    setQuestion("");
+    setAiError("");
+  };
+
+  const handleAttachmentSelect = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length) return;
+    if (chatMode !== "general") {
+      setAiError("Файлы можно прикреплять только в режиме «Общий AI».");
+      return;
+    }
+    if (pendingAttachments.length + files.length > 3) {
+      setAiError("К одному сообщению можно прикрепить не более трёх файлов.");
+      return;
+    }
+    setUploadBusy(true);
+    setAiError("");
+    try {
+      const id = await ensureConversation("general", question.trim() || "Новый чат");
+      for (const file of files) {
+        setUploadLabel(file.name);
+        const form = new FormData();
+        form.set("conversationId", id);
+        form.set("file", file);
+        const response = await fetch("/api/ai/conversation-attachments", {
+          method: "POST",
+          body: form,
+          signal: AbortSignal.timeout(60_000),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Не удалось загрузить файл.");
+        const attachment = {
+          ...payload.attachment,
+          url: chatAttachmentUrl(payload.attachment, id),
+        };
+        setModeAttachments("general", (current) => [...current, attachment]);
+      }
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Ошибка загрузки файла.");
+    } finally {
+      setUploadBusy(false);
+      setUploadLabel("");
+    }
+  };
+
+  const removePendingAttachment = async (attachment) => {
+    const id = conversationIds[chatMode];
+    if (!id) return;
+    try {
+      const response = await fetch("/api/ai/conversation-attachments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: attachment.id, conversationId: id }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Не удалось удалить вложение.");
+      setModeAttachments(chatMode, (current) => current.filter((item) => item.id !== attachment.id));
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Ошибка удаления вложения.");
+    }
+  };
+
+  const saveConversationTitle = async (id) => {
+    const title = renameValue.trim();
+    if (!title) return;
+    try {
+      const response = await fetch("/api/ai/conversations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, title }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Не удалось переименовать чат.");
+      setSavedConversations((current) => current.map((item) => item.id === id ? payload.conversation : item));
+      setRenamingConversation(null);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Ошибка переименования чата.");
+    }
+  };
+
+  const deleteSavedConversation = async (item) => {
+    if (!window.confirm("Удалить этот чат и все его вложения?")) return;
+    try {
+      const response = await fetch("/api/ai/conversations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Не удалось удалить чат.");
+      setSavedConversations((current) => current.filter((conversation) => conversation.id !== item.id));
+      setChats((current) => ({
+        ...current,
+        [item.mode]: current[item.mode].filter((message) =>
+          !conversationIds[item.mode] || conversationIds[item.mode] !== item.id,
+        ),
+      }));
+      if (conversationIds[item.mode] === item.id) {
+        setConversationIds((current) => ({ ...current, [item.mode]: null }));
+        setModeAttachments(item.mode, []);
+      }
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Ошибка удаления чата.");
+    }
+  };
+
   const askAdvisor = async (prompt = question) => {
     const text = prompt.trim();
-    if (!text || chatBusy) return;
-    const nextChat = [...chat, { role: "user", content: text }].slice(-20);
-    setChats((current) => ({ ...current, [chatMode]: nextChat }));
+    if ((!text && !pendingAttachments.length) || chatBusy || uploadBusy) return;
     setQuestion("");
     setChatBusy(true);
     setAiError("");
+    const messageId = window.crypto.randomUUID();
+    const fallbackText = language === "ro" ? "Analizează fișierul atașat." : "Проанализируй приложенный файл.";
+    let activeId = conversationId;
+    const selectedAttachments = pendingAttachments;
+    const userMessage = {
+      id: messageId,
+      role: "user",
+      content: text || fallbackText,
+      attachments: selectedAttachments.map((attachment) => ({
+        ...attachment,
+        url: attachment.url || chatAttachmentUrl(attachment, activeId),
+      })),
+    };
     try {
+      activeId = activeId || await ensureConversation(chatMode, text || "Новый чат");
+      userMessage.attachments = selectedAttachments.map((attachment) => ({
+        ...attachment,
+        url: chatAttachmentUrl(attachment, activeId),
+      }));
+      setChats((current) => ({
+        ...current,
+        [chatMode]: [...(current[chatMode] || []), userMessage].slice(-40),
+      }));
       const response = await fetch("/api/ai/business-advisor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(45_000),
+        signal: AbortSignal.timeout(90_000),
         body: JSON.stringify({
           action: "chat",
           mode: chatMode,
+          conversationId: activeId,
+          messageId,
           question: text,
-          history: chat.slice(-6),
+          attachmentIds: selectedAttachments.map((attachment) => attachment.id),
           language,
           period: chatPeriod,
           from: chatFrom,
@@ -356,24 +672,53 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Не удалось получить ответ.");
-      const answer = {
+      const answer = restoreChatMessage(result.assistantMessage || {
         role: "assistant",
         content: result.answer?.text || "",
-        table: result.answer?.table || null,
-        analysis: result.analysis || "",
-        recommendation: result.recommendation || "",
-      };
-      setChats((current) => ({ ...current, [chatMode]: [...(current[chatMode] || []), answer].slice(-20) }));
+        metadata: {
+          answer: result.answer,
+          analysis: result.analysis || "",
+          recommendation: result.recommendation || "",
+        },
+      }, activeId);
+      setChats((current) => ({
+        ...current,
+        [chatMode]: [...(current[chatMode] || []).filter((item) => item.id !== answer.id), answer].slice(-40),
+      }));
+      setModeAttachments(chatMode, []);
+      try {
+        await refreshSavedConversations();
+      } catch (error) {
+        setHistoryError(error instanceof Error ? error.message : "Не удалось обновить историю чатов.");
+      }
       if (result.aiError) setAiError(result.aiError);
     } catch (error) {
-      setChats((current) => {
-        const currentChat = current[chatMode] || [];
-        return {
-          ...current,
-          [chatMode]: currentChat.filter((item, index) => !(index === currentChat.length - 1 && item.role === "user" && item.content === text)),
-        };
-      });
-      setQuestion(text);
+      if (activeId) {
+        try {
+          const response = await fetch(`/api/ai/conversations?id=${encodeURIComponent(activeId)}`, { cache: "no-store" });
+          const payload = await response.json();
+          if (response.ok) {
+            const messages = (payload.messages || []).map((message) => restoreChatMessage(message, activeId));
+            const savedMessage = messages.some((message) => message.id === messageId);
+            setChats((current) => ({
+              ...current,
+              [chatMode]: savedMessage
+                ? messages
+                : (current[chatMode] || []).filter((message) => message.id !== messageId),
+            }));
+            setModeAttachments(chatMode, (payload.pendingAttachments || []).map((attachment) => ({
+              ...attachment,
+              url: chatAttachmentUrl(attachment, activeId),
+            })));
+          }
+        } catch {
+          setChats((current) => ({
+            ...current,
+            [chatMode]: (current[chatMode] || []).filter((message) => message.id !== messageId),
+          }));
+        }
+      }
+      if (!selectedAttachments.length) setQuestion(text);
       setAiError(error instanceof Error ? error.message : "Ошибка связи с бизнес-советником.");
     } finally {
       setChatBusy(false);
@@ -435,13 +780,18 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
             </div>
             <button
               type="button"
+              className="advisor-chat-history-button"
+              onClick={() => { setHistoryOpen(true); setHistoryError(""); }}
+              aria-label={language === "ro" ? "Istoricul conversațiilor" : "История чатов"}
+              title={language === "ro" ? "Istoric" : "История"}
+            >
+              <History size={17} />
+            </button>
+            <button
+              type="button"
               className="advisor-new-chat"
-              onClick={() => {
-                setChats((current) => ({ ...current, [chatMode]: [] }));
-                setQuestion("");
-                setAiError("");
-              }}
-              disabled={!chat.length && !question}
+              onClick={() => void startNewChat()}
+              disabled={!chat.length && !question && !pendingAttachments.length}
               aria-label="Начать новый чат"
               title="Новый чат"
             >
@@ -449,6 +799,57 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
             </button>
           </div>
         </header>
+
+        {historyOpen && (
+          <div className="advisor-chat-history-backdrop" onClick={() => setHistoryOpen(false)}>
+            <aside className="advisor-chat-history-drawer" onClick={(event) => event.stopPropagation()}>
+              <header>
+                <div><strong>{language === "ro" ? "Conversațiile mele" : "История чатов"}</strong><small>{language === "ro" ? "Salvate în contul tău" : "Сохранено в вашем аккаунте"}</small></div>
+                <button type="button" onClick={() => setHistoryOpen(false)} aria-label="Закрыть историю"><X size={18} /></button>
+              </header>
+              <label className="advisor-chat-history-search">
+                <Search size={16} />
+                <input
+                  type="search"
+                  value={historyQuery}
+                  onChange={(event) => setHistoryQuery(event.target.value)}
+                  placeholder={language === "ro" ? "Caută în conversații" : "Поиск по чатам"}
+                  aria-label={language === "ro" ? "Caută în conversații" : "Поиск по чатам"}
+                />
+              </label>
+              {historyError && <p className="advisor-chat-history-error">{historyError}</p>}
+              {historyBusy && <p className="advisor-chat-history-empty">{language === "ro" ? "Se încarcă…" : "Загрузка…"}</p>}
+              {!historyBusy && !visibleConversations.length && <p className="advisor-chat-history-empty">{savedConversations.length
+                ? language === "ro" ? "Nu s-au găsit conversații." : "Совпадений нет."
+                : language === "ro" ? "Nu există conversații salvate încă." : "Сохранённых чатов пока нет."}</p>}
+              <div className="advisor-chat-history-list">
+                {visibleConversations.map((item) => (
+                  <article className={`advisor-chat-history-item${conversationId === item.id ? " active" : ""}`} key={item.id}>
+                    {renamingConversation === item.id ? (
+                      <form onSubmit={(event) => { event.preventDefault(); void saveConversationTitle(item.id); }}>
+                        <input value={renameValue} maxLength={80} onChange={(event) => setRenameValue(event.target.value)} aria-label="Название чата" autoFocus />
+                        <button type="submit" aria-label="Сохранить название"><Check size={16} /></button>
+                        <button type="button" onClick={() => setRenamingConversation(null)} aria-label="Отменить переименование"><X size={16} /></button>
+                      </form>
+                    ) : (
+                      <>
+                        <button type="button" className="advisor-chat-history-open" onClick={() => void loadSavedConversation(item)}>
+                          <strong>{item.title || (language === "ro" ? "Chat nou" : "Новый чат")}</strong>
+                          <small>{item.mode === "general" ? (language === "ro" ? "AI general" : "Общий AI") : (language === "ro" ? "Date CRM" : "Данные CRM")} · {new Date(item.updatedAt).toLocaleDateString(language === "ro" ? "ro-RO" : "ru-RU")}</small>
+                          {!!item.preview && <span>{item.preview}</span>}
+                        </button>
+                        <div className="advisor-chat-history-item-actions">
+                          <button type="button" onClick={() => { setRenamingConversation(item.id); setRenameValue(item.title || ""); }} aria-label="Переименовать чат"><Pencil size={14} /></button>
+                          <button type="button" onClick={() => void deleteSavedConversation(item)} aria-label="Удалить чат"><Trash2 size={14} /></button>
+                        </div>
+                      </>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </aside>
+          </div>
+        )}
 
         <div className="advisor-chat-mode-row">
           <div className="advisor-chat-mode-toggle" role="group" aria-label="Режим AI-чата">
@@ -487,6 +888,9 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         )}
 
         <main className="advisor-chat-screen-messages" aria-live="polite">
+          {historyBusy && !chat.length && (
+            <div className="advisor-chat-history-empty">{language === "ro" ? "Se încarcă istoricul…" : "Загружаем историю чатов…"}</div>
+          )}
           {!chat.length && (
             <div className="advisor-chat-screen-welcome">
               <span><Sparkles size={20} /></span>
@@ -508,8 +912,25 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
             </div>
           )}
           {chat.map((message, index) => (
-            <article className={`advisor-chat-message ${message.role}`} key={`${index}:${message.content.slice(0, 30)}`}>
+            <article className={`advisor-chat-message ${message.role}`} key={message.id || `${index}:${message.content.slice(0, 30)}`}>
               <div className="advisor-chat-bubble">
+                {!!message.attachments?.length && (
+                  <div className="advisor-chat-message-attachments">
+                    {message.attachments.map((attachment) => (
+                      <a
+                        key={attachment.id}
+                        href={attachment.url || chatAttachmentUrl(attachment, conversationId)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={attachment.mimeType.startsWith("image/") ? "is-image" : ""}
+                      >
+                        {attachment.mimeType.startsWith("image/")
+                          ? <img src={attachment.url || chatAttachmentUrl(attachment, conversationId)} alt={attachment.name} loading="lazy" />
+                          : <><FileText size={17} /><span>{attachment.name}</span></>}
+                      </a>
+                    ))}
+                  </div>
+                )}
                 <p>{message.content}</p>
                 {message.table?.rows?.length > 0 && (
                   <div className="advisor-chat-table-wrap"><table><thead><tr>{message.table.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{message.table.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>
@@ -525,6 +946,42 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
 
         {!!aiError && <p className="advisor-ai-error advisor-chat-screen-error" role="status">{aiError}</p>}
         <form className="advisor-chat-screen-composer" onSubmit={(event) => { event.preventDefault(); void askAdvisor(); }}>
+          {chatMode === "general" && (
+            <input
+              ref={fileInputRef}
+              className="advisor-chat-file-input"
+              type="file"
+              multiple
+              accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.csv,image/jpeg,image/png,image/webp,application/pdf,text/plain,text/csv"
+              onChange={(event) => void handleAttachmentSelect(event)}
+              aria-label={language === "ro" ? "Atașează imagini sau documente" : "Прикрепить изображения или документы"}
+            />
+          )}
+          {pendingAttachments.length > 0 && (
+            <div className="advisor-chat-composer-attachments">
+              {pendingAttachments.map((attachment) => (
+                <div className="advisor-chat-composer-attachment" key={attachment.id}>
+                  {attachment.mimeType.startsWith("image/")
+                    ? <img src={attachment.url} alt="" />
+                    : <FileText size={15} />}
+                  <span>{attachment.name}</span>
+                  <button type="button" onClick={() => void removePendingAttachment(attachment)} disabled={uploadBusy} aria-label={`Удалить ${attachment.name}`}><X size={14} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          {chatMode === "general" && (
+            <button
+              type="button"
+              className="advisor-chat-attach-button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={chatBusy || uploadBusy || pendingAttachments.length >= 3}
+              aria-label={language === "ro" ? "Atașează fișier" : "Прикрепить файл"}
+              title={language === "ro" ? "Atașează fișier" : "Прикрепить файл"}
+            >
+              <Paperclip size={18} />
+            </button>
+          )}
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
@@ -536,8 +993,9 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
             aria-label={language === "ro" ? "Mesaj pentru ANGEL AI" : "Сообщение для ANGEL AI"}
           />
           <span>{question.length}/600</span>
-          <button type="submit" disabled={!question.trim() || chatBusy} aria-label="Отправить сообщение"><Send size={18} /></button>
+          <button type="submit" disabled={(!question.trim() && !pendingAttachments.length) || chatBusy || uploadBusy || historyBusy} aria-label="Отправить сообщение"><Send size={18} /></button>
         </form>
+        {uploadBusy && <p className="advisor-chat-upload-status">{language === "ro" ? `Se încarcă ${uploadLabel}…` : `Загружается ${uploadLabel}…`}</p>}
         <p className="advisor-chat-screen-privacy">{chatMode === "general"
           ? language === "ro"
             ? "Modul general nu vede date CRM și nu are căutare pe internet."

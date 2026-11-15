@@ -44,3 +44,25 @@ property manually, use a folder that is not shared.
 
 The CRM accepts JPEG, PNG, and WebP images up to 5 MB each, with up to 10 photos
 per inspection. File viewing and upload require an authenticated CRM session.
+
+## AI chat history and attachments
+
+AI chats are stored separately from the CRM's single-cell JSON database. The
+Apps Script creates `AI Chat Conversations`, `AI Chat Messages`, and
+`AI Chat Attachments` sheets on first use. Every record is scoped to the
+authenticated CRM username; the Next.js API checks ownership when listing,
+opening, renaming, deleting, or sending a message in a conversation.
+
+Chat files are stored in a private Google Drive folder. The first upload creates
+`ANGEL DETAILING — AI чаты` and stores its ID in the `AI_CHAT_FOLDER_ID` script
+property. Images and PDFs are sent by the server to the configured Gemini model
+as actual multimodal input; UTF-8 TXT and CSV contents are sent as text. The
+supported formats are JPEG, PNG, WebP, PDF, TXT, and CSV; HEIC and DOCX are not
+accepted. Limits are 3 MB per file, 3 files per message, and 6 MB combined per
+message.
+
+After changing `Code.gs`, update the deployed Apps Script web app version and
+authorize Google Sheets and Drive access. Existing `API_KEY` and spreadsheet
+settings remain in place; no additional secret is exposed to the browser. Chat
+records and files remain until an employee deletes the conversation. Localhost
+preview uses in-memory storage and is not a persistence test for production.

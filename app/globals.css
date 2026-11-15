@@ -11591,6 +11591,114 @@ tbody tr:hover td {
   box-sizing: border-box;
   border-bottom: 1px solid #ffffff10;
 }
+.advisor-chat-history-button,
+.advisor-chat-history-item-actions button,
+.advisor-chat-history-drawer > header > button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #ffffff14;
+  border-radius: 11px;
+  color: #b7c8df;
+  background: #ffffff06;
+  cursor: pointer;
+}
+.advisor-chat-history-button:hover,
+.advisor-chat-history-item-actions button:hover,
+.advisor-chat-history-drawer > header > button:hover { color: #eef4ff; background: #ffffff12; }
+.advisor-chat-history-backdrop {
+  position: fixed;
+  z-index: 100001;
+  inset: 0;
+  display: flex;
+  justify-content: flex-start;
+  background: #020712a8;
+  backdrop-filter: blur(7px);
+}
+.advisor-chat-history-drawer {
+  display: flex;
+  width: min(390px, 100%);
+  height: 100%;
+  flex-direction: column;
+  padding: 18px;
+  box-sizing: border-box;
+  border-right: 1px solid #ffffff15;
+  color: #e5ecf7;
+  background: #0c1524;
+  box-shadow: 22px 0 70px #00000052;
+}
+.advisor-chat-history-drawer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #ffffff10;
+}
+.advisor-chat-history-drawer > header > div { display: grid; gap: 4px; }
+.advisor-chat-history-drawer > header strong { font-size: 15px; }
+.advisor-chat-history-drawer > header small,
+.advisor-chat-history-item small { color: #8092aa; font-size: 10px; }
+.advisor-chat-history-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 2px;
+  padding: 0 11px;
+  border: 1px solid #ffffff15;
+  border-radius: 10px;
+  color: #8294ac;
+  background: #ffffff06;
+}
+.advisor-chat-history-search input { width: 100%; min-width: 0; min-height: 40px; border: 0; outline: none; color: #e5ecf7; background: transparent; font-size: 12px; }
+.advisor-chat-history-search input::placeholder { color: #7788a0; }
+.advisor-chat-history-list { display: grid; align-content: start; gap: 7px; padding: 12px 0; overflow-y: auto; }
+.advisor-chat-history-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: #ffffff04;
+}
+.advisor-chat-history-item.active { border-color: #5b86c84d; background: #3478d21a; }
+.advisor-chat-history-open {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 5px;
+  padding: 8px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.advisor-chat-history-open strong,
+.advisor-chat-history-open span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.advisor-chat-history-open strong { font-size: 12px; }
+.advisor-chat-history-open span { color: #9cacc1; font-size: 11px; }
+.advisor-chat-history-item-actions { display: flex; gap: 3px; }
+.advisor-chat-history-item-actions button { width: 32px; height: 32px; }
+.advisor-chat-history-item form { display: flex; width: 100%; gap: 5px; }
+.advisor-chat-history-item form input {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 9px;
+  border: 1px solid #ffffff20;
+  border-radius: 8px;
+  outline: none;
+  color: #e5ecf7;
+  background: #111d2e;
+}
+.advisor-chat-history-item form button { display: grid; width: 34px; place-items: center; border: 0; color: #b7c8df; background: transparent; }
+.advisor-chat-history-empty,
+.advisor-chat-history-error { margin: 14px 0; color: #8799b1; font-size: 12px; line-height: 1.5; }
+.advisor-chat-history-error { color: #ff9a9a; }
 .advisor-chat-screen-title,
 .advisor-chat-screen-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .advisor-chat-screen-title > div { display: grid; min-width: 0; gap: 3px; }
@@ -11708,11 +11816,29 @@ tbody tr:hover td {
 .advisor-chat-screen-messages .advisor-chat-table-wrap th,
 .advisor-chat-screen-messages .advisor-chat-table-wrap td { padding: 9px 11px; }
 .advisor-chat-screen-messages .advisor-chat-recommendation { font-size: 12px; }
+.advisor-chat-message-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 9px; }
+.advisor-chat-message-attachments a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ffffff15;
+  border-radius: 10px;
+  color: #dce7f5;
+  background: #ffffff08;
+  font-size: 11px;
+  text-decoration: none;
+}
+.advisor-chat-message-attachments a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.advisor-chat-message-attachments a.is-image { padding: 3px; }
+.advisor-chat-message-attachments img { display: block; width: min(220px, 58vw); max-height: 240px; border-radius: 8px; object-fit: cover; }
 .advisor-chat-screen .advisor-chat-loading { width: min(100%, 920px); margin: 0 auto; padding: 0 20px 10px; box-sizing: border-box; font-size: 12px; }
 .advisor-chat-screen-error { width: min(100% - 40px, 920px); margin: 0 auto 8px; box-sizing: border-box; font-size: 12px; }
 .advisor-chat-screen-composer {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px;
   width: min(100% - 40px, 920px);
@@ -11728,6 +11854,7 @@ tbody tr:hover td {
 .advisor-chat-screen-composer:focus-within { border-color: #6592d46e; box-shadow: 0 0 0 3px #5485ca16, 0 12px 40px #00000024; }
 .advisor-chat-screen-composer textarea {
   width: 100%;
+  flex: 1;
   min-width: 0;
   min-height: 36px;
   max-height: 144px;
@@ -11756,6 +11883,42 @@ tbody tr:hover td {
   cursor: pointer;
 }
 .advisor-chat-screen-composer > button:disabled { opacity: .42; cursor: not-allowed; }
+.advisor-chat-file-input { display: none; }
+.advisor-chat-attach-button {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #ffffff14 !important;
+  color: #a9bad1 !important;
+  background: #ffffff07 !important;
+}
+.advisor-chat-composer-attachments {
+  display: flex;
+  flex: 0 0 100%;
+  gap: 7px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0 0 4px;
+}
+.advisor-chat-composer-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 220px;
+  padding: 5px 7px;
+  border: 1px solid #ffffff15;
+  border-radius: 10px;
+  color: #bdcbe0;
+  background: #ffffff08;
+  font-size: 10px;
+}
+.advisor-chat-composer-attachment > img { width: 30px; height: 30px; flex: none; border-radius: 6px; object-fit: cover; }
+.advisor-chat-composer-attachment > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.advisor-chat-composer-attachment > button { display: grid; width: 26px; height: 26px; flex: none; place-items: center; border: 0; border-radius: 7px; color: #aab9cf; background: transparent; }
+.advisor-chat-composer-attachment > button:disabled { opacity: .45; }
+.advisor-chat-upload-status { width: min(100% - 40px, 920px); margin: 5px auto 0; color: #9cb2d1; font-size: 10px; text-align: center; }
 .advisor-chat-screen-privacy { width: min(100% - 40px, 920px); margin: 8px auto 0; padding-bottom: 8px; color: #73839a; font-size: 10px; line-height: 1.4; text-align: center; }
 .advisor-chat-mode-row {
   display: flex;
@@ -11807,8 +11970,10 @@ tbody tr:hover td {
   .advisor-chat-back { width: 38px; height: 38px; }
   .advisor-chat-screen-actions .advisor-language-toggle { padding: 2px; }
   .advisor-chat-screen-actions .advisor-language-toggle button { min-width: 32px; min-height: 30px; font-size: 10px; }
+  .advisor-chat-history-button { width: 36px; height: 36px; }
   .advisor-new-chat { width: 38px; height: 38px; min-height: 38px; padding: 0; }
   .advisor-new-chat span { display: none; }
+  .advisor-chat-history-drawer { width: 100%; padding: 14px; padding-top: max(14px, env(safe-area-inset-top, 0px)); }
   .advisor-chat-screen-period { flex-wrap: wrap; gap: 7px 10px; padding: 8px 12px; }
   .advisor-chat-screen-period > label { width: 100%; justify-content: space-between; font-size: 11px; }
   .advisor-chat-screen-period select { flex: 1; max-width: 220px; min-height: 38px; font-size: 16px; }
@@ -11830,7 +11995,8 @@ tbody tr:hover td {
   .advisor-chat-screen-messages .advisor-chat-bubble > p { font-size: 14px; }
   .advisor-chat-screen-error,
   .advisor-chat-screen-composer,
-  .advisor-chat-screen-privacy { width: calc(100% - 24px); }
+  .advisor-chat-screen-privacy,
+  .advisor-chat-upload-status { width: calc(100% - 24px); }
   .advisor-chat-screen-composer { min-height: 56px; padding: 7px 8px 7px 13px; border-radius: 17px; }
   .advisor-chat-screen-composer textarea { min-height: 40px; padding: 9px 0; font-size: 16px; }
   .advisor-chat-screen-composer > button { width: 40px; height: 40px; }

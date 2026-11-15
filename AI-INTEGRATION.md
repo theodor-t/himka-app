@@ -13,3 +13,18 @@ The generation endpoint accepts only fixed service, tone, and format IDs. It
 does not send customer records, vehicle identifiers, free-form descriptions, or
 other CRM data to Gemini. The returned caption and hashtags are validated and
 must still be reviewed and saved by an employee.
+
+## ANGEL AI conversations
+
+The CRM and General modes use the authenticated `/api/ai/business-advisor`
+endpoint. General mode does not load CRM data. Conversations and messages are
+stored in the dedicated Apps Script chat sheets, scoped to the signed-in
+username; chat attachments are kept in a private Drive folder and are deleted
+when the conversation is deleted.
+
+General chat accepts JPEG, PNG, WebP, PDF, UTF-8 TXT, and CSV files. The server
+validates file type and size, then sends images/PDFs as Gemini multimodal input
+and text documents as text. It never sends a client-provided SQL query to the
+database. Deploy the updated `google-apps-script/Code.gs` web app before using
+chat history or attachments in production; localhost preview storage is
+in-memory only.

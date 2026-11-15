@@ -42,6 +42,14 @@ const EXTENDED_COLLECTIONS = [
 function doGet(e) {
   if (!isAuthorized(e)) return jsonResponse({ error: "Unauthorized" }, 401);
 
+  if (String(e?.parameter?.action || "").indexOf("aiChat") === 0) {
+    try {
+      return handleAiChatGet(e);
+    } catch (error) {
+      return jsonResponse({ error: error.message }, 500);
+    }
+  }
+
   if (e?.parameter?.action === "getInspectionFile") {
     try {
       return getInspectionFile(e.parameter.id);
@@ -81,6 +89,9 @@ function doPost(e) {
     if (e?.parameter?.action === "deleteInspectionFile") {
       return deleteInspectionFile(e.postData.contents);
     }
+    if (String(e?.parameter?.action || "").indexOf("aiChat") === 0) {
+      return handleAiChatPost(e.parameter.action, e.postData.contents);
+    }
     const data = JSON.parse(e.postData.contents);
     validateDatabase(data);
     const lock = LockService.getScriptLock();
@@ -116,6 +127,535 @@ function doPost(e) {
   } catch (error) {
     return jsonResponse({ error: error.message }, 400);
   }
+}
+
+const AI_CHAT_CONVERSATIONS_SHEET = "AI Chat Conversations";
+const AI_CHAT_MESSAGES_SHEET = "AI Chat Messages";
+const AI_CHAT_ATTACHMENTS_SHEET = "AI Chat Attachments";
+const AI_CHAT_MAX_FILE_BYTES = 3 * 1024 * 1024;
+const AI_CHAT_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain", "text/csv"];
+
+function handleAiChatGet(e) {
+  const action = String(e?.parameter?.action || "");
+  const username = validateAiChatUsername(e?.parameter?.username);
+  if (action === "aiChatList") {
+    return jsonResponse({ conversations: listAiChatConversations(username) }, 200);
+  }
+  if (action === "aiChatGet") {
+    const result = getAiChatConversation(username, e.parameter.id);
+    return jsonResponse(result, result.status || 200);
+  }
+  if (action === "aiChatAttachment") {
+    return getAiChatAttachment(username, e.parameter.conversationId, e.parameter.id);
+  }
+  return jsonResponse({ error: "Unknown AI chat action" }, 400);
+}
+
+function handleAiChatPost(action, contents) {
+  const request = JSON.parse(contents);
+  const username = validateAiChatUsername(request?.username);
+  if (action === "aiChatCreate") return createAiChatConversation(username, request);
+  if (action === "aiChatSaveMessage") return saveAiChatMessage(username, request);
+  if (action === "aiChatRename") return renameAiChatConversation(username, request);
+  if (action === "aiChatDelete") return deleteAiChatConversation(username, request);
+  if (action === "aiChatUploadAttachment") return uploadAiChatAttachment(username, request);
+  if (action === "aiChatDeleteAttachment") return deleteAiChatAttachment(username, request);
+  return jsonResponse({ error: "Unknown AI chat action" }, 400);
+}
+
+function validateAiChatUsername(value) {
+  const username = String(value || "");
+  if (!/^[A-Z0-9._-]{1,60}$/.test(username)) throw new Error("Invalid AI chat owner");
+  return username;
+}
+
+function validateAiChatId(value) {
+  const id = String(value || "");
+  if (!/^[A-Za-z0-9_-]{20,80}$/.test(id)) throw new Error("Invalid AI chat ID");
+  return id;
+}
+
+function aiChatSheet(name, headers) {
+  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  } else {
+    const storedHeaders = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+    if (headers.some(function (header, index) { return storedHeaders[index] !== header; })) {
+      throw new Error("Invalid AI chat sheet structure: " + name);
+    }
+  }
+  return sheet;
+}
+
+function aiChatConversationSheet() {
+  return aiChatSheet(AI_CHAT_CONVERSATIONS_SHEET, [
+    "id", "username", "mode", "title", "preview", "createdAt", "updatedAt",
+  ]);
+}
+
+function aiChatMessageSheet() {
+  return aiChatSheet(AI_CHAT_MESSAGES_SHEET, [
+    "id", "conversationId", "username", "role", "content", "createdAt",
+    "attachmentsJson", "metadataJson",
+  ]);
+}
+
+function aiChatAttachmentSheet() {
+  return aiChatSheet(AI_CHAT_ATTACHMENTS_SHEET, [
+    "id", "conversationId", "messageId", "username", "fileId", "name", "mimeType",
+    "size", "createdAt", "status",
+  ]);
+}
+
+function aiChatRows(sheet) {
+  const lastRow = sheet.getLastRow();
+  return lastRow < 2 ? [] : sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+}
+
+function aiChatConversationFromRow(row) {
+  return {
+    id: String(row[0]),
+    mode: String(row[2]),
+    title: String(row[3]),
+    preview: String(row[4] || ""),
+    createdAt: String(row[5]),
+    updatedAt: String(row[6]),
+  };
+}
+
+function listAiChatConversations(username) {
+  return aiChatRows(aiChatConversationSheet())
+    .filter(function (row) { return String(row[1]) === username; })
+    .map(aiChatConversationFromRow)
+    .sort(function (a, b) { return b.updatedAt.localeCompare(a.updatedAt); })
+    .slice(0, 100);
+}
+
+function findAiChatConversation(username, id) {
+  const conversationId = validateAiChatId(id);
+  const sheet = aiChatConversationSheet();
+  const rows = aiChatRows(sheet);
+  const index = rows.findIndex(function (row) { return String(row[0]) === conversationId; });
+  if (index < 0 || String(rows[index][1]) !== username) return null;
+  return { sheet: sheet, row: rows[index], rowNumber: index + 2 };
+}
+
+function getAiChatConversation(username, id) {
+  const found = findAiChatConversation(username, id);
+  if (!found) return { error: "AI chat not found", status: 404 };
+  const messages = aiChatRows(aiChatMessageSheet())
+    .filter(function (row) {
+      return String(row[1]) === String(found.row[0]) && String(row[2]) === username;
+    })
+    .map(function (row) {
+      let attachments = [];
+      let metadata = {};
+      try {
+        attachments = JSON.parse(String(row[6] || "[]"));
+        metadata = JSON.parse(String(row[7] || "{}"));
+      } catch (error) {
+        throw new Error("Invalid AI chat message metadata");
+      }
+      return {
+        id: String(row[0]),
+        role: String(row[3]),
+        content: String(row[4]),
+        createdAt: String(row[5]),
+        attachments: attachments,
+        metadata: metadata,
+      };
+    });
+  const pendingAttachments = aiChatRows(aiChatAttachmentSheet())
+    .filter(function (row) {
+      return String(row[1]) === String(found.row[0]) &&
+        String(row[3]) === username && String(row[9]) === "pending";
+    })
+    .map(aiChatAttachmentFromRow);
+  return {
+    conversation: aiChatConversationFromRow(found.row),
+    messages: messages,
+    pendingAttachments: pendingAttachments,
+  };
+}
+
+function createAiChatConversation(username, request) {
+  const id = validateAiChatId(request?.id);
+  const mode = String(request?.mode || "");
+  if (mode !== "crm" && mode !== "general") throw new Error("Invalid AI chat mode");
+  const title = cleanAiChatTitle(request?.title) || "Новый чат";
+  const now = new Date().toISOString();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = aiChatConversationSheet();
+    const existing = aiChatRows(sheet).find(function (row) { return String(row[0]) === id; });
+    if (existing) {
+      if (String(existing[1]) !== username) throw new Error("AI chat ID already exists");
+      return jsonResponse({ conversation: aiChatConversationFromRow(existing) }, 200);
+    }
+    sheet.appendRow([id, username, mode, title, "", now, now]);
+    return jsonResponse({
+      conversation: { id: id, mode: mode, title: title, preview: "", createdAt: now, updatedAt: now },
+    }, 200);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function saveAiChatMessage(username, request) {
+  const conversationId = validateAiChatId(request?.conversationId);
+  const messageId = validateAiChatId(request?.message?.id);
+  const role = String(request?.message?.role || "");
+  const content = String(request?.message?.content || "");
+  if (!["user", "assistant"].includes(role) || !content.trim() || content.length > 10000) {
+    throw new Error("Invalid AI chat message");
+  }
+  const attachmentIds = Array.isArray(request.attachmentIds) ? request.attachmentIds : [];
+  if (role !== "user" && attachmentIds.length) throw new Error("Only user messages can have attachments");
+  if (attachmentIds.length > 3) throw new Error("A message can contain at most 3 attachments");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findAiChatConversation(username, conversationId);
+    if (!found) return jsonResponse({ error: "AI chat not found" }, 404);
+    const messageSheet = aiChatMessageSheet();
+    const existing = aiChatRows(messageSheet).find(function (row) { return String(row[0]) === messageId; });
+    if (existing) {
+      if (String(existing[1]) !== conversationId || String(existing[2]) !== username) {
+        throw new Error("AI chat message ID already exists");
+      }
+      const savedAttachments = JSON.parse(String(existing[6] || "[]"));
+      if (savedAttachments.length) {
+        const attachmentSheet = aiChatAttachmentSheet();
+        const attachmentRows = aiChatRows(attachmentSheet);
+        savedAttachments.forEach(function (savedAttachment) {
+          const index = attachmentRows.findIndex(function (row) {
+            return String(row[0]) === String(savedAttachment.id);
+          });
+          if (index < 0) return;
+          const row = attachmentRows[index];
+          if (
+            String(row[1]) === conversationId &&
+            String(row[3]) === username &&
+            (String(row[9]) === "pending" ||
+              (String(row[9]) === "linked" && String(row[2]) === messageId))
+          ) {
+            attachmentSheet.getRange(index + 2, 3).setValue(messageId);
+            attachmentSheet.getRange(index + 2, 10).setValue("linked");
+          }
+        });
+      }
+      return jsonResponse({
+        message: {
+          id: String(existing[0]),
+          role: String(existing[3]),
+          content: String(existing[4]),
+          createdAt: String(existing[5]),
+          attachments: JSON.parse(String(existing[6] || "[]")),
+          metadata: JSON.parse(String(existing[7] || "{}")),
+        },
+      }, 200);
+    }
+
+    const attachmentSheet = aiChatAttachmentSheet();
+    const attachmentRows = aiChatRows(attachmentSheet);
+    const selectedAttachments = attachmentIds.map(function (id) {
+      const attachmentId = validateAiChatId(id);
+      const index = attachmentRows.findIndex(function (row) { return String(row[0]) === attachmentId; });
+      if (index < 0) throw new Error("AI chat attachment not found");
+      const row = attachmentRows[index];
+      if (
+        String(row[1]) !== conversationId ||
+        String(row[3]) !== username ||
+        String(row[9]) !== "pending"
+      ) {
+        throw new Error("AI chat attachment is unavailable");
+      }
+      return { row: row, rowNumber: index + 2 };
+    });
+    const attachments = selectedAttachments.map(function (item) {
+      return aiChatAttachmentFromRow(item.row);
+    });
+
+    const createdAt = String(request.message.createdAt || new Date().toISOString());
+    const metadata = request.message.metadata && typeof request.message.metadata === "object"
+      ? request.message.metadata
+      : {};
+    messageSheet.appendRow([
+      messageId, conversationId, username, role, content.trim(), createdAt,
+      JSON.stringify(attachments), JSON.stringify(metadata),
+    ]);
+    selectedAttachments.forEach(function (item) {
+      attachmentSheet.getRange(item.rowNumber, 3).setValue(messageId);
+      attachmentSheet.getRange(item.rowNumber, 10).setValue("linked");
+    });
+    const conversation = found.row.slice();
+    conversation[4] = content.trim().slice(0, 200);
+    conversation[6] = new Date().toISOString();
+    if (role === "user" && (!String(conversation[3]) || String(conversation[3]) === "Новый чат")) {
+      conversation[3] = cleanAiChatTitle(content) || "Новый чат";
+    }
+    found.sheet.getRange(found.rowNumber, 1, 1, conversation.length).setValues([conversation]);
+    return jsonResponse({
+      message: {
+        id: messageId,
+        role: role,
+        content: content.trim(),
+        createdAt: createdAt,
+        attachments: attachments,
+        metadata: metadata,
+      },
+    }, 200);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function renameAiChatConversation(username, request) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findAiChatConversation(username, request?.id);
+    if (!found) return jsonResponse({ error: "AI chat not found" }, 404);
+    const title = cleanAiChatTitle(request?.title);
+    if (!title) throw new Error("Invalid AI chat title");
+    found.sheet.getRange(found.rowNumber, 4).setValue(title);
+    found.sheet.getRange(found.rowNumber, 7).setValue(new Date().toISOString());
+    const row = found.row.slice();
+    row[3] = title;
+    row[6] = new Date().toISOString();
+    return jsonResponse({ conversation: aiChatConversationFromRow(row) }, 200);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteAiChatConversation(username, request) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const found = findAiChatConversation(username, request?.id);
+    if (!found) return jsonResponse({ error: "AI chat not found" }, 404);
+    const attachmentSheet = aiChatAttachmentSheet();
+    const attachmentRows = aiChatRows(attachmentSheet);
+    const fileIds = attachmentRows
+      .filter(function (row) {
+        return String(row[1]) === String(found.row[0]) && String(row[3]) === username;
+      })
+      .map(function (row) { return String(row[4]); });
+    fileIds.forEach(function (fileId) { trashAiChatFile(fileId); });
+    deleteAiChatRows(aiChatMessageSheet(), function (row) {
+      return String(row[1]) === String(found.row[0]) && String(row[2]) === username;
+    });
+    deleteAiChatRows(attachmentSheet, function (row) {
+      return String(row[1]) === String(found.row[0]) && String(row[3]) === username;
+    });
+    found.sheet.deleteRow(found.rowNumber);
+    return jsonResponse({ ok: true }, 200);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteAiChatRows(sheet, predicate) {
+  const rows = aiChatRows(sheet);
+  for (let index = rows.length - 1; index >= 0; index--) {
+    if (predicate(rows[index])) sheet.deleteRow(index + 2);
+  }
+}
+
+function uploadAiChatAttachment(username, request) {
+  const conversationId = validateAiChatId(request?.conversationId);
+  const id = validateAiChatId(request?.id);
+  const mimeType = String(request?.mimeType || "");
+  const maxBytes = AI_CHAT_MAX_FILE_BYTES;
+  if (!AI_CHAT_FILE_TYPES.includes(mimeType)) throw new Error("Unsupported AI chat file type");
+  if (
+    typeof request?.base64 !== "string" ||
+    request.base64.length > Math.ceil(maxBytes * 4 / 3) + 8 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(request.base64)
+  ) {
+    throw new Error("Invalid or oversized AI chat file");
+  }
+  const bytes = Utilities.base64Decode(request.base64);
+  if (
+    !bytes.length ||
+    bytes.length > maxBytes ||
+    Number(request.size) !== bytes.length ||
+    !hasAiChatFileSignature(bytes, mimeType)
+  ) {
+    throw new Error("Invalid or oversized AI chat file");
+  }
+  const folder = getAiChatFolder();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (!findAiChatConversation(username, conversationId)) {
+      return jsonResponse({ error: "AI chat not found" }, 404);
+    }
+    const fileName = String(request.name || "ai-attachment")
+      .replace(/[\\/:*?"<>|\r\n]/g, "_")
+      .slice(0, 120);
+    const file = folder.createFile(
+      Utilities.newBlob(bytes, mimeType, fileName),
+    );
+    file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+    const createdAt = file.getDateCreated().toISOString();
+    aiChatAttachmentSheet().appendRow([
+      id, conversationId, "", username, file.getId(), fileName, mimeType,
+      file.getSize(), createdAt, "pending",
+    ]);
+    return jsonResponse({
+      attachment: {
+        id: id, conversationId: conversationId, name: fileName, mimeType: mimeType,
+        size: file.getSize(), createdAt: createdAt,
+      },
+    }, 200);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getAiChatAttachment(username, conversationId, id) {
+  const conversation = findAiChatConversation(username, conversationId);
+  if (!conversation) return jsonResponse({ error: "AI chat not found" }, 404);
+  const attachmentId = validateAiChatId(id);
+  const row = aiChatRows(aiChatAttachmentSheet()).find(function (item) {
+    return String(item[0]) === attachmentId &&
+      String(item[1]) === String(conversation.row[0]) &&
+      String(item[3]) === username;
+  });
+  if (!row) return jsonResponse({ error: "AI chat attachment not found" }, 404);
+  const file = getAiChatDriveFile(String(row[4]));
+  const mimeType = String(row[6]);
+  const bytes = file.getBlob().getBytes();
+  if (
+    file.getSharingAccess() !== DriveApp.Access.PRIVATE ||
+    !AI_CHAT_FILE_TYPES.includes(mimeType) ||
+    bytes.length !== Number(row[7]) ||
+    bytes.length > AI_CHAT_MAX_FILE_BYTES ||
+    !hasAiChatFileSignature(bytes, mimeType)
+  ) {
+    return jsonResponse({ error: "Invalid or unsupported AI chat file" }, 415);
+  }
+  return jsonResponse({
+    id: attachmentId,
+    name: String(row[5]),
+    mimeType: mimeType,
+    size: bytes.length,
+    base64: Utilities.base64Encode(bytes),
+  }, 200);
+}
+
+function deleteAiChatAttachment(username, request) {
+  const conversationId = validateAiChatId(request?.conversationId);
+  const attachmentId = validateAiChatId(request?.id);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    if (!findAiChatConversation(username, conversationId)) {
+      return jsonResponse({ error: "AI chat not found" }, 404);
+    }
+    const sheet = aiChatAttachmentSheet();
+    const rows = aiChatRows(sheet);
+    const index = rows.findIndex(function (row) {
+      return String(row[0]) === attachmentId &&
+        String(row[1]) === conversationId &&
+        String(row[3]) === username &&
+        String(row[9]) === "pending";
+    });
+    if (index < 0) return jsonResponse({ error: "Pending AI chat attachment not found" }, 404);
+    trashAiChatFile(String(rows[index][4]));
+    sheet.deleteRow(index + 2);
+    return jsonResponse({ ok: true }, 200);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function aiChatAttachmentFromRow(row) {
+  return {
+    id: String(row[0]),
+    name: String(row[5]),
+    mimeType: String(row[6]),
+    size: Number(row[7]),
+    createdAt: String(row[8]),
+  };
+}
+
+function cleanAiChatTitle(value) {
+  return String(value || "")
+    .replace(/[\u0000-\u001f<>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+function hasAiChatFileSignature(bytes, mimeType) {
+  const unsigned = bytes.map(function (byte) { return byte & 255; });
+  if (mimeType === "image/jpeg") {
+    return unsigned[0] === 0xff && unsigned[1] === 0xd8 && unsigned[2] === 0xff;
+  }
+  if (mimeType === "image/png") {
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return signature.every(function (byte, index) { return unsigned[index] === byte; });
+  }
+  if (mimeType === "image/webp") {
+    return (
+      String.fromCharCode.apply(null, unsigned.slice(0, 4)) === "RIFF" &&
+      String.fromCharCode.apply(null, unsigned.slice(8, 12)) === "WEBP"
+    );
+  }
+  if (mimeType === "application/pdf") {
+    return String.fromCharCode.apply(null, unsigned.slice(0, 5)) === "%PDF-";
+  }
+  return mimeType === "text/plain" || mimeType === "text/csv";
+}
+
+function getAiChatFolder() {
+  const properties = PropertiesService.getScriptProperties();
+  const folderId = properties.getProperty("AI_CHAT_FOLDER_ID");
+  let folder;
+  if (folderId) {
+    folder = DriveApp.getFolderById(folderId);
+  } else {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      const currentId = properties.getProperty("AI_CHAT_FOLDER_ID");
+      folder = currentId
+        ? DriveApp.getFolderById(currentId)
+        : DriveApp.createFolder("ANGEL DETAILING — AI чаты");
+      if (!currentId) properties.setProperty("AI_CHAT_FOLDER_ID", folder.getId());
+    } finally {
+      lock.releaseLock();
+    }
+  }
+  if (folder.getSharingAccess() !== DriveApp.Access.PRIVATE) {
+    throw new Error("AI chat folder must be private");
+  }
+  return folder;
+}
+
+function getAiChatDriveFile(fileId) {
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(fileId)) throw new Error("Invalid AI chat file ID");
+  const folder = getAiChatFolder();
+  const file = DriveApp.getFileById(fileId);
+  const parents = file.getParents();
+  let belongsToFolder = false;
+  while (parents.hasNext()) {
+    if (parents.next().getId() === folder.getId()) belongsToFolder = true;
+  }
+  if (!belongsToFolder) throw new Error("AI chat file not found");
+  return file;
+}
+
+function trashAiChatFile(fileId) {
+  getAiChatDriveFile(fileId).setTrashed(true);
 }
 
 function mergeNotifications(contents) {

@@ -169,3 +169,45 @@ test("an older Apps Script deployment fails visibly instead of returning empty c
     else process.env.GOOGLE_SCRIPT_API_KEY = previousApiKey;
   }
 });
+
+test("an older Apps Script attachment endpoint requests deployment instead of reporting an invalid file", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousScriptUrl = process.env.GOOGLE_SCRIPT_URL;
+  const previousApiKey = process.env.GOOGLE_SCRIPT_API_KEY;
+  process.env.NODE_ENV = "production";
+  process.env.GOOGLE_SCRIPT_URL = "https://example.test/exec";
+  process.env.GOOGLE_SCRIPT_API_KEY = "local-test-key";
+  globalThis.fetch = async () => new Response(
+    JSON.stringify({ error: "Invalid or oversized AI chat file", status: 400 }),
+    { status: 400, headers: { "Content-Type": "application/json" } },
+  );
+  try {
+    await assert.rejects(
+      uploadAiChatAttachment(
+        new Request("https://crm.example.test/api/ai/conversation-attachments"),
+        "TUDOR",
+        {
+          conversationId: createAiChatId(),
+          id: createAiChatId(),
+          name: "photo.png",
+          mimeType: "image/png",
+          size: 1024,
+          fileUri: "https://generativelanguage.googleapis.com/v1beta/files/test-file",
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      ),
+      (error) =>
+        error.status === 503 &&
+        /outdated for Gemini attachments/.test(error.message),
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousScriptUrl === undefined) delete process.env.GOOGLE_SCRIPT_URL;
+    else process.env.GOOGLE_SCRIPT_URL = previousScriptUrl;
+    if (previousApiKey === undefined) delete process.env.GOOGLE_SCRIPT_API_KEY;
+    else process.env.GOOGLE_SCRIPT_API_KEY = previousApiKey;
+  }
+});

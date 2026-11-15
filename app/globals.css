@@ -11835,6 +11835,39 @@ tbody tr:hover td {
 .advisor-chat-composer-attachment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .advisor-chat-message-attachment small,
 .advisor-chat-composer-attachment small { color: #8293aa; font-size: 9px; }
+.advisor-chat-action-proposal {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 11px;
+  border: 1px solid #6f9fe557;
+  border-radius: 12px;
+  background: #3478d20d;
+}
+.advisor-chat-action-proposal > strong { color: #d7e8ff; font-size: 12px; }
+.advisor-chat-action-proposal > pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 9px;
+  border-radius: 8px;
+  color: #c3d2e7;
+  background: #07111f8c;
+  font-size: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.advisor-chat-action-proposal > small { color: #a4b7d0; font-size: 10px; }
+.advisor-chat-action-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+.advisor-chat-action-buttons button {
+  padding: 7px 10px;
+  border: 1px solid #6f9fe557;
+  border-radius: 8px;
+  color: #e4efff;
+  background: #3478d21c;
+  font-size: 11px;
+}
+.advisor-chat-action-buttons button:disabled { opacity: .5; }
 .advisor-chat-screen .advisor-chat-loading { width: min(100%, 920px); margin: 0 auto; padding: 0 20px 10px; box-sizing: border-box; font-size: 12px; }
 .advisor-chat-screen-error { width: min(100% - 40px, 920px); margin: 0 auto 8px; box-sizing: border-box; font-size: 12px; }
 .advisor-chat-screen-composer {

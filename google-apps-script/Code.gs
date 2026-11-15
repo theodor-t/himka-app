@@ -486,15 +486,13 @@ function uploadAiChatAttachment(username, request) {
     ? new Date(requestedExpiry)
     : new Date(createdAt.getTime() + 48 * 60 * 60 * 1000);
   if (!AI_CHAT_FILE_TYPES.includes(mimeType)) throw new Error("Unsupported AI chat file type");
-  if (
-    !/^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/files\/[A-Za-z0-9_-]+$/.test(fileUri) ||
-    !Number.isSafeInteger(size) ||
-    size <= 0 ||
-    size > AI_CHAT_MAX_FILE_BYTES ||
-    expiresAt.getTime() <= Date.now()
-  ) {
-    throw new Error("Invalid or oversized AI chat file");
+  if (!/^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/files\/[A-Za-z0-9_-]+$/.test(fileUri)) {
+    throw new Error("Invalid Gemini file URI");
   }
+  if (!Number.isSafeInteger(size) || size <= 0 || size > AI_CHAT_MAX_FILE_BYTES) {
+    throw new Error("Invalid Gemini file size");
+  }
+  if (expiresAt.getTime() <= Date.now()) throw new Error("Gemini file has expired");
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {

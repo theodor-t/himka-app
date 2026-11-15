@@ -116,6 +116,7 @@ function restoreChatMessage(message) {
     analysis: metadata.analysis || "",
     recommendation: metadata.recommendation || "",
     attachments: message.attachments || [],
+    actionProposal: metadata.actionProposal || null,
   };
 }
 
@@ -260,6 +261,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
   const [language, setLanguage] = useState("ru");
   const [question, setQuestion] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
+  const [crmActionBusy, setCrmActionBusy] = useState("");
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiInsights, setAiInsights] = useState(null);
@@ -668,6 +670,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
           recommendation: result.recommendation || "",
         },
       });
+      if (result.actionProposal) answer.actionProposal = result.actionProposal;
       setChats((current) => ({
         ...current,
         [chatMode]: [...(current[chatMode] || []).filter((item) => item.id !== answer.id), answer].slice(-40),
@@ -707,6 +710,56 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
     } finally {
       setChatBusy(false);
     }
+  };
+
+  const confirmCrmAction = async (message) => {
+    const proposal = message.actionProposal;
+    if (!proposal?.token || crmActionBusy) return;
+    const modeAtStart = chatMode;
+    setCrmActionBusy(message.id);
+    setAiError("");
+    try {
+      const response = await fetch("/api/ai/business-advisor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify({
+          action: "confirmCrmAction",
+          proposalToken: proposal.token,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Не удалось выполнить изменение CRM.");
+      setChats((current) => ({
+        ...current,
+        [modeAtStart]: (current[modeAtStart] || []).map((item) =>
+          item.id === message.id
+            ? {
+                ...item,
+                actionProposal: { ...proposal, token: "", status: "applied" },
+              }
+            : item,
+        ),
+      }));
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Ошибка выполнения изменения CRM.");
+    } finally {
+      setCrmActionBusy("");
+    }
+  };
+
+  const cancelCrmAction = (messageId) => {
+    setChats((current) => ({
+      ...current,
+      [chatMode]: (current[chatMode] || []).map((item) =>
+        item.id === messageId && item.actionProposal
+          ? {
+              ...item,
+              actionProposal: { ...item.actionProposal, token: "", status: "cancelled" },
+            }
+          : item,
+      ),
+    }));
   };
 
   const generateAiInsights = async () => {
@@ -917,6 +970,40 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
                 )}
                 {!!message.analysis && <p className="advisor-chat-analysis">{message.analysis}</p>}
                 {!!message.recommendation && <div className="advisor-chat-recommendation"><Sparkles size={13} /><span>{message.recommendation}</span></div>}
+                {chatMode === "crm" && message.actionProposal && (
+                  <div className="advisor-chat-action-proposal">
+                    <strong>
+                      {language === "ro"
+                        ? message.actionProposal.operation === "create"
+                          ? "Creare"
+                          : message.actionProposal.operation === "update" ? "Modificare" : "Ștergere"
+                        : message.actionProposal.operation === "create"
+                          ? "Создание"
+                          : message.actionProposal.operation === "update" ? "Изменение" : "Удаление"}: {message.actionProposal.collection}
+                    </strong>
+                    <pre>{JSON.stringify(message.actionProposal.preview, null, 2)}</pre>
+                    {message.actionProposal.status === "applied" ? (
+                      <small>{language === "ro" ? "Modificarea confirmată a fost aplicată." : "Подтверждённое изменение выполнено."}</small>
+                    ) : message.actionProposal.status === "cancelled" ? (
+                      <small>{language === "ro" ? "Propunerea a fost anulată." : "Предложение отменено."}</small>
+                    ) : message.actionProposal.token &&
+                      Date.parse(message.actionProposal.expiresAt) > Date.now() ? (
+                      <>
+                        <small>{language === "ro" ? "Înregistrarea se schimbă doar după confirmare. Expiră la" : "Запись изменится только после подтверждения. Срок"}: {new Date(message.actionProposal.expiresAt).toLocaleTimeString(language === "ro" ? "ro-RO" : "ru-RU", { hour: "2-digit", minute: "2-digit" })}.</small>
+                        <div className="advisor-chat-action-buttons">
+                          <button type="button" onClick={() => void confirmCrmAction(message)} disabled={Boolean(crmActionBusy)}>
+                            {crmActionBusy === message.id
+                              ? language === "ro" ? "Se aplică…" : "Выполняется…"
+                              : language === "ro" ? "Confirmă modificarea" : "Подтвердить изменение"}
+                          </button>
+                          <button type="button" onClick={() => cancelCrmAction(message.id)} disabled={Boolean(crmActionBusy)}>{language === "ro" ? "Anulează" : "Отмена"}</button>
+                        </div>
+                      </>
+                    ) : (
+                      <small>{language === "ro" ? "Propunerea nu mai poate fi confirmată aici. Cere AI să o pregătească din nou." : "Предложение нельзя подтвердить из этой истории. Попросите AI подготовить его заново."}</small>
+                    )}
+                  </div>
+                )}
               </div>
             </article>
           ))}
@@ -987,8 +1074,8 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
             ? "Modul general nu vede date CRM și nu are căutare pe internet."
             : "Общий режим не видит данные CRM и не выполняет поиск в интернете."
           : language === "ro"
-            ? "În modul CRM folosesc indicatori agregați. Nu modific date și nu trimit mesaje."
-            : "В режиме CRM использую агрегированные показатели. Не меняю записи и не отправляю сообщения."}</p>
+            ? "În CRM folosesc indicatori agregați. Orice modificare este doar o propunere și cere confirmarea ta."
+            : "В CRM AI видит агрегированные показатели, а не записи. Любое изменение сначала показывается и требует вашего подтверждения."}</p>
       </section>
     );
     return chatPortalTarget ? createPortal(chatScreen, chatPortalTarget) : null;

@@ -43,10 +43,14 @@ async function parseResponse(response) {
   }
   const status = Number(payload.status) || response.status;
   if (!response.ok || status >= 400 || payload.error) {
-    const obsoleteApi = payload.error === "Unknown AI chat action" ||
+    const obsoleteGeminiAttachmentApi = payload.error === "Invalid or oversized AI chat file";
+    const obsoleteApi = obsoleteGeminiAttachmentApi ||
+      payload.error === "Unknown AI chat action" ||
       /Invalid collection:\s*clients/i.test(String(payload.error || ""));
     const error = new Error(obsoleteApi
-      ? "Google Apps Script is not updated for AI chat storage. Deploy the current Code.gs version."
+      ? obsoleteGeminiAttachmentApi
+        ? "Apps Script is outdated for Gemini attachments. Deploy the current Code.gs version."
+        : "Google Apps Script is not updated for AI chat storage. Deploy the current Code.gs version."
       : payload.error || `Google AI chat storage failed (${status})`);
     error.status = obsoleteApi ? 503 : status;
     throw error;

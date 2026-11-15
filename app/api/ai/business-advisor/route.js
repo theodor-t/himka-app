@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getUserRole, SESSION_COOKIE, verifySessionToken } from "../../../lib/auth";
-import { roleCanViewPage } from "../../../lib/access-control.mjs";
+import {
+  databaseForRoleWrite,
+  roleCanViewPage,
+} from "../../../lib/access-control.mjs";
 import { normalizeDatabase } from "../../../lib/database.mjs";
 import {
   advisorFactsForAi,
@@ -14,6 +17,7 @@ import { consumeRateLimit } from "../../../lib/ai-rate-limit.mjs";
 import {
   getLocalPreviewDatabase,
   isLocalPreviewRequest,
+  setLocalPreviewDatabase,
 } from "../../../lib/local-preview.mjs";
 import {
   createAiConversation,
@@ -27,6 +31,12 @@ import {
   AI_CHAT_MAX_TOTAL_BYTES,
   geminiChatAttachmentPart,
 } from "../../../lib/ai-chat-files.mjs";
+import {
+  applyAiCrmAction,
+  createAiCrmActionProposal,
+  extractSingleUserPhone,
+  getAiCrmActionSchema,
+} from "../../../lib/ai-crm-actions.mjs";
 
 export const maxDuration = 60;
 
@@ -56,6 +66,46 @@ async function readDatabase(request) {
     throw new Error(payload.error || `Google database read failed (${response.status})`);
   }
   return normalizeDatabase(payload);
+}
+
+async function writeAiActionDatabase(request, username, role, current, incoming) {
+  const update = databaseForRoleWrite(current, incoming, role, undefined, username);
+  if (update.forbidden.length) {
+    const error = new Error(`Недостаточно прав для изменения данных: ${update.forbidden.join(", ")}`);
+    error.status = 403;
+    throw error;
+  }
+  if (isLocalPreviewRequest(request)) {
+    return setLocalPreviewDatabase(update.database);
+  }
+
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
+  const apiKey = process.env.GOOGLE_SCRIPT_API_KEY;
+  if (!scriptUrl || !apiKey) throw new Error("Google database is not configured");
+  const url = new URL(scriptUrl);
+  url.searchParams.set("key", apiKey);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update.database),
+    redirect: "follow",
+    signal: AbortSignal.timeout(20_000),
+  });
+  const text = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    const error = new Error(`Google returned a non-JSON response (${response.status})`);
+    error.status = 502;
+    throw error;
+  }
+  if (!response.ok || payload.error || Number(payload.status) >= 400) {
+    const error = new Error(payload.error || `Google database write failed (${response.status})`);
+    error.status = Number(payload.status) || response.status || 502;
+    throw error;
+  }
+  return update.database;
 }
 
 function cleanText(value, maximum = 600) {
@@ -88,6 +138,10 @@ function cleanAiNarrative(value, fallback) {
 
 function asksForRecommendation(question) {
   return /рекоменд|совет|что (?:делать|улучшить|стоит)|как (?:увеличить|улучшить)|предложи|порекомендуй|recomand|ce ar trebui|ce să fac|ce putem face|cum putem|sfat/i.test(question);
+}
+
+function looksLikeCrmMutationRequest(question) {
+  return /(?:^|\s)(?:создай|создать|добавь|добавить|измени|изменить|обнови|обновить|удали|удалить|отмени|отменить|creează|crează|adaugă|modifică|actualizează|șterge|sterge|anulează)(?=$|[\s,.!?])/iu.test(question);
 }
 
 function sanitizeConversation(history, customers) {
@@ -174,14 +228,27 @@ async function requestGemini({ apiKey, model, schema, instruction, contents, mod
   throw error;
 }
 
-const CHAT_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    analysis: { type: "STRING" },
-    recommendation: { type: "STRING" },
-  },
-  required: ["analysis"],
-};
+function chatSchemaForRole(database, role) {
+  const collections = Object.keys(getAiCrmActionSchema(database, role));
+  return {
+    type: "OBJECT",
+    properties: {
+      analysis: { type: "STRING" },
+      recommendation: { type: "STRING" },
+      actionProposal: {
+        type: "OBJECT",
+        properties: {
+          operation: { type: "STRING", enum: ["none", "create", "update", "delete"] },
+          collection: { type: "STRING", enum: ["", ...collections] },
+          targetId: { type: "STRING" },
+          dataJson: { type: "STRING" },
+        },
+        required: ["operation", "collection", "targetId", "dataJson"],
+      },
+    },
+    required: ["analysis", "actionProposal"],
+  };
+}
 
 const GENERAL_CHAT_SCHEMA = {
   type: "OBJECT",
@@ -226,6 +293,49 @@ export async function POST(request) {
       return jsonError("Некорректный запрос.", 400);
     }
     const action = input?.action || "chat";
+    if (action === "confirmCrmAction") {
+      const proposalToken = input?.proposalToken;
+      if (typeof proposalToken !== "string" || !proposalToken) {
+        return jsonError("Нет предложения для подтверждения.", 400);
+      }
+      const confirmLimit = consumeRateLimit(`ai-crm-action:${username}`, 10, 60_000);
+      if (!confirmLimit.allowed) {
+        return NextResponse.json(
+          { error: "Слишком много подтверждений. Попробуйте через минуту." },
+          { status: 429 },
+        );
+      }
+      const database = await readDatabase(request);
+      const result = applyAiCrmAction({
+        username,
+        role,
+        database,
+        token: proposalToken,
+      });
+      if (!result.alreadyApplied) {
+        const now = new Date();
+        const auditEntry = {
+          id: `ai-action:${result.proposal.id}`,
+          datetime: [
+            String(now.getDate()).padStart(2, "0"),
+            String(now.getMonth() + 1).padStart(2, "0"),
+            now.getFullYear(),
+          ].join(".") + ` ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+          user: username,
+          action: `Подтверждено AI-действие: ${result.proposal.operation} ${result.proposal.collection} (${result.proposal.recordId})`,
+        };
+        const databaseWithAudit = {
+          ...result.database,
+          logs: [auditEntry, ...(result.database.logs || [])],
+        };
+        await writeAiActionDatabase(request, username, role, database, databaseWithAudit);
+      }
+      return NextResponse.json({
+        ok: true,
+        alreadyApplied: result.alreadyApplied,
+        operation: result.proposal,
+      }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (!["chat", "analyze"].includes(action)) return jsonError("Неизвестное действие.", 400);
     const mode = input?.mode || "crm";
     if (action === "chat" && !["crm", "general"].includes(mode)) {
@@ -531,35 +641,91 @@ export async function POST(request) {
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const factAnswer = answerAdvisorQuestion(analytics, question, language);
+    const isCrmMutationRequest = looksLikeCrmMutationRequest(question);
+    const factAnswer = isCrmMutationRequest
+      ? { text: "", table: null }
+      : answerAdvisorQuestion(analytics, question, language);
     const recentQuestions = sanitizeConversation(priorConversationMessages, database.customers || []);
     recentQuestions.push({ role: "user", content: redactSensitiveText(question, database.customers || []) });
+    const writableCollectionFields = getAiCrmActionSchema(database, role);
+    const userProvidedCustomerPhone = extractSingleUserPhone(question);
     const prompt = JSON.stringify({
       language,
       question: redactSensitiveText(question, database.customers || []),
       recentQuestions,
       verifiedEvidence: evidence,
-      instruction: "The UI separately displays exact values computed by CRM. Do not output new numbers, customer identities, vehicle details, causes not proved by the evidence, or actions that modify CRM.",
+      writableCollectionFields,
+      userProvidedCustomerPhone: Boolean(userProvidedCustomerPhone),
+      instruction: "The UI separately displays exact values computed by CRM. Do not output new numbers, customer identities, vehicle details, or causes not proved by evidence. Do not claim a CRM change has been made. You may prepare one structured proposal only when the latest user request explicitly asks to create, update, or delete a CRM record. For update/delete, require an exact record ID in the user's message; never infer or guess an ID. For create, use only details explicitly supplied by the user; if required information is missing, set operation to none and ask a concise follow-up question. Phone numbers are redacted; if userProvidedCustomerPhone is true, the server will insert that exact user-provided phone into customer data, so do not ask for it or invent one. Use only a collection and fields in writableCollectionFields. Put a JSON object in dataJson for create/update, and an empty string for delete or none. Every proposal will be shown to the user and requires explicit confirmation.",
     });
     let analysis = "";
     let recommendation = "";
     let aiError = "";
+    let actionProposal = null;
     try {
       const generated = await requestGemini({
         apiKey,
         model,
-        schema: CHAT_SCHEMA,
-        instruction: "Ты AI бизнес-советник ANGEL DETAILING. Сначала ответь именно на заданный вопрос, используя только verifiedEvidence и контекст диалога. Если доказательств недостаточно — прямо укажи, каких данных не хватает; не подменяй ответ общими советами и не повторяй сводку показателей. Для вопроса об источнике объясни, что цифры рассчитываются сервером по записям CRM за выбранный период, а тебе передаются агрегированные факты. Не выдумывай клиентов, заказы, платежи или причины. Не предлагай менять CRM или отправлять сообщения. В recommendation дай совет только если пользователь просит рекомендацию или совет действительно следует из вопроса; иначе верни пустую строку. Не включай цифры, даты, проценты или имена: точные факты отображаются отдельно. Язык ru или ro указан в запросе.",
+        schema: chatSchemaForRole(database, role),
+        instruction: "Ты AI бизнес-советник ANGEL DETAILING. Сначала ответь на вопрос по verifiedEvidence и контексту, не выдумывай факты. Для вопроса об источнике объясни, что показатели рассчитаны сервером. Если пользователь явно просит изменить CRM, подготовь ровно одно предложение в actionProposal согласно writableCollectionFields; не выполняй его и не утверждай, что оно уже выполнено. При недостатке данных попроси уточнение и верни operation none. Для update/delete нужен точный ID, написанный пользователем. Не пытайся искать записи или раскрывать данные CRM. В recommendation дай совет только по запросу, иначе пустую строку. Язык ru или ro указан в запросе.",
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
       analysis = cleanAiNarrative(generated?.analysis, "");
       if (asksForRecommendation(question)) {
         recommendation = cleanAiNarrative(generated?.recommendation, "");
       }
+      if (generated?.actionProposal?.operation !== "none") {
+        try {
+          let generatedAction = generated.actionProposal;
+          if (
+            userProvidedCustomerPhone &&
+            ["create", "update"].includes(generatedAction?.operation) &&
+            generatedAction.collection === "customers"
+          ) {
+            const data = JSON.parse(generatedAction.dataJson);
+            if (!data || typeof data !== "object" || Array.isArray(data)) {
+              throw new Error("AI предложил некорректные поля клиента.");
+            }
+            generatedAction = {
+              ...generatedAction,
+              dataJson: JSON.stringify({ ...data, phone: userProvidedCustomerPhone }),
+            };
+          }
+          actionProposal = createAiCrmActionProposal({
+            username,
+            role,
+            database,
+            action: generatedAction,
+          });
+        } catch (error) {
+          analysis = error instanceof Error
+            ? error.message
+            : "Не удалось подготовить предложение изменения CRM.";
+        }
+      }
     } catch (error) {
       aiError = error instanceof Error ? error.message : "Gemini временно недоступен.";
     }
-    const assistantContent = [factAnswer.text, analysis, recommendation].filter(Boolean).join("\n\n");
+    const displayedAnswer = isCrmMutationRequest
+      ? { text: analysis, table: null }
+      : factAnswer;
+    const displayedAnalysis = isCrmMutationRequest ? "" : analysis;
+    const proposalNote = actionProposal
+      ? language === "ro"
+        ? "Am pregătit o modificare. Va fi aplicată numai după confirmarea ta."
+        : "Подготовил изменение. Оно будет применено только после вашего подтверждения."
+      : "";
+    const assistantContent = [displayedAnswer.text, displayedAnalysis, recommendation, proposalNote].filter(Boolean).join("\n\n");
+    const storedActionProposal = actionProposal
+      ? {
+          id: actionProposal.id,
+          operation: actionProposal.operation,
+          collection: actionProposal.collection,
+          recordId: actionProposal.recordId,
+          preview: actionProposal.preview,
+          expiresAt: actionProposal.expiresAt,
+        }
+      : null;
     const assistantMessage = await saveAiChatMessage(request, username, {
       conversationId: activeConversationId,
       message: {
@@ -567,18 +733,24 @@ export async function POST(request) {
         role: "assistant",
         content: assistantContent,
         createdAt: new Date().toISOString(),
-        metadata: { answer: factAnswer, analysis, recommendation },
+        metadata: {
+          answer: displayedAnswer,
+          analysis: displayedAnalysis,
+          recommendation,
+          actionProposal: storedActionProposal,
+        },
       },
     });
     return NextResponse.json({
       ok: true,
-      aiAvailable: Boolean(analysis || recommendation),
+      aiAvailable: Boolean(analysis || recommendation || actionProposal),
       aiError,
       mode,
       conversationId: activeConversationId,
-      answer: factAnswer,
-      analysis,
+      answer: displayedAnswer,
+      analysis: displayedAnalysis,
       recommendation,
+      actionProposal,
       assistantMessage,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

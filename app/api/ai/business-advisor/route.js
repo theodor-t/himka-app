@@ -34,6 +34,7 @@ import {
 import {
   applyAiCrmAction,
   createAiCrmActionProposal,
+  getAiCrmActionCollectionOptions,
   extractSingleUserPhone,
   getAiCrmActionSchema,
 } from "../../../lib/ai-crm-actions.mjs";
@@ -249,7 +250,7 @@ async function requestGemini({ apiKey, model, schema, instruction, contents, mod
 }
 
 function chatSchemaForRole(database, role) {
-  const collections = Object.keys(getAiCrmActionSchema(database, role));
+  const collections = getAiCrmActionCollectionOptions(database, role);
   return {
     type: "OBJECT",
     properties: {
@@ -259,7 +260,7 @@ function chatSchemaForRole(database, role) {
         type: "OBJECT",
         properties: {
           operation: { type: "STRING", enum: ["none", "create", "update", "delete"] },
-          collection: { type: "STRING", enum: ["", ...collections] },
+          collection: { type: "STRING", enum: collections },
           targetId: { type: "STRING" },
           dataJson: { type: "STRING" },
         },

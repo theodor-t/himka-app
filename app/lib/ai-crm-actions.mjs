@@ -130,6 +130,11 @@ export function getAiCrmActionSchema(database, role) {
   );
 }
 
+export function getAiCrmActionCollectionOptions(database, role) {
+  const collections = Object.keys(getAiCrmActionSchema(database, role));
+  return collections.length ? collections : ["none"];
+}
+
 export function extractSingleUserPhone(text) {
   const matches = [...String(text || "").matchAll(
     /(?:телефон|phone|telefon|tel)(?:\s+номер)?\s*[:=]?\s*(\+?\d[\d\s().-]{6,}\d)/giu,

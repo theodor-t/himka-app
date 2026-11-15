@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import {
   applyAiCrmAction,
   createAiCrmActionProposal,
+  getAiCrmActionCollectionOptions,
   extractSingleUserPhone,
   getAiCrmActionSchema,
 } from "../app/lib/ai-crm-actions.mjs";
@@ -118,6 +119,13 @@ test("AI receives writable collection field names without record values", () => 
   assert.equal("employeeProfiles" in schema, false);
   assert.equal("systemEvents" in schema, false);
   assert.equal(JSON.stringify(schema).includes("Existing customer"), false);
+});
+
+test("Gemini collection enum never contains an empty option", () => {
+  const writableOptions = getAiCrmActionCollectionOptions(database, "manager");
+  assert.ok(writableOptions.includes("customers"));
+  assert.equal(writableOptions.includes(""), false);
+  assert.deepEqual(getAiCrmActionCollectionOptions(database, "readOnly"), ["none"]);
 });
 
 test("phone values can be retained server-side without sending them to Gemini", () => {

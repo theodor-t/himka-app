@@ -2,7 +2,7 @@
 
 The video-description editor can generate a Russian caption and hashtags with
 Gemini. Configure `GEMINI_API_KEY` as a server-side environment variable.
-`GEMINI_MODEL` is optional and defaults to `gemini-2.5-flash`. Never expose the
+`GEMINI_MODEL` is optional and defaults to `gemini-3.8-flash`. Never expose the
 key through a `NEXT_PUBLIC_*` variable.
 
 The generation endpoint accepts only fixed service, tone, and format IDs. It

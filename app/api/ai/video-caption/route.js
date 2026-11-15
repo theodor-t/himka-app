@@ -13,6 +13,8 @@ import {
   normalizeAiCaptionOutput,
 } from "../../../lib/ai-caption.mjs";
 
+export const maxDuration = 60;
+
 const findOption = (options, id) => options.find((option) => option.id === id);
 
 export async function POST(request) {
@@ -40,7 +42,7 @@ export async function POST(request) {
     if (!apiKey) {
       return NextResponse.json({ error: "Gemini не настроен: задайте GEMINI_API_KEY на сервере" }, { status: 503 });
     }
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(model)) {
       throw new Error("Invalid GEMINI_MODEL configuration");
     }
@@ -78,12 +80,25 @@ export async function POST(request) {
             },
           },
         }),
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(55000),
       },
     );
     if (!response.ok) {
+      let providerMessage = "";
+      try {
+        const providerError = await response.json();
+        providerMessage = typeof providerError?.error?.message === "string"
+          ? providerError.error.message.slice(0, 300)
+          : "";
+      } catch {
+        providerMessage = "";
+      }
       return NextResponse.json(
-        { error: `Gemini не выполнил запрос (HTTP ${response.status})` },
+        {
+          error: providerMessage
+            ? `Gemini не выполнил запрос (HTTP ${response.status}): ${providerMessage}`
+            : `Gemini не выполнил запрос (HTTP ${response.status})`,
+        },
         { status: 502 },
       );
     }

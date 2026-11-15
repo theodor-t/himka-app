@@ -395,6 +395,7 @@ export default function Home() {
   const dataRevision = useRef(0);
   const localSavePending = useRef(false);
   const globalSearchInputRef = useRef(null);
+  const pageContainerRef = useRef(null);
 
   useEffect(() => {
     if (mobileSearchOpen) globalSearchInputRef.current?.focus();
@@ -665,6 +666,7 @@ export default function Home() {
     }
   };
   const navigate = (next) => {
+    if (pageContainerRef.current) pageContainerRef.current.scrollTop = 0;
     setPage(next);
     setMenuOpen(false);
     setMoreMenuOpen(false);
@@ -1136,7 +1138,7 @@ export default function Home() {
               </button>
             </div>
           </header>
-          <div className="page-container">
+          <div className="page-container" ref={pageContainerRef}>
             <fieldset className="page-content-fieldset" disabled={role === "readonly"}>
               {pageContent}
             </fieldset>

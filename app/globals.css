@@ -5753,7 +5753,7 @@ tbody tr:hover td { background: #3478f608; }
     outline: 1px solid #2470db80;
     outline-offset: -1px;
   }
-  .clients-page { max-width: 1440px; margin: 0 auto; }
+  .clients-page { max-width: 1560px; margin: 0 auto; }
   .clients-hero {
     display: flex;
     align-items: center;
@@ -6086,6 +6086,12 @@ tbody tr:hover td { background: #3478f608; }
   display: grid;
   align-content: start;
   gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+.page-container {
+  scrollbar-gutter: stable;
+  scroll-behavior: auto;
 }
 .page-content-fieldset > .card,
 .page-content-fieldset > form.card {

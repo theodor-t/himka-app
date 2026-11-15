@@ -6,11 +6,56 @@ import { normalizePhoneForMessaging } from "./messages.mjs";
 const ACTION_TTL_MS = 5 * 60 * 1000;
 const MAX_ACTION_DATA_LENGTH = 12_000;
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+const CRM_MUTATION_PATTERN = /(?:^|\s)(?:создай|создать|добавь|добавить|измени|изменить|обнови|обновить|удали|удалить|отмени|отменить|creează|crează|adaugă|modifică|actualizează|șterge|sterge|anulează)(?=$|[\s,.!?])/iu;
+const ACTION_CANCELLATION_PATTERN = /^\s*(?:не\s+надо|отмена|отмени(?:\s+(?:это|создание|предложение|действие))?|забудь(?:\s+это)?|cancel(?:\s+(?:that|it))?|stop|anulează(?:\s+(?:asta|acțiunea))?)\s*[.!?]*$/iu;
+const CLARIFICATION_PATTERN = /уточн\w*|укаж\w*|назов\w*|предостав\w*|нуж(?:ен|на|но|ны)\b|не\s+был\w*\s+предоставлен|missing\b|please\b.{0,60}\b(?:provide|tell|specify)|am nevoie de|vă rog.{0,60}(?:indica|specifica)/iu;
 
 function actionError(message, status = 400) {
   const error = new Error(message);
   error.status = status;
   return error;
+}
+
+export function looksLikeAiCrmMutationRequest(text) {
+  return CRM_MUTATION_PATTERN.test(String(text || ""));
+}
+
+export function isAiCrmActionCancellation(text) {
+  return ACTION_CANCELLATION_PATTERN.test(String(text || ""));
+}
+
+export function getPendingAiCrmAction(messages) {
+  if (!Array.isArray(messages)) return null;
+  const recent = messages.slice(-10);
+  let assistantIndex = -1;
+  for (let index = recent.length - 1; index >= 0; index -= 1) {
+    if (recent[index]?.role === "assistant") {
+      assistantIndex = index;
+      break;
+    }
+  }
+  if (assistantIndex < 0) return null;
+
+  const lastAssistant = recent[assistantIndex];
+  const savedPendingAction = lastAssistant.metadata?.pendingCrmAction;
+  if (savedPendingAction?.active && typeof savedPendingAction.request === "string") {
+    return { request: savedPendingAction.request };
+  }
+  if (lastAssistant.metadata?.actionProposal) return null;
+
+  const assistantText = [
+    lastAssistant.metadata?.analysis,
+    lastAssistant.content,
+  ].filter((value) => typeof value === "string").join("\n");
+  if (!CLARIFICATION_PATTERN.test(assistantText)) return null;
+
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const message = recent[index];
+    if (message?.role === "user" && looksLikeAiCrmMutationRequest(message.content)) {
+      return { request: String(message.content).slice(0, 600) };
+    }
+  }
+  return null;
 }
 
 function getSigningSecret() {

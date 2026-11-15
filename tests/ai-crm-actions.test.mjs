@@ -4,8 +4,11 @@ import {
   applyAiCrmAction,
   createAiCrmActionProposal,
   getAiCrmActionCollectionOptions,
+  getPendingAiCrmAction,
+  isAiCrmActionCancellation,
   extractSingleUserPhone,
   getAiCrmActionSchema,
+  looksLikeAiCrmMutationRequest,
 } from "../app/lib/ai-crm-actions.mjs";
 
 const originalSecret = process.env.AUTH_SESSION_SECRET;
@@ -126,6 +129,31 @@ test("Gemini collection enum never contains an empty option", () => {
   assert.ok(writableOptions.includes("customers"));
   assert.equal(writableOptions.includes(""), false);
   assert.deepEqual(getAiCrmActionCollectionOptions(database, "readOnly"), ["none"]);
+});
+
+test("CRM action intent carries through clarification replies and can be cancelled", () => {
+  const pendingMessages = [
+    { role: "user", content: "Создай клиента Test" },
+    {
+      role: "assistant",
+      content: "Уточните имя клиента.",
+      metadata: { analysis: "Уточните имя клиента." },
+    },
+  ];
+  assert.equal(looksLikeAiCrmMutationRequest("Создай клиента Test"), true);
+  assert.deepEqual(getPendingAiCrmAction(pendingMessages), {
+    request: "Создай клиента Test",
+  });
+  assert.equal(getPendingAiCrmAction([
+    ...pendingMessages,
+    {
+      role: "assistant",
+      content: "Предложение подготовлено.",
+      metadata: { actionProposal: { id: "proposal-1" } },
+    },
+  ]), null);
+  assert.equal(isAiCrmActionCancellation("Не надо"), true);
+  assert.equal(isAiCrmActionCancellation("Отмени заказ 123"), false);
 });
 
 test("phone values can be retained server-side without sending them to Gemini", () => {

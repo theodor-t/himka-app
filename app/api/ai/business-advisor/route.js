@@ -35,8 +35,11 @@ import {
   applyAiCrmAction,
   createAiCrmActionProposal,
   getAiCrmActionCollectionOptions,
+  getPendingAiCrmAction,
+  isAiCrmActionCancellation,
   extractSingleUserPhone,
   getAiCrmActionSchema,
+  looksLikeAiCrmMutationRequest,
 } from "../../../lib/ai-crm-actions.mjs";
 
 export const maxDuration = 60;
@@ -139,10 +142,6 @@ function cleanAiNarrative(value, fallback) {
 
 function asksForRecommendation(question) {
   return /рекоменд|совет|что (?:делать|улучшить|стоит)|как (?:увеличить|улучшить)|предложи|порекомендуй|recomand|ce ar trebui|ce să fac|ce putem face|cum putem|sfat/i.test(question);
-}
-
-function looksLikeCrmMutationRequest(question) {
-  return /(?:^|\s)(?:создай|создать|добавь|добавить|измени|изменить|обнови|обновить|удали|удалить|отмени|отменить|creează|crează|adaugă|modifică|actualizează|șterge|sterge|anulează)(?=$|[\s,.!?])/iu.test(question);
 }
 
 function sanitizeConversation(history, customers) {
@@ -662,10 +661,27 @@ export async function POST(request) {
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const isCrmMutationRequest = looksLikeCrmMutationRequest(question);
-    const factAnswer = isCrmMutationRequest
+    const isExplicitMutationRequest =
+      !isAiCrmActionCancellation(question) && looksLikeAiCrmMutationRequest(question);
+    const cancelledPendingAction = isAiCrmActionCancellation(question);
+    const previousPendingAction = cancelledPendingAction
+      ? null
+      : getPendingAiCrmAction(priorConversationMessages);
+    const candidateFactAnswer = answerAdvisorQuestion(analytics, question, language);
+    const hasSpecificFactAnswer = candidateFactAnswer.text &&
+      !candidateFactAnswer.text.startsWith(language === "ro"
+        ? "Nu pot răspunde cu încredere"
+        : "Не могу уверенно ответить");
+    const activeCrmAction = isExplicitMutationRequest
+      ? { request: question }
+      : !hasSpecificFactAnswer && !asksForRecommendation(question)
+        ? previousPendingAction
+        : null;
+    const isCrmMutationRequest = Boolean(activeCrmAction);
+    const isCrmActionConversation = isCrmMutationRequest || cancelledPendingAction;
+    const factAnswer = isCrmActionConversation
       ? { text: "", table: null }
-      : answerAdvisorQuestion(analytics, question, language);
+      : candidateFactAnswer;
     const recentQuestions = sanitizeConversation(priorConversationMessages, database.customers || []);
     recentQuestions.push({ role: "user", content: redactSensitiveText(question, database.customers || []) });
     const writableCollectionFields = getAiCrmActionSchema(database, role);
@@ -676,14 +692,30 @@ export async function POST(request) {
     const userProvidedCustomerPhone = extractSingleUserPhone(
       [...recentUserMessages, question].join("\n"),
     );
+    const customerActionContext = activeCrmAction
+      ? { request: redactSensitiveText(activeCrmAction.request, database.customers || []) }
+      : null;
     const prompt = JSON.stringify({
       language,
       question: redactSensitiveText(question, database.customers || []),
       recentQuestions,
+      pendingCrmAction: customerActionContext,
+      cancelledPendingAction,
       verifiedEvidence: evidence,
       writableCollectionFields,
       userProvidedCustomerPhone: Boolean(userProvidedCustomerPhone),
-      instruction: "The UI separately displays exact values computed by CRM. Do not output new numbers, customer identities, vehicle details, or causes not proved by evidence. Do not claim a CRM change has been made. You may prepare one structured proposal only when the latest user request explicitly asks to create, update, or delete a CRM record. For update/delete, require an exact record ID in the user's message; never infer or guess an ID. For create, use only details explicitly supplied by the user; if required information is missing, set operation to none and ask a concise follow-up question. Phone numbers are redacted; if userProvidedCustomerPhone is true, the server will insert that exact user-provided phone into customer data, so do not ask for it or invent one. Use only a collection and fields in writableCollectionFields. Put a JSON object in dataJson for create/update, and an empty string for delete or none. Every proposal will be shown to the user and requires explicit confirmation.",
+      instruction: [
+        "The UI separately displays exact values computed by CRM. Do not invent business facts, identities, or causes.",
+        "Understand the latest message in the context of recentQuestions and pendingCrmAction.",
+        "If the user is answering a follow-up for a pending CRM action, continue it without requiring the user to repeat the original command.",
+        "For a new customer, name is required and phone is optional. Never claim that a phone number is required. Ask only for required details that are actually missing.",
+        "Phone numbers are redacted before Gemini receives them. If userProvidedCustomerPhone is true, the server will insert the exact user-provided phone into customer data; do not ask for it or invent one.",
+        "If cancelledPendingAction is true, do not prepare or apply any CRM action; acknowledge the cancellation.",
+        "For update/delete, require an exact record ID supplied by the user in the current or relevant recent messages; never infer or guess an ID.",
+        "Prepare at most one structured proposal using only writableCollectionFields. Do not claim the change has been applied.",
+        "If required information is missing, return operation none and ask one concise, specific follow-up question.",
+        "Put a JSON object in dataJson for create/update, and an empty string for delete or none. Every proposal requires explicit user confirmation.",
+      ].join(" "),
     });
     let analysis = "";
     let recommendation = "";
@@ -694,14 +726,26 @@ export async function POST(request) {
         apiKey,
         model,
         schema: chatSchemaForRole(database, role),
-        instruction: "Ты AI бизнес-советник ANGEL DETAILING. Сначала ответь на вопрос по verifiedEvidence и контексту, не выдумывай факты. Для вопроса об источнике объясни, что показатели рассчитаны сервером. Если пользователь явно просит изменить CRM, подготовь ровно одно предложение в actionProposal согласно writableCollectionFields; не выполняй его и не утверждай, что оно уже выполнено. При недостатке данных попроси уточнение и верни operation none. Для update/delete нужен точный ID, написанный пользователем. Не пытайся искать записи или раскрывать данные CRM. В recommendation дай совет только по запросу, иначе пустую строку. Язык ru или ro указан в запросе.",
+        instruction: [
+          "Ты ANGEL AI — естественный собеседник и бизнес-советник.",
+          "Отвечай на последнюю реплику с учетом истории; не повторяй общую заглушку, если можешь уточнить или продолжить предыдущую задачу.",
+          "Для фактов о CRM используй только verifiedEvidence; не выдумывай цифры и личности.",
+          "Если пользователь ответил на уточнение по pendingCrmAction, продолжи эту операцию без требования повторить команду.",
+          "При создании клиента обязательно только имя; телефон необязателен. Если имя известно, подготовь предложение без лишних вопросов.",
+          "Если пользователь явно отменил действие, ответь подтверждением отмены и верни operation none.",
+          "Для новой или продолжающейся CRM-операции подготовь одно предложение в actionProposal и никогда не утверждай, что оно уже применено.",
+          "Если обязательных данных не хватает, задай один короткий уточняющий вопрос и верни operation none.",
+          "Для update/delete нужен точный ID, явно указанный пользователем; никогда не угадывай его.",
+          "Не ищи записи и не раскрывай содержимое CRM. В recommendation давай совет только по запросу.",
+          "Язык ответа ru или ro указан в запросе.",
+        ].join(" "),
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
       analysis = cleanAiNarrative(generated?.analysis, "");
       if (asksForRecommendation(question)) {
         recommendation = cleanAiNarrative(generated?.recommendation, "");
       }
-      if (generated?.actionProposal?.operation !== "none") {
+      if (!cancelledPendingAction && generated?.actionProposal?.operation !== "none") {
         try {
           let generatedAction = generated.actionProposal;
           if (
@@ -733,10 +777,10 @@ export async function POST(request) {
     } catch (error) {
       aiError = error instanceof Error ? error.message : "Gemini временно недоступен.";
     }
-    const displayedAnswer = isCrmMutationRequest
+    const displayedAnswer = isCrmActionConversation
       ? { text: analysis, table: null }
       : factAnswer;
-    const displayedAnalysis = isCrmMutationRequest ? "" : analysis;
+    const displayedAnalysis = isCrmActionConversation ? "" : analysis;
     const proposalNote = actionProposal
       ? language === "ro"
         ? "Am pregătit o modificare. Va fi aplicată numai după confirmarea ta."
@@ -759,6 +803,12 @@ export async function POST(request) {
           expiresAt: actionProposal.expiresAt,
         }
       : null;
+    const nextPendingCrmAction = isCrmMutationRequest && !actionProposal
+        ? {
+            active: true,
+            request: redactSensitiveText(activeCrmAction.request, database.customers || []),
+          }
+        : null;
     const assistantMessage = await saveAiChatMessage(request, username, {
       conversationId: activeConversationId,
       message: {
@@ -771,6 +821,7 @@ export async function POST(request) {
           analysis: displayedAnalysis,
           recommendation,
           actionProposal: storedActionProposal,
+          pendingCrmAction: nextPendingCrmAction,
         },
       },
     });

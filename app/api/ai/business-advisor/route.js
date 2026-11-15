@@ -715,7 +715,13 @@ export async function POST(request) {
         ? "Am pregătit o modificare. Va fi aplicată numai după confirmarea ta."
         : "Подготовил изменение. Оно будет применено только после вашего подтверждения."
       : "";
-    const assistantContent = [displayedAnswer.text, displayedAnalysis, recommendation, proposalNote].filter(Boolean).join("\n\n");
+    let assistantContent = [displayedAnswer.text, displayedAnalysis, recommendation, proposalNote].filter(Boolean).join("\n\n");
+    if (!assistantContent) {
+      assistantContent = language === "ro"
+        ? "Nu am putut genera un răspuns. Verifică disponibilitatea Gemini și încearcă din nou."
+        : "Не удалось сформировать ответ. Проверьте доступность Gemini и попробуйте ещё раз.";
+      aiError ||= assistantContent;
+    }
     const storedActionProposal = actionProposal
       ? {
           id: actionProposal.id,

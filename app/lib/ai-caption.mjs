@@ -15,6 +15,11 @@ export const AI_CAPTION_TONES = [
   { id: "energetic", label: "Энергичный" },
 ];
 
+export const AI_CAPTION_LANGUAGES = [
+  { id: "ru", label: "Русский", instruction: "русском языке" },
+  { id: "ro", label: "Română", instruction: "румынском языке" },
+];
+
 export const AI_CAPTION_STYLES = [
   { id: "process", label: "Показать процесс" },
   { id: "transformation", label: "Показать результат" },

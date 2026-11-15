@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  AI_CAPTION_LANGUAGES,
   AI_CAPTION_SERVICES,
   AI_CAPTION_STYLES,
   AI_CAPTION_TONES,
@@ -9,6 +10,7 @@ import {
 
 test("AI caption generation options are fixed structured values", () => {
   assert.ok(AI_CAPTION_SERVICES.some((option) => option.id === "interior-cleaning"));
+  assert.deepEqual(AI_CAPTION_LANGUAGES.map((option) => option.id), ["ru", "ro"]);
   assert.ok(AI_CAPTION_STYLES.some((option) => option.id === "transformation"));
   assert.ok(AI_CAPTION_TONES.some((option) => option.id === "professional"));
 });

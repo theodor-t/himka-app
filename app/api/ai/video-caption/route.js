@@ -7,6 +7,7 @@ import {
 } from "../../../lib/auth";
 import { roleCanWriteCollection } from "../../../lib/access-control.mjs";
 import {
+  AI_CAPTION_LANGUAGES,
   AI_CAPTION_SERVICES,
   AI_CAPTION_STYLES,
   AI_CAPTION_TONES,
@@ -32,26 +33,30 @@ export async function POST(request) {
       return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
     }
     const service = findOption(AI_CAPTION_SERVICES, input?.serviceId);
+    const language = findOption(AI_CAPTION_LANGUAGES, input?.languageId);
     const tone = findOption(AI_CAPTION_TONES, input?.toneId);
     const style = findOption(AI_CAPTION_STYLES, input?.styleId);
-    if (!service || !tone || !style) {
-      return NextResponse.json({ error: "Выберите услугу, тон и формат описания" }, { status: 400 });
+    if (!service || !language || !tone || !style) {
+      return NextResponse.json({ error: "Выберите услугу, язык, тон и подачу описания" }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: "Gemini не настроен: задайте GEMINI_API_KEY на сервере" }, { status: 503 });
     }
-    const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
     if (!/^[A-Za-z0-9._-]{1,100}$/.test(model)) {
       throw new Error("Invalid GEMINI_MODEL configuration");
     }
-    const models = [...new Set([model, "gemini-3.6-flash"])];
+    const fallbackModel = model === "gemini-3.8-flash"
+      ? "gemini-3.5-flash-lite"
+      : "gemini-3.8-flash";
+    const models = [...new Set([model, fallbackModel])];
 
     const requestBody = JSON.stringify({
       systemInstruction: {
         parts: [{
-          text: "Ты создаёшь короткие подписи для видео детейлинг-мастерской. Пиши по-русски. Не добавляй имена, телефоны, номера автомобилей, цены, гарантии или неподтверждённые факты. Верни только JSON по указанной схеме.",
+          text: `Ты создаёшь короткие подписи для видео детейлинг-мастерской. Пиши на ${language.instruction}. Не добавляй имена, телефоны, номера автомобилей, цены, гарантии или неподтверждённые факты. Верни только JSON по указанной схеме.`,
         }],
       },
       contents: [{
@@ -74,51 +79,89 @@ export async function POST(request) {
       },
     });
 
-    let response;
-    let providerMessage = "";
-    for (const [index, selectedModel] of models.entries()) {
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-          },
-          body: requestBody,
-          signal: AbortSignal.timeout(25000),
-        },
-      );
-      if (response.ok || response.status !== 503 || index === models.length - 1) break;
-    }
-
-    if (!response.ok) {
-      if (!providerMessage) {
-        try {
-          const providerError = await response.json();
-          providerMessage = typeof providerError?.error?.message === "string"
-            ? providerError.error.message.slice(0, 300)
-            : "";
-        } catch {
-          providerMessage = "";
-        }
-      }
-      return NextResponse.json(
-        {
-          error: providerMessage
-            ? `Gemini не выполнил запрос (HTTP ${response.status}): ${providerMessage}`
-            : `Gemini не выполнил запрос (HTTP ${response.status})`,
-        },
-        { status: 502 },
-      );
-    }
-
     let result;
-    try {
-      result = await response.json();
-    } catch {
-      return NextResponse.json({ error: "Gemini вернул некорректный ответ" }, { status: 502 });
+    let lastFailure;
+    for (const [index, selectedModel] of models.entries()) {
+      let response;
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: requestBody,
+            signal: AbortSignal.timeout(18000),
+          },
+        );
+      } catch (error) {
+        if (error.name !== "TimeoutError" || index === models.length - 1) throw error;
+        lastFailure = { status: 504, message: "Время ожидания ответа модели истекло." };
+        continue;
+      }
+
+      if (response.ok) {
+        try {
+          result = await response.json();
+        } catch {
+          return NextResponse.json({ error: "Gemini вернул некорректный ответ" }, { status: 502 });
+        }
+        break;
+      }
+
+      let providerMessage = "";
+      try {
+        const providerError = await response.json();
+        providerMessage = typeof providerError?.error?.message === "string"
+          ? providerError.error.message.slice(0, 300)
+          : "";
+      } catch {
+        providerMessage = "";
+      }
+      lastFailure = { status: response.status, message: providerMessage };
+      if (![429, 503].includes(response.status) || index === models.length - 1) break;
     }
+
+    if (!result) {
+      const { status, message } = lastFailure || { status: 502, message: "" };
+      if (status === 503) {
+        return NextResponse.json({
+          error: "Gemini временно перегружен. Попробуйте ещё раз через минуту.",
+          details: message,
+        }, { status: 503 });
+      }
+      if (status === 429) {
+        return NextResponse.json({
+          error: "Достигнут лимит запросов Gemini. Проверьте квоту и тариф API в Google AI Studio.",
+          details: message,
+        }, { status: 429 });
+      }
+      if (status === 403 || status === 401) {
+        return NextResponse.json({
+          error: "Google отклонил API-ключ. Проверьте ключ и доступ к Gemini API.",
+          details: message,
+        }, { status: 502 });
+      }
+      if (status === 404) {
+        return NextResponse.json({
+          error: "Модель Gemini не найдена. Проверьте значение GEMINI_MODEL в Vercel.",
+          details: message,
+        }, { status: 502 });
+      }
+      if (status === 504) {
+        return NextResponse.json({
+          error: "Gemini не ответил вовремя. Попробуйте ещё раз.",
+          details: message,
+        }, { status: 504 });
+      }
+      return NextResponse.json({
+        error: "Не удалось получить ответ от Gemini.",
+        details: message,
+      }, { status: 502 });
+    }
+
     const text = result.candidates?.[0]?.content?.parts
       ?.map((part) => part.text || "")
       .join("");

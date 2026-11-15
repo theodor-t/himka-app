@@ -117,6 +117,7 @@ import { buildSystemNotifications, unreadSystemNotificationCount } from "./lib/n
 import { searchRecords } from "./lib/global-search.mjs";
 import { roleCanViewPage } from "./lib/access-control.mjs";
 import {
+  AI_CAPTION_LANGUAGES,
   AI_CAPTION_SERVICES,
   AI_CAPTION_STYLES,
   AI_CAPTION_TONES,
@@ -1681,36 +1682,51 @@ function VideoDescriptionsPage({ db, mutate, user }) {
   const [copiedId, setCopiedId] = useState(null);
   const [form, setForm] = useState({ title: "", caption: "", hashtags: "" });
   const [aiServiceId, setAiServiceId] = useState(AI_CAPTION_SERVICES[0].id);
+  const [aiLanguageId, setAiLanguageId] = useState(AI_CAPTION_LANGUAGES[0].id);
   const [aiToneId, setAiToneId] = useState(AI_CAPTION_TONES[0].id);
   const [aiStyleId, setAiStyleId] = useState(AI_CAPTION_STYLES[0].id);
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState("");
+  const [aiError, setAiError] = useState(null);
   const resetForm = () => {
     setEditingId(null);
     setForm({ title: "", caption: "", hashtags: "" });
   };
   const generateAiCaption = async () => {
     setAiLoading(true);
-    setAiError("");
+    setAiError(null);
     try {
       const response = await fetch("/api/ai/video-caption", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(45000),
         body: JSON.stringify({
           serviceId: aiServiceId,
+          languageId: aiLanguageId,
           toneId: aiToneId,
           styleId: aiStyleId,
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Не удалось создать описание");
+      if (!response.ok) {
+        setAiError({
+          message: result.error || "Не удалось создать описание.",
+          details: result.details || "",
+        });
+        return;
+      }
       setForm((current) => ({
         ...current,
+        title: current.title || AI_CAPTION_SERVICES.find((option) => option.id === aiServiceId)?.label || "",
         caption: result.caption,
         hashtags: result.hashtags.join(" "),
       }));
     } catch (error) {
-      setAiError(error.message);
+      setAiError({
+        message: error.name === "TimeoutError"
+          ? "Запрос занял слишком много времени. Попробуйте ещё раз."
+          : "Не удалось связаться с сервером генерации. Проверьте соединение и повторите попытку.",
+        details: "",
+      });
     } finally {
       setAiLoading(false);
     }
@@ -1759,45 +1775,75 @@ function VideoDescriptionsPage({ db, mutate, user }) {
         <div>
           <span className="dashboard-kicker">CONTENT STUDIO · TIKTOK</span>
           <h2>Описания для видео</h2>
-          <p>Готовые подписи и хэштеги для роликов мастерской — одним нажатием в буфер.</p>
+          <p>Создавайте, редактируйте и храните тексты для роликов мастерской в одном месте.</p>
         </div>
         <div className="video-library-count"><Video size={19} /><strong>{db.videoDescriptions.length}</strong><span>готовых шаблонов</span></div>
       </section>
       <section className="video-library-layout">
         <form className="card video-description-form" onSubmit={save}>
-          <div className="card-header"><span>{editingId ? "Редактировать шаблон" : "Новый шаблон"}</span>{editingId && <button type="button" className="text-action" onClick={resetForm}>Отмена</button>}</div>
+          <div className="video-editor-heading">
+            <div>
+              <span className="video-step-label">01 · РЕДАКТОР</span>
+              <h3>{editingId ? "Редактировать шаблон" : "Создать описание"}</h3>
+              <p>Создайте черновик с помощью AI или заполните поля самостоятельно.</p>
+            </div>
+            {editingId && <button type="button" className="text-action" onClick={resetForm}>Отмена</button>}
+          </div>
           <section className="video-ai-generator" aria-label="Создание описания с Gemini">
-            <div className="video-ai-heading"><Sparkles size={15} /><strong>Создать с Gemini</strong><span>без данных клиентов</span></div>
-            <Field label="Услуга">
-              <select value={aiServiceId} onChange={(event) => setAiServiceId(event.target.value)}>
-                {AI_CAPTION_SERVICES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-              </select>
-            </Field>
-            <div className="video-ai-options">
-              <Field label="Тон">
-                <select value={aiToneId} onChange={(event) => setAiToneId(event.target.value)}>
-                  {AI_CAPTION_TONES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+            <div className="video-ai-heading">
+              <span className="video-ai-icon"><Sparkles size={17} /></span>
+              <div><strong>AI-генератор</strong><small>Подготовит подпись и хэштеги</small></div>
+              <span className="video-ai-private"><ShieldCheck size={13} /> Приватно</span>
+            </div>
+            <div className="video-ai-controls">
+              <Field label="Услуга">
+                <select value={aiServiceId} onChange={(event) => setAiServiceId(event.target.value)}>
+                  {AI_CAPTION_SERVICES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select>
               </Field>
-              <Field label="Формат">
-                <select value={aiStyleId} onChange={(event) => setAiStyleId(event.target.value)}>
-                  {AI_CAPTION_STYLES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              <Field label="Язык подписи">
+                <select value={aiLanguageId} onChange={(event) => setAiLanguageId(event.target.value)}>
+                  {AI_CAPTION_LANGUAGES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select>
               </Field>
+              <div className="video-ai-options">
+                <Field label="Тон текста">
+                  <select value={aiToneId} onChange={(event) => setAiToneId(event.target.value)}>
+                    {AI_CAPTION_TONES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Подача">
+                  <select value={aiStyleId} onChange={(event) => setAiStyleId(event.target.value)}>
+                    {AI_CAPTION_STYLES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                </Field>
+              </div>
             </div>
             <button type="button" className="video-ai-generate" onClick={generateAiCaption} disabled={aiLoading}>
               {aiLoading ? <LoaderCircle size={14} className="loading-spinner" /> : <Sparkles size={14} />}
-              {aiLoading ? "Создаём…" : "Сгенерировать подпись"}
+              {aiLoading ? "Готовим вариант…" : aiError ? "Попробовать ещё раз" : "Создать подпись"}
             </button>
-            {aiError && <p className="video-ai-error" role="alert">{aiError}</p>}
+            {aiLoading && <p className="video-ai-progress">Обычно это занимает несколько секунд. Можно пока не закрывать страницу.</p>}
+            {aiError && (
+              <div className="video-ai-error" role="alert">
+                <strong>{aiError.message}</strong>
+                {aiError.details && <details><summary>Подробности ответа Google</summary><p>{aiError.details}</p></details>}
+              </div>
+            )}
+            <p className="video-ai-privacy-note">Gemini получает только выбранные настройки — без данных клиентов и автомобилей. Проверьте черновик перед сохранением.</p>
           </section>
-          <Field label="Название для поиска"><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Например, химчистка салона" /></Field>
-          <Field label="Описание видео"><textarea className="video-caption-input" value={form.caption} onChange={(event) => setForm({ ...form, caption: event.target.value })} placeholder="Расскажите коротко, что сделали в этом видео…" /></Field>
-          <Field label="Хэштеги"><textarea className="video-tags-input" value={form.hashtags} onChange={(event) => setForm({ ...form, hashtags: event.target.value })} placeholder="#детейлинг #авто #кишинёв" /></Field>
-          <small className="field-hint">Можно вводить хэштеги через пробел или запятую. Символ # добавится автоматически.</small>
-          <Button icon={Save}>{editingId ? "Сохранить шаблон" : "Добавить описание"}</Button>
+          <div className="video-manual-fields">
+            <Field label="Название шаблона"><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Например, химчистка салона" /></Field>
+            <Field label="Текст подписи"><textarea className="video-caption-input" value={form.caption} onChange={(event) => setForm({ ...form, caption: event.target.value })} placeholder="Создайте черновик выше или напишите свой текст…" /></Field>
+            <Field label="Хэштеги"><textarea className="video-tags-input" value={form.hashtags} onChange={(event) => setForm({ ...form, hashtags: event.target.value })} placeholder="#детейлинг #авто #кишинёв" /></Field>
+            <small className="field-hint">Введите хэштеги через пробел или запятую — символ # добавится автоматически.</small>
+            <Button icon={Save}>{editingId ? "Сохранить шаблон" : "Сохранить описание"}</Button>
+          </div>
         </form>
         <section className="video-description-grid">
+          <div className="video-library-section-heading">
+            <div><span className="video-step-label">02 · БИБЛИОТЕКА</span><h3>Сохранённые описания</h3></div>
+          </div>
           {db.videoDescriptions.length ? db.videoDescriptions.map((item) => (
             <article className="video-description-card" key={item.id}>
               <div className="video-description-card-top"><span className="video-card-icon"><Video size={17} /></span><span className="video-card-platform">TIKTOK · ОПИСАНИЕ</span><button type="button" className="client-card-edit" aria-label="Редактировать описание" onClick={() => { setEditingId(item.id); setForm({ title: item.title, caption: item.caption, hashtags: item.hashtags || "" }); }}><Pencil size={14} /></button></div>

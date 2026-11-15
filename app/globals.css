@@ -10335,3 +10335,448 @@ tbody tr:hover td {
     flex-basis: calc(100% - 40px);
   }
 }
+
+.video-descriptions-page {
+  width: min(100%, 1380px);
+  max-width: none;
+}
+
+.video-library-hero {
+  position: relative;
+  min-height: 176px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  padding: clamp(24px, 4vw, 42px);
+  border-color: #5b8fe62c;
+  background:
+    radial-gradient(ellipse at 82% 18%, #3478f62b, transparent 36%),
+    radial-gradient(ellipse at 5% 110%, #4f8cff10, transparent 38%),
+    linear-gradient(118deg, #101e38 0%, #0b1427 58%, #0a1222 100%);
+  box-shadow: inset 0 1px #ffffff0a, 0 18px 48px #00000018;
+}
+
+.video-library-hero > div:first-child {
+  position: relative;
+  z-index: 1;
+}
+
+.video-library-hero .dashboard-kicker {
+  color: #7eafff;
+  font-size: 10px;
+  letter-spacing: 1.8px;
+}
+
+.video-library-hero h2 {
+  margin-top: 10px;
+  font-size: clamp(28px, 4vw, 42px);
+  letter-spacing: -1.5px;
+}
+
+.video-library-hero p {
+  max-width: 540px;
+  margin-top: 10px;
+  color: #a4b2c8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.video-library-count {
+  position: relative;
+  z-index: 1;
+  min-width: 174px;
+  padding: 14px 16px;
+  border-color: #7ba9fa35;
+  border-radius: 13px;
+  background: #0a1428b8;
+}
+
+.video-library-count svg {
+  width: 20px;
+  height: 20px;
+}
+
+.video-library-count strong {
+  color: #e7f0ff;
+  font-size: 24px;
+}
+
+.video-library-count span {
+  color: #9eafca;
+  font-size: 10px;
+}
+
+.video-library-layout {
+  grid-template-columns: minmax(0, .94fr) minmax(0, 1.06fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.video-description-form {
+  position: static;
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 2vw, 26px);
+  border-color: #7793c21b;
+  border-radius: 18px;
+  background: linear-gradient(160deg, #0d1930, #091225 80%);
+  box-shadow: 0 16px 42px #00000020, inset 0 1px #ffffff08;
+}
+
+.video-editor-heading,
+.video-library-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.video-editor-heading h3,
+.video-library-section-heading h3 {
+  margin: 6px 0 0;
+  color: #edf3ff;
+  font-size: 20px;
+  letter-spacing: -.4px;
+}
+
+.video-editor-heading p {
+  margin: 6px 0 0;
+  color: #91a1bb;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.video-step-label {
+  color: #80aef8;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+}
+
+.video-ai-generator {
+  gap: 16px;
+  margin: 0;
+  padding: clamp(16px, 2vw, 22px);
+  border-color: #5789dc4a;
+  border-radius: 15px;
+  background:
+    radial-gradient(ellipse at 100% 0%, #3478f61a, transparent 45%),
+    linear-gradient(145deg, #101f3a, #0b162b 72%);
+  box-shadow: inset 0 1px #ffffff08;
+}
+
+.video-ai-heading {
+  gap: 11px;
+  color: #eef4ff;
+  font-size: 14px;
+}
+
+.video-ai-icon {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid #6c9dea50;
+  border-radius: 12px;
+  color: #a5c7ff;
+  background: #3478f61c;
+}
+
+.video-ai-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.video-ai-heading > div strong {
+  font-size: 14px;
+}
+
+.video-ai-heading > div small {
+  color: #9bacc6;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.video-ai-private {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 6px 8px;
+  border: 1px solid #5d8fdb35;
+  border-radius: 999px;
+  color: #aecbfa;
+  background: #3478f612;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.video-ai-controls,
+.video-manual-fields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.video-ai-options {
+  gap: 12px;
+}
+
+.video-description-form .form-group {
+  min-width: 0;
+  gap: 7px;
+}
+
+.video-description-form .form-group > span {
+  color: #a8b7cd;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .55px;
+}
+
+.video-description-form .form-group input,
+.video-description-form .form-group select,
+.video-description-form .form-group textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 11px 13px;
+  border-color: #506b963e;
+  border-radius: 10px;
+  color: #e7edf7;
+  background-color: #081327;
+  font-size: 13px;
+}
+
+.video-description-form .form-group textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.video-description-form .form-group input::placeholder,
+.video-description-form .form-group textarea::placeholder {
+  color: #71819a;
+}
+
+.video-description-form .video-caption-input {
+  min-height: 132px;
+}
+
+.video-description-form .video-tags-input {
+  min-height: 76px;
+}
+
+.video-ai-generate {
+  min-height: 48px;
+  gap: 9px;
+  padding: 11px 16px;
+  border: 1px solid #82adff55;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(110deg, #3478f6, #2868df);
+  box-shadow: 0 8px 20px #1f5ecc35, inset 0 1px #ffffff2a;
+  font-size: 12px;
+  transition: filter 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.video-ai-generate:hover:not(:disabled) {
+  filter: brightness(1.09);
+  transform: translateY(-1px);
+  box-shadow: 0 11px 24px #1f5ecc4a, inset 0 1px #ffffff2a;
+}
+
+.video-ai-generate:disabled {
+  color: #e0eaff;
+  opacity: .8;
+}
+
+.video-ai-progress,
+.video-ai-privacy-note {
+  margin: -7px 0 0;
+  color: #94a6c0;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.video-ai-privacy-note {
+  margin: -6px 0 0;
+  color: #8294af;
+}
+
+.video-ai-error {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #ff777044;
+  border-radius: 10px;
+  color: #ffd1cf;
+  background: #ff55550d;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.video-ai-error strong {
+  color: #ffc2be;
+  font-size: 11px;
+}
+
+.video-ai-error details {
+  color: #b7a3a8;
+  font-size: 10px;
+}
+
+.video-ai-error summary {
+  cursor: pointer;
+  color: #edaaa6;
+}
+
+.video-ai-error details p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.video-library-section-heading {
+  grid-column: 1 / -1;
+  padding: 7px 2px 3px;
+}
+
+.video-library-section-heading > span {
+  color: #aab9cf;
+  font-size: 10px;
+}
+
+.video-description-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.video-description-card {
+  padding: 18px;
+  border-color: #6b83a81f;
+  border-radius: 15px;
+  background: linear-gradient(150deg, #101c33, #0a1427);
+}
+
+.video-description-card h3 {
+  color: #eaf1ff;
+  font-size: 16px;
+}
+
+.video-description-caption {
+  color: #bbc8db;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.video-library-empty {
+  padding: 34px 22px;
+  border-color: #7793c21b;
+  border-radius: 15px;
+  background: linear-gradient(150deg, #0d1930, #091225);
+}
+
+.video-library-empty > svg {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 10px;
+  color: #81adf7;
+}
+
+.video-library-empty h3 {
+  color: #e4edfc;
+  font-size: 15px;
+}
+
+.video-library-empty p {
+  max-width: 380px;
+  margin: 7px auto 0;
+  color: #92a2bb;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .video-library-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .video-library-hero {
+    min-height: 0;
+    gap: 18px;
+    padding: 23px 20px;
+    border-radius: 16px;
+  }
+
+  .video-library-hero h2 {
+    font-size: 29px;
+  }
+
+  .video-library-hero p {
+    font-size: 12px;
+  }
+
+  .video-library-count {
+    min-width: 0;
+    align-self: stretch;
+  }
+
+  .video-library-layout {
+    gap: 16px;
+  }
+
+  .video-description-form {
+    gap: 15px;
+    padding: 16px;
+    border-radius: 15px;
+  }
+
+  .video-editor-heading h3,
+  .video-library-section-heading h3 {
+    font-size: 18px;
+  }
+
+  .video-ai-generator {
+    gap: 14px;
+    padding: 15px;
+    border-radius: 13px;
+  }
+
+  .video-ai-options {
+    gap: 9px;
+  }
+
+  .video-ai-private {
+    padding: 5px 7px;
+    font-size: 8px;
+  }
+
+  .video-description-form .form-group input,
+  .video-description-form .form-group select,
+  .video-description-form .form-group textarea {
+    min-height: 48px;
+    font-size: 14px;
+  }
+
+  .video-description-form .form-group select {
+    padding-right: 28px;
+  }
+
+  .video-ai-generate {
+    min-height: 50px;
+  }
+}
+
+@media (max-width: 420px) {
+  .video-ai-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 360px) {
+  .video-ai-private {
+    max-width: 93px;
+    white-space: normal;
+  }
+}

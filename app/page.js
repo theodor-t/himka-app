@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Image from "next/image";
 import {
   Activity,
   Archive,
@@ -138,34 +139,36 @@ const clientWeatherCache = new Map();
 const clientWeatherRequests = new Map();
 const NAV = [
   ["home", "Главная Панель", LayoutDashboard],
-  ["analytics", "Аналитика", ChartNoAxesCombined],
-  ["weather", "Погода", CloudSun],
-  ["services", "Услуги и цены", Sparkles],
-  ["videoDescriptions", "Описания для видео", Video],
-  ["reminderTemplates", "Шаблоны напоминаний", MessageSquareText],
   ["calendar", "Календарь", CalendarDays],
   ["orders", "Заказы мастерской", ClipboardList],
-  ["workPosts", "Рабочие посты", Wrench],
-  ["waitlist", "Лист ожидания", Clock3],
-  ["suppliers", "Поставщики", Truck],
-  ["financialGoals", "Цели и план", Target],
-  ["notifications", "Уведомления", Bell],
-  ["systemStatus", "Состояние системы", Activity],
   ["customers", "Клиенты и автомобили", Users],
   ["clients", "Записи клиентов", CalendarPlus],
-  ["expenses", "2. Затраты", Receipt],
-  ["profit", "3. Прибыль", TrendingUp],
-  ["warehouse", "4. Склад", Package],
-  ["withdrawals", "5. Вывод денег", Wallet],
-  ["debts", "6. Должники", Wallet],
-  ["windows", "7. Свободные окна", CalendarPlus],
-  ["logs", "8. Журнал логов", History],
+  ["workPosts", "Рабочие посты", Wrench],
+  ["waitlist", "Лист ожидания", Clock3],
+  ["services", "Услуги и цены", Sparkles],
+  ["warehouse", "Склад", Package],
+  ["suppliers", "Поставщики", Truck],
+  ["windows", "Свободные окна", CalendarPlus],
+  ["expenses", "Затраты", Receipt],
+  ["profit", "Прибыль", TrendingUp],
+  ["financialGoals", "Цели и план", Target],
+  ["withdrawals", "Вывод денег", Wallet],
+  ["debts", "Должники", Wallet],
+  ["analytics", "Аналитика", ChartNoAxesCombined],
+  ["notifications", "Уведомления", Bell],
+  ["weather", "Погода", CloudSun],
+  ["videoDescriptions", "Описания для видео", Video],
+  ["reminderTemplates", "Шаблоны напоминаний", MessageSquareText],
+  ["systemStatus", "Состояние системы", Activity],
+  ["logs", "Журнал логов", History],
 ];
 const NAV_GROUPS = [
-  { title: "ОБЗОР", items: ["home", "analytics", "notifications", "systemStatus", "weather"] },
-  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "orders", "workPosts", "waitlist", "customers", "clients", "services", "videoDescriptions", "reminderTemplates"] },
+  { title: "ОБЗОР", items: ["home"] },
+  { title: "МАСТЕРСКАЯ И КЛИЕНТЫ", items: ["calendar", "orders", "customers", "clients", "workPosts", "waitlist", "services"] },
+  { title: "ОПЕРАЦИИ", items: ["warehouse", "suppliers", "windows"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "financialGoals", "withdrawals", "debts"] },
-  { title: "ОПЕРАЦИИ", items: ["warehouse", "suppliers", "windows", "logs"] },
+  { title: "ДОПОЛНИТЕЛЬНО", items: ["analytics", "notifications", "weather", "videoDescriptions", "reminderTemplates", "systemStatus"] },
+  { title: "СИСТЕМА", items: ["logs"] },
 ];
 const MOBILE_PRIMARY_NAV = [
   { id: "home", label: "Главная", Icon: LayoutDashboard },
@@ -1399,7 +1402,6 @@ function PageContent({
     return (
       <Dashboard
         db={db}
-        user={user}
         role={role}
         totals={totals}
         monthly={monthly}
@@ -2628,7 +2630,6 @@ function CustomerRecordEditor({ type, item, preset, db, user, mutate, onClose })
 
 function Dashboard({
   db,
-  user,
   role,
   totals,
   monthly,
@@ -2681,41 +2682,103 @@ function Dashboard({
           Bell,
         ],
       ];
+  const overviewBars = role === "technician"
+    ? Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + index);
+        return {
+          label: date.toLocaleDateString("ru-RU", { weekday: "short" }).replace(".", ""),
+          value: appointments.filter((client) => isSameDay(client.datetime, date)).length,
+        };
+      })
+    : monthly.map((item) => ({
+        label: item.month.slice(0, 3),
+        income: item.income,
+        expenses: item.expenses,
+        value: item.expenses,
+      }));
+  const maxOverviewValue = Math.max(1, ...overviewBars.map((item) => item.value));
+  const annualExpenses = role === "technician" ? 0 : sumAmounts(monthly, (item) => item.expenses);
+  const expenseCategories = role === "technician" ? [] : Object.entries(
+    db.expenses
+      .filter((item) => periodKeyFor(item).startsWith(`${reportYear}-`) && item.source !== "Личные средства")
+      .reduce((result, item) => {
+        const category = item.category || "Без категории";
+        result[category] = (result[category] || 0) + amountToCents(item.amount);
+        return result;
+      }, {}),
+  )
+    .map(([name, cents]) => ({ name, amount: centsToAmount(cents) }))
+    .sort((first, second) => second.amount - first.amount)
+    .slice(0, 3);
+  const orderFlow = [
+    { label: "В работе", statuses: ["В работе", "Ожидает дополнительных работ"], color: "active" },
+    { label: "Ожидают", statuses: ["Ожидает приезда", "Автомобиль принят", "Ожидает осмотра"], color: "waiting" },
+    { label: "Готовы", statuses: ["Завершён", "Готов к выдаче", "Выдан клиенту"], color: "ready" },
+  ].map((group) => ({
+    ...group,
+    count: db.orders.filter((order) => group.statuses.includes(order.status)).length,
+  }));
+  const orderFlowTotal = orderFlow.reduce((total, group) => total + group.count, 0);
+  const orderFlowStops = orderFlow.reduce((result, group) => {
+    const share = orderFlowTotal ? (group.count / orderFlowTotal) * 100 : 0;
+    const start = result.offset;
+    result.parts.push(`${group.color === "active" ? "#a8ec38" : group.color === "waiting" ? "#41c5d5" : "#ff9d42"} ${start}% ${start + share}%`);
+    result.offset += share;
+    return result;
+  }, { offset: 0, parts: [] }).parts.join(", ");
+  const completedToday = todayAppointments.filter((client) => client.status === "Выполнено").length;
+  const completionRate = todayAppointments.length
+    ? Math.round((completedToday / todayAppointments.length) * 100)
+    : 0;
   return (
     <div className="dashboard-shell">
       <section className="dashboard-welcome">
-        <div className="dashboard-hero-heading">
-          <div>
-            <span className="dashboard-kicker">
-              {today.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })} · ВСЁ ПОД КОНТРОЛЕМ
-            </span>
-            <h2>Хорошего дня, {user}.</h2>
-            <p>Вот что происходит в мастерской сегодня.</p>
-          </div>
-          <div className={`dashboard-live ${sync.includes("Ошибка") ? "sync-error" : sync.includes("Сохранено") || sync.includes("Google OK") || sync.includes("Локальный тест") ? "" : "sync-pending"}`}>
-            <span /> {sync}
-          </div>
+        <div className={`dashboard-live ${sync.includes("Ошибка") ? "sync-error" : sync.includes("Сохранено") || sync.includes("Google OK") || sync.includes("Локальный тест") ? "" : "sync-pending"}`}>
+          <span /> {sync}
+        </div>
+        <div className="dashboard-car-scene">
+          <Image
+            className="dashboard-car-art"
+            src="/dashboard-car.webp"
+            alt="Чёрный автомобиль"
+            width={716}
+            height={327}
+            priority
+          />
         </div>
         <div className="dashboard-actions">
           <Button icon={CalendarPlus} onClick={() => openModal({ type: "client" })}>
             Новая запись
           </Button>
+          <Button
+            variant="secondary"
+            icon={ClipboardList}
+            onClick={() => navigate("orders")}
+            title="Открыть заказы"
+            aria-label="Открыть заказы"
+          >
+            <span className="dashboard-action-label">Заказы</span>
+          </Button>
           {role !== "technician" && (
-            <Button variant="secondary" icon={ChartNoAxesCombined} onClick={() => navigate("analytics")}>
-              Аналитика
+            <Button variant="secondary" icon={ChartNoAxesCombined} onClick={() => navigate("analytics")} title="Открыть аналитику" aria-label="Открыть аналитику">
+              <span className="dashboard-action-label">Аналитика</span>
             </Button>
           )}
           {role !== "technician" && (
-            <Button variant="secondary" icon={Sparkles} onClick={() => navigate("services")}>
-              Прайс-лист
+            <Button variant="secondary" icon={Sparkles} onClick={() => navigate("services")} title="Открыть прайс-лист" aria-label="Открыть прайс-лист">
+              <span className="dashboard-action-label">Прайс</span>
             </Button>
           )}
-          <Button variant="secondary" icon={RefreshCw} onClick={reload} title="Обновить данные" aria-label="Обновить данные" />
+          <Button variant="secondary" icon={RefreshCw} onClick={reload} title="Обновить данные" aria-label="Обновить данные">
+            <span className="dashboard-action-label">Обновить</span>
+          </Button>
           {role !== "technician" && (
             <>
-              <Button variant="secondary" icon={FileText} onClick={() => { window.print(); addLog("Сформирован печатный отчёт"); }} title="Сформировать PDF" aria-label="Сформировать PDF" />
+              <Button variant="secondary" icon={FileText} onClick={() => { window.print(); addLog("Сформирован печатный отчёт"); }} title="Сформировать PDF" aria-label="Сформировать PDF">
+                <span className="dashboard-action-label">Отчёт</span>
+              </Button>
               <details className="dashboard-tools">
-                <summary><Save size={15} /> Бэкап</summary>
+                <summary aria-label="Резервная копия" title="Резервная копия"><Save size={18} /> <span className="dashboard-action-label">Бэкап</span></summary>
                 <div>
                   <button type="button" onClick={exportData}>Скачать резервную копию</button>
                   <label>Восстановить из файла<input type="file" accept="application/json,.json" onChange={importData} /></label>
@@ -2753,69 +2816,166 @@ function Dashboard({
           )}
         </div>
       </nav>
-      <section className="dashboard-metrics">
-        {dashboardMetrics.map(([label, value, color, Icon]) => (
-          <div className={`dashboard-metric ${color}`} key={label}>
-            <div className="dashboard-metric-top">
-              <span>{label}</span>
-              <Icon size={17} />
+      <section className="dashboard-reference-layout" aria-label="Обзор ANGEL DETAILING">
+        <div className="dashboard-reference-center">
+          <div className="dashboard-shop-stats">
+            <div><span>Автомобилей</span><strong>{db.vehicles.length}</strong></div>
+            <div><span>Заказов в работе</span><strong>{activeOrders.length}</strong></div>
+            <div><span>Записей · 7 дней</span><strong>{appointments.length}</strong></div>
+          </div>
+          <section className="dashboard-panel dashboard-orders-panel">
+            <div className="dashboard-panel-heading">
+              <div><span>ЗАКАЗЫ МАСТЕРСКОЙ</span><strong>Статус работ</strong></div>
+              <button type="button" aria-label="Открыть заказы мастерской" onClick={() => navigate("orders")}><ArrowRight size={16} /></button>
             </div>
-            <strong>{role === "technician" ? value : money(value)}</strong>
-            <small>{role === "technician" ? "оперативный показатель мастерской" : label === "Баланс кассы"
-              ? "после расходов и выводов"
-              : label === "Остаток к оплате"
-                ? "по заданным ценам и долгам"
-                : "за всё время"}</small>
-          </div>
-        ))}
-      </section>
-      {totals.lowStock.length > 0 && (
-        <div className="low-stock-alert dashboard-alert">
-          <Package size={18} />
-          <span>
-            <strong>Мало товара:</strong>{" "}
-            {totals.lowStock
-              .map((item) => `${item.name} (${item.qty})`)
-              .join(", ")}
-          </span>
+            <div className="dashboard-orders-content">
+              <div className="dashboard-order-rows">
+                {orderFlow.map((group) => {
+                  const percentage = orderFlowTotal ? Math.round((group.count / orderFlowTotal) * 100) : 0;
+                  return (
+                    <div className={`dashboard-order-row ${group.color}`} key={group.label}>
+                      <div><span>{group.label}</span><strong>{group.count}</strong></div>
+                      <i><b style={{ width: `${percentage}%` }} /></i>
+                      <small>{percentage}%</small>
+                    </div>
+                  );
+                })}
+              </div>
+              <div
+                className={`dashboard-orders-donut${orderFlowTotal ? "" : " empty"}`}
+                style={orderFlowTotal ? { background: `conic-gradient(${orderFlowStops})` } : undefined}
+                role="img"
+                aria-label={`Всего заказов: ${orderFlowTotal}`}
+              >
+                <div><strong>{orderFlowTotal}</strong><span>заказов</span></div>
+              </div>
+            </div>
+          </section>
         </div>
-      )}
-      <AvailableWindows db={db} openModal={openModal} navigate={navigate} />
-      <section className="dashboard-grid">
-        <div className="card reminder-card">
-          <div className="card-header">
-            <span>Напоминания</span>
-            <Bell size={18} className="red-icon" />
+
+        <div className="dashboard-reference-left">
+          <div className="dashboard-metrics">
+            {dashboardMetrics.map(([label, value, color, Icon]) => (
+              <div className={`dashboard-metric ${color}`} key={label}>
+                <div className="dashboard-metric-top"><span>{label}</span><Icon size={16} /></div>
+                <strong>{role === "technician" ? value : money(value)}</strong>
+                <small>{role === "technician"
+                  ? label === "Рабочие посты" ? "доступно в мастерской" : "текущий показатель"
+                  : label === "Баланс кассы" ? "после расходов и выводов"
+                    : label === "Остаток к оплате" ? "по клиентским записям и долгам"
+                      : "за всё время"}</small>
+              </div>
+            ))}
           </div>
-          <div className="reminder-summary">
-            <strong>{todayAppointments.length}</strong>
-            <span>записей сегодня</span>
-          </div>
-          {appointments.length ? (
-            <div className="appointment-list">
-              {appointments.slice(0, 6).map((client) => (
-                <div className="appointment-item" key={client.id}>
-                  <CalendarDays size={16} />
-                  <div>
-                    <strong>{client.car || "Без имени"}</strong>
-                    <span>
-                      {isSameDay(client.datetime, today)
-                        ? `Сегодня, ${dateText(client.datetime).slice(11)}`
-                        : dateText(client.datetime)}
-                      {client.service ? ` · ${client.service}` : ""}
-                      <ClientWeatherBadge datetime={client.datetime} />
-                    </span>
+          <section className="dashboard-panel dashboard-completion-card">
+            <div className="dashboard-panel-heading">
+              <div><span>ТЕМП МАСТЕРСКОЙ</span><strong>Выполнено сегодня</strong></div>
+              <Activity size={17} />
+            </div>
+            <div className="dashboard-gauge" role="img" aria-label={`${completedToday} выполнено из ${todayAppointments.length} записей сегодня`}>
+              <svg viewBox="0 0 220 132" aria-hidden="true">
+                <path className="dashboard-gauge-track" d="M22 112 A88 88 0 0 1 198 112" />
+                <path
+                  className="dashboard-gauge-progress"
+                  d="M22 112 A88 88 0 0 1 198 112"
+                  pathLength="100"
+                  strokeDasharray={`${completionRate} ${100 - completionRate}`}
+                />
+                <path className="dashboard-gauge-tick" d="M39 80l-7-4m28-27-5-7m43-8-1-8m40 14 4-8m27 37 8-4" />
+                <path
+                  className="dashboard-gauge-needle"
+                  d="M110 109V39"
+                  transform={`rotate(${-90 + completionRate * 1.8} 110 110)`}
+                />
+                <circle className="dashboard-gauge-hub" cx="110" cy="110" r="7" />
+                <text x="110" y="95" textAnchor="middle" className="dashboard-gauge-value">{completedToday}/{todayAppointments.length}</text>
+              </svg>
+              <span>{todayAppointments.length ? `${completionRate}%` : "—"}</span>
+            </div>
+            <p>{todayAppointments.length
+              ? "записей завершено"
+              : "Сегодня пока нет запланированных записей"}</p>
+          </section>
+        </div>
+
+        <div className="dashboard-reference-right">
+          <section className="dashboard-panel dashboard-expense-panel">
+            <div className="dashboard-panel-heading">
+              <div><span>{role === "technician" ? "РАСПИСАНИЕ" : `ЗАТРАТЫ · ${reportYear}`}</span><strong>{role === "technician" ? `${appointments.length} записей` : money(annualExpenses)}</strong></div>
+              {role !== "technician" && <button type="button" aria-label="Открыть аналитику" onClick={() => navigate("analytics")}><ArrowRight size={15} /></button>}
+            </div>
+            <div className={`dashboard-mini-chart${role === "technician" ? " appointments-chart" : ""}`}>
+              {overviewBars.map((item, index) => (
+                <div className="dashboard-mini-chart-column" key={`${item.label}-${index}`}>
+                  <div className="dashboard-mini-chart-track">
+                    <i
+                      className={index === new Date().getMonth() && role !== "technician" ? "current" : ""}
+                      style={{ height: item.value ? `${Math.max(8, (item.value / maxOverviewValue) * 100)}%` : "3px" }}
+                      title={role === "technician" ? `${item.value} записей` : `${item.label}: ${money(item.value)}`}
+                    />
                   </div>
-                  <Badge status={statusClass(client.status)}>
-                    {client.status}
-                  </Badge>
+                  <small>{item.label}</small>
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="empty-reminder">Нет ближайших записей</div>
-          )}
+            <span className="dashboard-mini-chart-caption">{role === "technician" ? "Записи по дням" : "Расходы по месяцам · MDL"}</span>
+          </section>
+          <section className="dashboard-panel dashboard-category-panel">
+            <div className="dashboard-panel-heading">
+              <div><span>{role === "technician" ? "РАБОЧИЕ ПОСТЫ" : "СТРУКТУРА ЗАТРАТ"}</span><strong>{role === "technician" ? `${db.workPosts.filter((post) => !post.archived).length} постов` : "По категориям"}</strong></div>
+              {role === "technician" ? <Wrench size={16} /> : <Receipt size={16} />}
+            </div>
+            {role === "technician" ? (
+              <div className="dashboard-category-list">
+                {db.workPosts.filter((post) => !post.archived).slice(0, 3).map((post) => (
+                  <div className="dashboard-category-row" key={post.id}><span>{post.name}</span><strong>{post.status === "maintenance" ? "Сервис" : "Доступен"}</strong></div>
+                ))}
+                {!db.workPosts.some((post) => !post.archived) && <div className="dashboard-chart-empty">Нет активных постов</div>}
+              </div>
+            ) : expenseCategories.length ? (
+              <div className="dashboard-category-list">
+                {expenseCategories.map((category, index) => (
+                  <div className={`dashboard-category-row category-${index}`} key={category.name}>
+                    <span><i />{category.name}</span><strong>{money(category.amount)}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : <div className="dashboard-chart-empty">Расходов за этот год пока нет</div>}
+          </section>
         </div>
+      </section>
+
+      {totals.lowStock.length > 0 && (
+        <div className="low-stock-alert dashboard-alert">
+          <Package size={18} />
+          <span><strong>Мало товара:</strong> {totals.lowStock.map((item) => `${item.name} (${item.qty})`).join(", ")}</span>
+        </div>
+      )}
+
+      <section className="dashboard-panel dashboard-bookings-panel">
+        <div className="dashboard-bookings-header">
+          <div><h3>Ближайшие записи</h3><p>Записи мастерской на ближайшие 7 дней</p></div>
+          <button type="button" onClick={() => navigate("clients")}>Все записи <ArrowRight size={15} /></button>
+        </div>
+        <div className="dashboard-bookings-table">
+          <div className="dashboard-booking-row dashboard-booking-head">
+            <span>Автомобиль / клиент</span><span>Дата и время</span><span>Услуга</span><span>Сумма</span><span>Статус</span><span />
+          </div>
+          {appointments.length ? appointments.slice(0, 6).map((client) => (
+            <div className="dashboard-booking-row" key={client.id}>
+              <span className="dashboard-booking-car"><CarFront size={16} /><span><strong>{client.car || "Без автомобиля"}</strong><small>{client.phone || "Телефон не указан"}</small></span></span>
+              <span className="dashboard-booking-date">{isSameDay(client.datetime, today) ? `Сегодня, ${dateText(client.datetime).slice(11)}` : dateText(client.datetime)}</span>
+              <span className="dashboard-booking-service">{client.service || "Услуга не указана"}</span>
+              <strong className="dashboard-booking-price">{client.servicePrice ? money(client.servicePrice) : "—"}</strong>
+              <span><Badge status={statusClass(client.status)}>{client.status || "В ожидании"}</Badge></span>
+              <button className="dashboard-booking-edit" type="button" aria-label={`Редактировать запись ${client.car || ""}`} onClick={() => openModal({ type: "client", item: client })}><ArrowRight size={15} /></button>
+            </div>
+          )) : <div className="dashboard-bookings-empty"><CalendarDays size={20} /><span>На ближайшие дни записей нет</span><button type="button" onClick={() => openModal({ type: "client" })}>Создать запись</button></div>}
+        </div>
+      </section>
+
+      <AvailableWindows db={db} openModal={openModal} navigate={navigate} />
+      <section className="dashboard-grid">
         {role === "technician" ? (
           <div className="card snapshot-card">
             <div className="card-header"><span>Заказы мастерской</span><ClipboardList size={18} className="red-icon" /></div>

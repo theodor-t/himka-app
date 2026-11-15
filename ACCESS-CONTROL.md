@@ -19,7 +19,6 @@ The database API compares submitted collections with the server snapshot and
 rejects changes outside the authenticated role's write permissions. Technician
 updates preserve finance collections from the server snapshot so empty/redacted
 client data cannot erase financial records.
-
 Local development on `localhost` automatically opens a clearly labeled preview
 as `TUDOR`. Its database is isolated from Google and exists only in the
 development server's memory; restarting the server clears it. The development

@@ -19,12 +19,15 @@ must still be reviewed and saved by an employee.
 The CRM and General modes use the authenticated `/api/ai/business-advisor`
 endpoint. General mode does not load CRM data. Conversations and messages are
 stored in the dedicated Apps Script chat sheets, scoped to the signed-in
-username; chat attachments are kept in a private Drive folder and are deleted
-when the conversation is deleted.
+username. Attachment bytes are uploaded by the server to Gemini Files API;
+Apps Script stores only their Gemini URI and expiry metadata. Gemini deletes
+these files after 48 hours, and deleting a conversation also requests immediate
+deletion. The app cannot download or preview the original after upload; history
+shows the filename and expiry instead. Existing files from the former Drive
+storage are not migrated and are unavailable to the chat.
 
 General chat accepts JPEG, PNG, WebP, PDF, UTF-8 TXT, and CSV files. The server
-validates file type and size, then sends images/PDFs as Gemini multimodal input
-and text documents as text. It never sends a client-provided SQL query to the
-database. Deploy the updated `google-apps-script/Code.gs` web app before using
-chat history or attachments in production; localhost preview storage is
-in-memory only.
+validates file type and size, then sends Gemini file references as multimodal
+input. It never sends a client-provided SQL query to the database. Deploy the
+updated `google-apps-script/Code.gs` web app before using chat history or
+attachments in production; localhost preview storage is in-memory only.

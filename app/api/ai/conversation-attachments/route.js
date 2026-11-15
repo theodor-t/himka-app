@@ -9,6 +9,7 @@ import {
   resolveChatFileMimeType,
   validateChatFile,
 } from "../../../lib/ai-chat-files.mjs";
+import { deleteGeminiFile, uploadGeminiFile } from "../../../lib/gemini-files.mjs";
 import {
   deleteAiChatAttachment,
   getAiChatAttachment,
@@ -33,23 +34,13 @@ export async function GET(request) {
       return NextResponse.json({ error: "Вложения доступны только в общем AI-чате." }, { status: 404 });
     }
     const attachment = await getAiChatAttachment(request, username, conversationId, id);
-    if (!attachment || typeof attachment.base64 !== "string") {
+    if (!attachment || typeof attachment.fileUri !== "string" || !attachment.fileUri) {
       return NextResponse.json({ error: "Вложение недоступно." }, { status: 404 });
     }
-    const data = Buffer.from(attachment.base64, "base64");
-    validateChatFile(data, attachment.mimeType);
-    if (data.length !== Number(attachment.size)) {
-      return NextResponse.json({ error: "Размер вложения не совпадает с метаданными." }, { status: 502 });
-    }
-    return new Response(data, {
-      headers: {
-        "Content-Type": attachment.mimeType,
-        "Content-Length": String(data.length),
-        "Content-Disposition": `inline; filename="${safeChatFileName(attachment.name) || "attachment"}"`,
-        "Cache-Control": "private, no-store",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    return NextResponse.json({
+      error: "Gemini не позволяет скачать загруженный оригинал файла.",
+      expiresAt: attachment.expiresAt,
+    }, { status: 410, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return aiChatErrorResponse(error);
   }
@@ -96,13 +87,25 @@ export async function POST(request) {
     if (totalBytes + data.length > AI_CHAT_MAX_TOTAL_BYTES) {
       return NextResponse.json({ error: "Общий размер вложений одного сообщения не должен превышать 6 МБ." }, { status: 400 });
     }
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "Загрузка в Gemini не настроена на сервере." }, { status: 503 });
+    }
+    const name = safeChatFileName(file.name);
+    const geminiFile = await uploadGeminiFile({
+      apiKey,
+      name,
+      mimeType,
+      data,
+    });
     const attachment = await uploadAiChatAttachment(request, username, {
       conversationId,
       id: randomUUID(),
-      name: safeChatFileName(file.name),
+      name,
       mimeType,
       size: data.length,
-      base64: data.toString("base64"),
+      fileUri: geminiFile.fileUri,
+      expiresAt: geminiFile.expiresAt,
     });
     return NextResponse.json({ attachment }, {
       headers: { "Cache-Control": "private, no-store" },
@@ -123,6 +126,21 @@ export async function DELETE(request) {
     }
     if (!ID_PATTERN.test(String(input?.id || "")) || !ID_PATTERN.test(String(input?.conversationId || ""))) {
       return NextResponse.json({ error: "Некорректный запрос вложения." }, { status: 400 });
+    }
+    const attachment = await getAiChatAttachment(
+      request,
+      username,
+      input.conversationId,
+      input.id,
+    );
+    const conversation = await getAiConversation(request, username, input.conversationId);
+    if (!conversation.pendingAttachments.some((item) => item.id === input.id)) {
+      return NextResponse.json({ error: "Удалить можно только неотправленное вложение." }, { status: 404 });
+    }
+    if (attachment?.fileUri) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return NextResponse.json({ error: "Gemini не настроен на сервере." }, { status: 503 });
+      await deleteGeminiFile({ apiKey, fileUri: attachment.fileUri });
     }
     await deleteAiChatAttachment(request, username, input.conversationId, input.id);
     return NextResponse.json({ ok: true }, {

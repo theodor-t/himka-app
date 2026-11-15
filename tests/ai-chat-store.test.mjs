@@ -55,20 +55,22 @@ test("AI conversations persist and are isolated by employee", async () => {
   assert.equal((await getAiConversation(request, "TUDOR", conversation.id)).messages[0].content, "Remember this question");
 });
 
-test("AI attachments remain private, link to messages, and are removed with their conversation", async () => {
+test("AI attachments keep Gemini references server-side and link to messages", async () => {
   const conversation = await createAiConversation(request, "TUDOR", {
     mode: "general",
     title: "Image analysis",
   });
   const attachmentId = createAiChatId();
-  const image = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+  const fileUri = "https://generativelanguage.googleapis.com/v1beta/files/test-file";
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const attachment = await uploadAiChatAttachment(request, "TUDOR", {
     conversationId: conversation.id,
     id: attachmentId,
     name: "photo.png",
     mimeType: "image/png",
-    size: image.length,
-    base64: image.toString("base64"),
+    size: 1024,
+    fileUri,
+    expiresAt,
   });
   assert.equal(attachment.id, attachmentId);
   await assert.rejects(
@@ -87,13 +89,19 @@ test("AI attachments remain private, link to messages, and are removed with thei
     attachmentIds: [attachmentId],
   });
   assert.equal(message.attachments[0].id, attachmentId);
+  assert.equal(message.attachments[0].expiresAt, expiresAt);
+  assert.equal("fileUri" in message.attachments[0], false);
   await assert.rejects(
     deleteAiChatAttachment(request, "TUDOR", conversation.id, attachmentId),
     (error) => error.status === 404,
   );
   assert.equal(
-    (await getAiChatAttachment(request, "TUDOR", conversation.id, attachmentId)).base64,
-    image.toString("base64"),
+    (await getAiChatAttachment(request, "TUDOR", conversation.id, attachmentId)).fileUri,
+    fileUri,
+  );
+  assert.equal(
+    (await getAiConversation(request, "TUDOR", conversation.id)).messages[0].attachments[0].fileUri,
+    undefined,
   );
 
   await deleteAiConversation(request, "TUDOR", conversation.id);
@@ -122,15 +130,19 @@ test("file validation rejects MIME spoofing and malformed UTF-8 documents", () =
   );
 });
 
-test("Gemini receives binary image data and the extracted text of text attachments", () => {
-  const imageBase64 = Buffer.from([1, 2, 3]).toString("base64");
+test("Gemini receives server-side file references and rejects unsafe file URIs", () => {
+  const fileUri = "https://generativelanguage.googleapis.com/v1beta/files/test-file";
   assert.deepEqual(
-    geminiChatAttachmentPart({ name: "photo.png", mimeType: "image/png" }, imageBase64),
-    { inlineData: { mimeType: "image/png", data: imageBase64 } },
+    geminiChatAttachmentPart({ mimeType: "image/png", fileUri }),
+    { fileData: { mimeType: "image/png", fileUri } },
   );
-  const textBase64 = Buffer.from("actual file text", "utf8").toString("base64");
-  const textPart = geminiChatAttachmentPart({ name: "notes.txt", mimeType: "text/plain" }, textBase64);
-  assert.match(textPart.text, /actual file text/);
+  assert.throws(
+    () => geminiChatAttachmentPart({
+      mimeType: "image/png",
+      fileUri: "https://attacker.example/v1beta/files/test-file",
+    }),
+    /не найдено на сервере Gemini/,
+  );
 });
 
 test("an older Apps Script deployment fails visibly instead of returning empty chat history", async () => {

@@ -111,7 +111,7 @@ export async function getAiConversation(request, username, id) {
           attachment.owner === username &&
           attachment.status === "pending",
         )
-        .map(({ base64, owner, status, ...attachment }) => attachment),
+        .map(({ base64, fileUri, owner, status, ...attachment }) => attachment),
     });
   }
   const payload = await callAppsScript("aiChatGet", { values: { username, id } });
@@ -180,7 +180,7 @@ export async function saveAiChatMessage(request, username, { conversationId, mes
       }
       attachment.status = "linked";
       attachment.messageId = message.id;
-      const { base64, owner, status, messageId, ...metadata } = attachment;
+      const { base64, fileUri, owner, status, messageId, ...metadata } = attachment;
       return clone(metadata);
     });
     const saved = { ...clone(message), attachments };
@@ -250,7 +250,8 @@ export async function uploadAiChatAttachment(request, username, {
   name,
   mimeType,
   size,
-  base64,
+  fileUri,
+  expiresAt,
 }) {
   const metadata = {
     id,
@@ -259,6 +260,7 @@ export async function uploadAiChatAttachment(request, username, {
     mimeType,
     size,
     createdAt: new Date().toISOString(),
+    expiresAt,
   };
   if (isLocalPreviewRequest(request)) {
     const store = getLocalStore();
@@ -272,13 +274,13 @@ export async function uploadAiChatAttachment(request, username, {
       ...metadata,
       owner: username,
       status: "pending",
-      base64,
+      fileUri,
     });
     return clone(metadata);
   }
   const payload = await callAppsScript("aiChatUploadAttachment", {
     method: "POST",
-    body: { ...metadata, username, base64 },
+    body: { ...metadata, username, fileUri },
   });
   requireAiChatPayload(payload, (value) => value.attachment?.id === id);
   return payload.attachment;
@@ -305,7 +307,7 @@ export async function getAiChatAttachment(request, username, conversationId, id)
   const payload = await callAppsScript("aiChatAttachment", {
     values: { username, conversationId, id },
   });
-  requireAiChatPayload(payload, (value) => value.id === id && typeof value.base64 === "string");
+  requireAiChatPayload(payload, (value) => value.id === id && typeof value.fileUri === "string");
   return payload;
 }
 

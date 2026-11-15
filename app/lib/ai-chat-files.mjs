@@ -73,19 +73,27 @@ export function validateChatFile(data, mimeType) {
   return data;
 }
 
-export function chatAttachmentPromptText(attachment, base64) {
-  if (attachment.mimeType !== "text/plain" && attachment.mimeType !== "text/csv") return "";
-  const content = Buffer.from(base64, "base64").toString("utf8").slice(0, 60_000);
-  return `\n\n[Содержимое файла «${safeChatFileName(attachment.name)}»]\n${content}`;
-}
-
-export function geminiChatAttachmentPart(attachment, base64) {
-  const text = chatAttachmentPromptText(attachment, base64);
-  if (text) return { text };
+export function geminiChatAttachmentPart(attachment) {
+  let fileUrl;
+  try {
+    fileUrl = new URL(attachment?.fileUri || "");
+  } catch {
+    throw new Error("Вложение не найдено на сервере Gemini.");
+  }
+  if (
+    fileUrl.protocol !== "https:" ||
+    fileUrl.hostname !== "generativelanguage.googleapis.com" ||
+    !/^\/v1beta\/files\/[A-Za-z0-9_-]+$/.test(fileUrl.pathname) ||
+    fileUrl.search ||
+    fileUrl.hash ||
+    !AI_CHAT_ALLOWED_MIME_TYPES.has(attachment?.mimeType)
+  ) {
+    throw new Error("Вложение не найдено на сервере Gemini.");
+  }
   return {
-    inlineData: {
+    fileData: {
       mimeType: attachment.mimeType,
-      data: base64,
+      fileUri: fileUrl.href,
     },
   };
 }

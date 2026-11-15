@@ -64,16 +64,18 @@ Apps Script creates `AI Chat Conversations`, `AI Chat Messages`, and
 authenticated CRM username; the Next.js API checks ownership when listing,
 opening, renaming, deleting, or sending a message in a conversation.
 
-Chat files are stored in a private Google Drive folder. The first upload creates
-`ANGEL DETAILING — AI чаты` and stores its ID in the `AI_CHAT_FOLDER_ID` script
-property. Images and PDFs are sent by the server to the configured Gemini model
-as actual multimodal input; UTF-8 TXT and CSV contents are sent as text. The
-supported formats are JPEG, PNG, WebP, PDF, TXT, and CSV; HEIC and DOCX are not
-accepted. Limits are 3 MB per file, 3 files per message, and 6 MB combined per
-message.
+Chat attachments are uploaded by the Next.js server to Gemini Files API. Apps
+Script stores only the Gemini URI and expiry metadata in `AI Chat Attachments`;
+it does not store AI chat files in Google Drive. Gemini automatically deletes
+uploaded files after 48 hours, and deleting a conversation also requests
+immediate deletion. The application cannot download or preview originals from
+Gemini, so chat history displays only the filename and expiry. Existing files
+from the previous Drive-based chat storage are not migrated and will appear
+unavailable. The attachment sheet adds an `expiresAt` column automatically.
 
 After changing `Code.gs`, update the deployed Apps Script web app version and
-authorize Google Sheets and Drive access. Existing `API_KEY` and spreadsheet
-settings remain in place; no additional secret is exposed to the browser. Chat
-records and files remain until an employee deletes the conversation. Localhost
-preview uses in-memory storage and is not a persistence test for production.
+authorize Google Sheets access. Google Drive access is still used for vehicle
+inspection photos only. Existing `API_KEY` and spreadsheet settings remain in
+place; no additional secret is exposed to the browser. Chat metadata remains
+until an employee deletes the conversation. Localhost preview uses in-memory
+storage and is not a persistence test for production.

@@ -92,15 +92,22 @@ function csvCell(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
-function chatAttachmentUrl(attachment, conversationId) {
-  const params = new URLSearchParams({
-    id: attachment.id,
-    conversationId,
+function chatAttachmentExpiryLabel(attachment, language) {
+  const expiryTime = Date.parse(attachment.expiresAt || "");
+  if (!Number.isFinite(expiryTime)) {
+    return language === "ro" ? "Fișier indisponibil" : "Файл недоступен";
+  }
+  if (Date.now() >= expiryTime) {
+    return language === "ro" ? "Expirat" : "Срок хранения истёк";
+  }
+  const date = new Date(expiryTime).toLocaleString(language === "ro" ? "ro-RO" : "ru-RU", {
+    dateStyle: "short",
+    timeStyle: "short",
   });
-  return `/api/ai/conversation-attachments?${params.toString()}`;
+  return language === "ro" ? `Disponibil până la ${date}` : `Доступен до ${date}`;
 }
 
-function restoreChatMessage(message, conversationId) {
+function restoreChatMessage(message) {
   const metadata = message.metadata || {};
   return {
     ...message,
@@ -108,10 +115,7 @@ function restoreChatMessage(message, conversationId) {
     table: metadata.answer?.table || null,
     analysis: metadata.analysis || "",
     recommendation: metadata.recommendation || "",
-    attachments: (message.attachments || []).map((attachment) => ({
-      ...attachment,
-      url: chatAttachmentUrl(attachment, conversationId),
-    })),
+    attachments: message.attachments || [],
   };
 }
 
@@ -362,11 +366,8 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
           return [
             mode,
             item.id,
-            (detail.messages || []).map((message) => restoreChatMessage(message, item.id)),
-            (detail.pendingAttachments || []).map((attachment) => ({
-              ...attachment,
-              url: chatAttachmentUrl(attachment, item.id),
-            })),
+            (detail.messages || []).map(restoreChatMessage),
+            detail.pendingAttachments || [],
           ];
         }));
         if (cancelled) return;
@@ -480,12 +481,9 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
       setConversationIds((current) => ({ ...current, [item.mode]: item.id }));
       setChats((current) => ({
         ...current,
-        [item.mode]: (payload.messages || []).map((message) => restoreChatMessage(message, item.id)),
+        [item.mode]: (payload.messages || []).map(restoreChatMessage),
       }));
-      setModeAttachments(item.mode, (payload.pendingAttachments || []).map((attachment) => ({
-        ...attachment,
-        url: chatAttachmentUrl(attachment, item.id),
-      })));
+      setModeAttachments(item.mode, payload.pendingAttachments || []);
       setHistoryOpen(false);
       setRenamingConversation(null);
       setQuestion("");
@@ -549,11 +547,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Не удалось загрузить файл.");
-        const attachment = {
-          ...payload.attachment,
-          url: chatAttachmentUrl(payload.attachment, id),
-        };
-        setModeAttachments("general", (current) => [...current, attachment]);
+        setModeAttachments("general", (current) => [...current, payload.attachment]);
       }
     } catch (error) {
       setAiError(error instanceof Error ? error.message : "Ошибка загрузки файла.");
@@ -638,17 +632,10 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
       id: messageId,
       role: "user",
       content: text || fallbackText,
-      attachments: selectedAttachments.map((attachment) => ({
-        ...attachment,
-        url: attachment.url || chatAttachmentUrl(attachment, activeId),
-      })),
+      attachments: selectedAttachments,
     };
     try {
       activeId = activeId || await ensureConversation(chatMode, text || "Новый чат");
-      userMessage.attachments = selectedAttachments.map((attachment) => ({
-        ...attachment,
-        url: chatAttachmentUrl(attachment, activeId),
-      }));
       setChats((current) => ({
         ...current,
         [chatMode]: [...(current[chatMode] || []), userMessage].slice(-40),
@@ -680,7 +667,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
           analysis: result.analysis || "",
           recommendation: result.recommendation || "",
         },
-      }, activeId);
+      });
       setChats((current) => ({
         ...current,
         [chatMode]: [...(current[chatMode] || []).filter((item) => item.id !== answer.id), answer].slice(-40),
@@ -698,7 +685,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
           const response = await fetch(`/api/ai/conversations?id=${encodeURIComponent(activeId)}`, { cache: "no-store" });
           const payload = await response.json();
           if (response.ok) {
-            const messages = (payload.messages || []).map((message) => restoreChatMessage(message, activeId));
+            const messages = (payload.messages || []).map(restoreChatMessage);
             const savedMessage = messages.some((message) => message.id === messageId);
             setChats((current) => ({
               ...current,
@@ -706,10 +693,7 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
                 ? messages
                 : (current[chatMode] || []).filter((message) => message.id !== messageId),
             }));
-            setModeAttachments(chatMode, (payload.pendingAttachments || []).map((attachment) => ({
-              ...attachment,
-              url: chatAttachmentUrl(attachment, activeId),
-            })));
+            setModeAttachments(chatMode, payload.pendingAttachments || []);
           }
         } catch {
           setChats((current) => ({
@@ -917,17 +901,13 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
                 {!!message.attachments?.length && (
                   <div className="advisor-chat-message-attachments">
                     {message.attachments.map((attachment) => (
-                      <a
-                        key={attachment.id}
-                        href={attachment.url || chatAttachmentUrl(attachment, conversationId)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={attachment.mimeType.startsWith("image/") ? "is-image" : ""}
-                      >
-                        {attachment.mimeType.startsWith("image/")
-                          ? <img src={attachment.url || chatAttachmentUrl(attachment, conversationId)} alt={attachment.name} loading="lazy" />
-                          : <><FileText size={17} /><span>{attachment.name}</span></>}
-                      </a>
+                      <div className="advisor-chat-message-attachment" key={attachment.id}>
+                        <FileText size={17} />
+                        <div>
+                          <span>{attachment.name}</span>
+                          <small>{chatAttachmentExpiryLabel(attachment, language)}</small>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -961,10 +941,11 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
             <div className="advisor-chat-composer-attachments">
               {pendingAttachments.map((attachment) => (
                 <div className="advisor-chat-composer-attachment" key={attachment.id}>
-                  {attachment.mimeType.startsWith("image/")
-                    ? <img src={attachment.url} alt="" />
-                    : <FileText size={15} />}
-                  <span>{attachment.name}</span>
+                  <FileText size={15} />
+                  <div>
+                    <span>{attachment.name}</span>
+                    <small>{chatAttachmentExpiryLabel(attachment, language)}</small>
+                  </div>
                   <button type="button" onClick={() => void removePendingAttachment(attachment)} disabled={uploadBusy} aria-label={`Удалить ${attachment.name}`}><X size={14} /></button>
                 </div>
               ))}
@@ -985,6 +966,11 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
           <textarea
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              if (!chatBusy && !uploadBusy && !historyBusy) void askAdvisor();
+            }}
             maxLength={600}
             rows={1}
             placeholder={chatMode === "general"

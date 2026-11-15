@@ -183,7 +183,14 @@ function aiChatSheet(name, headers) {
     sheet.setFrozenRows(1);
   } else {
     const storedHeaders = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-    if (headers.some(function (header, index) { return storedHeaders[index] !== header; })) {
+    const canAddExpiryColumn = headers[headers.length - 1] === "expiresAt" &&
+      storedHeaders[storedHeaders.length - 1] === "" &&
+      headers.slice(0, -1).every(function (header, index) {
+        return storedHeaders[index] === header;
+      });
+    if (canAddExpiryColumn) {
+      sheet.getRange(1, headers.length).setValue("expiresAt");
+    } else if (headers.some(function (header, index) { return storedHeaders[index] !== header; })) {
       throw new Error("Invalid AI chat sheet structure: " + name);
     }
   }
@@ -206,7 +213,7 @@ function aiChatMessageSheet() {
 function aiChatAttachmentSheet() {
   return aiChatSheet(AI_CHAT_ATTACHMENTS_SHEET, [
     "id", "conversationId", "messageId", "username", "fileId", "name", "mimeType",
-    "size", "createdAt", "status",
+    "size", "createdAt", "status", "expiresAt",
   ]);
 }
 
@@ -441,13 +448,6 @@ function deleteAiChatConversation(username, request) {
     const found = findAiChatConversation(username, request?.id);
     if (!found) return jsonResponse({ error: "AI chat not found" }, 404);
     const attachmentSheet = aiChatAttachmentSheet();
-    const attachmentRows = aiChatRows(attachmentSheet);
-    const fileIds = attachmentRows
-      .filter(function (row) {
-        return String(row[1]) === String(found.row[0]) && String(row[3]) === username;
-      })
-      .map(function (row) { return String(row[4]); });
-    fileIds.forEach(function (fileId) { trashAiChatFile(fileId); });
     deleteAiChatRows(aiChatMessageSheet(), function (row) {
       return String(row[1]) === String(found.row[0]) && String(row[2]) === username;
     });
@@ -472,25 +472,29 @@ function uploadAiChatAttachment(username, request) {
   const conversationId = validateAiChatId(request?.conversationId);
   const id = validateAiChatId(request?.id);
   const mimeType = String(request?.mimeType || "");
-  const maxBytes = AI_CHAT_MAX_FILE_BYTES;
+  const fileUri = String(request?.fileUri || "");
+  const size = Number(request?.size);
+  const createdAtValue = Date.parse(String(request?.createdAt || ""));
+  const createdAt = Number.isFinite(createdAtValue)
+    ? new Date(createdAtValue)
+    : new Date();
+  const requestedExpiry = Date.parse(String(request?.expiresAt || ""));
+  const maxExpiry = createdAt.getTime() + 48 * 60 * 60 * 1000 + 5 * 60 * 1000;
+  const expiresAt = Number.isFinite(requestedExpiry) &&
+      requestedExpiry > createdAt.getTime() &&
+      requestedExpiry <= maxExpiry
+    ? new Date(requestedExpiry)
+    : new Date(createdAt.getTime() + 48 * 60 * 60 * 1000);
   if (!AI_CHAT_FILE_TYPES.includes(mimeType)) throw new Error("Unsupported AI chat file type");
   if (
-    typeof request?.base64 !== "string" ||
-    request.base64.length > Math.ceil(maxBytes * 4 / 3) + 8 ||
-    !/^[A-Za-z0-9+/]+={0,2}$/.test(request.base64)
+    !/^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/files\/[A-Za-z0-9_-]+$/.test(fileUri) ||
+    !Number.isSafeInteger(size) ||
+    size <= 0 ||
+    size > AI_CHAT_MAX_FILE_BYTES ||
+    expiresAt.getTime() <= Date.now()
   ) {
     throw new Error("Invalid or oversized AI chat file");
   }
-  const bytes = Utilities.base64Decode(request.base64);
-  if (
-    !bytes.length ||
-    bytes.length > maxBytes ||
-    Number(request.size) !== bytes.length ||
-    !hasAiChatFileSignature(bytes, mimeType)
-  ) {
-    throw new Error("Invalid or oversized AI chat file");
-  }
-  const folder = getAiChatFolder();
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -500,19 +504,14 @@ function uploadAiChatAttachment(username, request) {
     const fileName = String(request.name || "ai-attachment")
       .replace(/[\\/:*?"<>|\r\n]/g, "_")
       .slice(0, 120);
-    const file = folder.createFile(
-      Utilities.newBlob(bytes, mimeType, fileName),
-    );
-    file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
-    const createdAt = file.getDateCreated().toISOString();
     aiChatAttachmentSheet().appendRow([
-      id, conversationId, "", username, file.getId(), fileName, mimeType,
-      file.getSize(), createdAt, "pending",
+      id, conversationId, "", username, fileUri, fileName, mimeType,
+      size, createdAt.toISOString(), "pending", expiresAt.toISOString(),
     ]);
     return jsonResponse({
       attachment: {
         id: id, conversationId: conversationId, name: fileName, mimeType: mimeType,
-        size: file.getSize(), createdAt: createdAt,
+        size: size, createdAt: createdAt.toISOString(), expiresAt: expiresAt.toISOString(),
       },
     }, 200);
   } finally {
@@ -530,24 +529,16 @@ function getAiChatAttachment(username, conversationId, id) {
       String(item[3]) === username;
   });
   if (!row) return jsonResponse({ error: "AI chat attachment not found" }, 404);
-  const file = getAiChatDriveFile(String(row[4]));
-  const mimeType = String(row[6]);
-  const bytes = file.getBlob().getBytes();
-  if (
-    file.getSharingAccess() !== DriveApp.Access.PRIVATE ||
-    !AI_CHAT_FILE_TYPES.includes(mimeType) ||
-    bytes.length !== Number(row[7]) ||
-    bytes.length > AI_CHAT_MAX_FILE_BYTES ||
-    !hasAiChatFileSignature(bytes, mimeType)
-  ) {
-    return jsonResponse({ error: "Invalid or unsupported AI chat file" }, 415);
-  }
+  const fileUri = /^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/files\/[A-Za-z0-9_-]+$/.test(String(row[4]))
+    ? String(row[4])
+    : "";
   return jsonResponse({
     id: attachmentId,
     name: String(row[5]),
-    mimeType: mimeType,
-    size: bytes.length,
-    base64: Utilities.base64Encode(bytes),
+    mimeType: String(row[6]),
+    size: Number(row[7]),
+    fileUri: fileUri,
+    expiresAt: String(row[10] || ""),
   }, 200);
 }
 
@@ -569,7 +560,6 @@ function deleteAiChatAttachment(username, request) {
         String(row[9]) === "pending";
     });
     if (index < 0) return jsonResponse({ error: "Pending AI chat attachment not found" }, 404);
-    trashAiChatFile(String(rows[index][4]));
     sheet.deleteRow(index + 2);
     return jsonResponse({ ok: true }, 200);
   } finally {
@@ -584,6 +574,7 @@ function aiChatAttachmentFromRow(row) {
     mimeType: String(row[6]),
     size: Number(row[7]),
     createdAt: String(row[8]),
+    expiresAt: String(row[10] || ""),
   };
 }
 
@@ -593,69 +584,6 @@ function cleanAiChatTitle(value) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 80);
-}
-
-function hasAiChatFileSignature(bytes, mimeType) {
-  const unsigned = bytes.map(function (byte) { return byte & 255; });
-  if (mimeType === "image/jpeg") {
-    return unsigned[0] === 0xff && unsigned[1] === 0xd8 && unsigned[2] === 0xff;
-  }
-  if (mimeType === "image/png") {
-    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-    return signature.every(function (byte, index) { return unsigned[index] === byte; });
-  }
-  if (mimeType === "image/webp") {
-    return (
-      String.fromCharCode.apply(null, unsigned.slice(0, 4)) === "RIFF" &&
-      String.fromCharCode.apply(null, unsigned.slice(8, 12)) === "WEBP"
-    );
-  }
-  if (mimeType === "application/pdf") {
-    return String.fromCharCode.apply(null, unsigned.slice(0, 5)) === "%PDF-";
-  }
-  return mimeType === "text/plain" || mimeType === "text/csv";
-}
-
-function getAiChatFolder() {
-  const properties = PropertiesService.getScriptProperties();
-  const folderId = properties.getProperty("AI_CHAT_FOLDER_ID");
-  let folder;
-  if (folderId) {
-    folder = DriveApp.getFolderById(folderId);
-  } else {
-    const lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-      const currentId = properties.getProperty("AI_CHAT_FOLDER_ID");
-      folder = currentId
-        ? DriveApp.getFolderById(currentId)
-        : DriveApp.createFolder("ANGEL DETAILING — AI чаты");
-      if (!currentId) properties.setProperty("AI_CHAT_FOLDER_ID", folder.getId());
-    } finally {
-      lock.releaseLock();
-    }
-  }
-  if (folder.getSharingAccess() !== DriveApp.Access.PRIVATE) {
-    throw new Error("AI chat folder must be private");
-  }
-  return folder;
-}
-
-function getAiChatDriveFile(fileId) {
-  if (!/^[A-Za-z0-9_-]{10,}$/.test(fileId)) throw new Error("Invalid AI chat file ID");
-  const folder = getAiChatFolder();
-  const file = DriveApp.getFileById(fileId);
-  const parents = file.getParents();
-  let belongsToFolder = false;
-  while (parents.hasNext()) {
-    if (parents.next().getId() === folder.getId()) belongsToFolder = true;
-  }
-  if (!belongsToFolder) throw new Error("AI chat file not found");
-  return file;
-}
-
-function trashAiChatFile(fileId) {
-  getAiChatDriveFile(fileId).setTrashed(true);
 }
 
 function mergeNotifications(contents) {

@@ -3,10 +3,12 @@ import { requireAiChatUser, aiChatErrorResponse } from "../../../lib/ai-chat-aut
 import {
   createAiConversation,
   deleteAiConversation,
+  getAiChatAttachment,
   getAiConversation,
   listAiConversations,
   renameAiConversation,
 } from "../../../lib/ai-chat-store.mjs";
+import { deleteGeminiFile } from "../../../lib/gemini-files.mjs";
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{20,80}$/;
 const cleanTitle = (value) => typeof value === "string"
@@ -87,6 +89,30 @@ export async function DELETE(request) {
     }
     if (!ID_PATTERN.test(String(input?.id || ""))) {
       return NextResponse.json({ error: "Некорректный ID чата." }, { status: 400 });
+    }
+    const conversation = await getAiConversation(request, username, input.id);
+    const attachmentIds = new Set([
+      ...(conversation.pendingAttachments || []).map((attachment) => attachment.id),
+      ...(conversation.messages || []).flatMap((message) =>
+        (message.attachments || []).map((attachment) => attachment.id),
+      ),
+    ]);
+    if (attachmentIds.size) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json({ error: "Gemini не настроен на сервере." }, { status: 503 });
+      }
+      for (const attachmentId of attachmentIds) {
+        const attachment = await getAiChatAttachment(
+          request,
+          username,
+          input.id,
+          attachmentId,
+        );
+        if (attachment.fileUri) {
+          await deleteGeminiFile({ apiKey, fileUri: attachment.fileUri });
+        }
+      }
     }
     await deleteAiConversation(request, username, input.id);
     return NextResponse.json({ ok: true }, {

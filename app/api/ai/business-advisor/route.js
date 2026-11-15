@@ -26,7 +26,6 @@ import {
   AI_CHAT_MAX_ATTACHMENTS,
   AI_CHAT_MAX_TOTAL_BYTES,
   geminiChatAttachmentPart,
-  validateChatFile,
 } from "../../../lib/ai-chat-files.mjs";
 
 export const maxDuration = 60;
@@ -102,15 +101,15 @@ function sanitizeConversation(history, customers) {
 
 async function loadChatAttachment(request, username, conversationId, attachment) {
   const stored = await getAiChatAttachment(request, username, conversationId, attachment.id);
-  if (!stored || typeof stored.base64 !== "string") {
-    throw new Error("Вложение чата недоступно.");
-  }
-  const data = Buffer.from(stored.base64, "base64");
-  validateChatFile(data, stored.mimeType);
-  if (data.length !== Number(stored.size) || data.length > AI_CHAT_MAX_TOTAL_BYTES) {
-    throw new Error("Размер вложения чата не прошёл проверку.");
-  }
-  return { ...attachment, base64: data.toString("base64"), size: data.length };
+  const fileUri = typeof stored?.fileUri === "string" ? stored.fileUri : "";
+  const expiresAt = stored?.expiresAt || attachment.expiresAt || "";
+  const expiryTime = Date.parse(expiresAt);
+  return {
+    ...attachment,
+    fileUri,
+    expiresAt,
+    expired: !fileUri || !Number.isFinite(expiryTime) || Date.now() >= expiryTime,
+  };
 }
 
 function geminiErrorMessage(status, mode = "crm") {
@@ -319,6 +318,9 @@ export async function POST(request) {
         currentAttachments = await Promise.all(selected.map((attachment) =>
           loadChatAttachment(request, username, activeConversationId, attachment),
         ));
+        if (currentAttachments.some((attachment) => attachment.expired)) {
+          return jsonError("Файл больше недоступен в Gemini. Прикрепите его заново.", 410);
+        }
         const fallbackQuestion = language === "ro"
           ? "Analizează fișierul atașat."
           : "Проанализируй приложенный файл.";
@@ -362,6 +364,9 @@ export async function POST(request) {
           loadChatAttachment(request, username, activeConversationId, attachment),
         ));
       }
+      if (currentAttachments.some((attachment) => attachment.expired)) {
+        return jsonError("Файл больше недоступен в Gemini. Прикрепите его заново.", 410);
+      }
       let contextAttachmentMessage = null;
       if (!currentAttachments.length) {
         contextAttachmentMessage = [...priorConversationMessages].reverse().find((message) =>
@@ -373,14 +378,20 @@ export async function POST(request) {
             loadChatAttachment(request, username, activeConversationId, attachment),
           ))
         : [];
+      const availableContextAttachments = contextAttachments.filter((attachment) => !attachment.expired);
       const historyMessages = priorConversationMessages.slice(-10);
       const history = await Promise.all(historyMessages.map(async (message) => {
         const text = cleanText(message.content, 6000);
         if (!text) return null;
         const parts = [{ text }];
         if (contextAttachmentMessage?.id === message.id) {
-          for (const attachment of contextAttachments) {
-            parts.push(geminiChatAttachmentPart(attachment, attachment.base64));
+          for (const attachment of availableContextAttachments) {
+            parts.push(geminiChatAttachmentPart(attachment));
+          }
+          if (contextAttachments.some((attachment) => attachment.expired)) {
+            parts.push({
+              text: "Some attached files in this earlier message expired from Gemini Files storage after 48 hours and are no longer available for analysis.",
+            });
           }
         }
         return { role: message.role === "assistant" ? "model" : "user", parts };
@@ -396,7 +407,7 @@ export async function POST(request) {
         }),
       }];
       for (const attachment of currentAttachments) {
-        currentParts.push(geminiChatAttachmentPart(attachment, attachment.base64));
+        currentParts.push(geminiChatAttachmentPart(attachment));
       }
       const generated = await requestGemini({
         apiKey,

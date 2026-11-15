@@ -1,10 +1,28 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { ROLE_LABELS } from "./access-control.mjs";
 
 export const SESSION_COOKIE = "angel-detailing-session";
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const DEFAULT_ROLES = { TUDOR: "admin", DAN: "admin" };
+const LOCAL_SESSION_SECRET = Symbol.for("angel-detailing.local-session-secret");
+
+export const getUserRole = (username) => {
+  if (!Object.prototype.hasOwnProperty.call(DEFAULT_ROLES, username)) return null;
+  const role = process.env[`AUTH_${username}_ROLE`] || DEFAULT_ROLES[username];
+  if (!Object.prototype.hasOwnProperty.call(ROLE_LABELS, role)) {
+    throw new Error(`Invalid role configured for ${username}`);
+  }
+  return role;
+};
 
 const getSecret = () => {
   const secret = process.env.AUTH_SESSION_SECRET;
+  if (!secret && process.env.NODE_ENV === "development") {
+    if (!globalThis[LOCAL_SESSION_SECRET]) {
+      globalThis[LOCAL_SESSION_SECRET] = randomBytes(32).toString("hex");
+    }
+    return globalThis[LOCAL_SESSION_SECRET];
+  }
   if (!secret) throw new Error("AUTH_SESSION_SECRET is not configured");
   return secret;
 };

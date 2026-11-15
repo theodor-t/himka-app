@@ -24,12 +24,14 @@ export const VEHICLE_INSPECTION_FINDINGS = [
 
 export function inspectionSummary(inspection) {
   const findings = inspection?.findings || [];
+  const photoRefs = inspection?.photoRefs || inspection?.photos;
   return {
     findingCount: findings.length,
-    photoCount: findings.reduce(
-      (count, finding) => count + (finding.photos || []).length,
-      0,
-    ),
+    photoCount:
+      (Array.isArray(photoRefs) ? photoRefs.length : 0) +
+      findings.reduce(
+        (count, finding) => count + (Array.isArray(finding.photos) ? finding.photos.length : 0),
+        0,
+      ),
   };
 }
-

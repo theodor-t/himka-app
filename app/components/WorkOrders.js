@@ -1,17 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowRight,
   CalendarDays,
+  Camera,
   CarFront,
   CircleDollarSign,
   ClipboardList,
   Plus,
+  Printer,
   Receipt,
   ShieldCheck,
   User,
+  Upload,
+  X,
 } from "lucide-react";
 import {
   amountToCents,
@@ -53,6 +58,57 @@ const localInputDate = (value) => {
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 };
+const MAX_INSPECTION_PHOTOS = 10;
+const getInspectionPhotos = (inspection) => {
+  const photos = inspection?.photoRefs || inspection?.photos;
+  return Array.isArray(photos)
+    ? photos.filter((photo) => photo && typeof photo.id === "string")
+    : [];
+};
+
+function readImageAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Не удалось прочитать файл «${file.name}»`));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const base64 = result.slice(result.indexOf(",") + 1);
+      if (!base64) {
+        reject(new Error(`Файл «${file.name}» пуст или повреждён`));
+        return;
+      }
+      resolve(base64);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function responseJson(response) {
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Не удалось выполнить операцию с фото");
+  return payload;
+}
+
+async function discardTemporaryPhotos(files) {
+  const errors = [];
+  for (const file of files) {
+    if (!file.cleanupToken) continue;
+    try {
+      const response = await fetch(
+        "/api/files",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: file.id, cleanupToken: file.cleanupToken }),
+        },
+      );
+      await responseJson(response);
+    } catch (error) {
+      errors.push(`${file.name}: ${error.message}`);
+    }
+  }
+  return errors;
+}
 
 function initialServices(appointment, services) {
   if (!appointment) return [];
@@ -79,7 +135,42 @@ export default function WorkOrders({ db, mutate, user }) {
   const [comment, setComment] = useState("");
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [draggedOrderId, setDraggedOrderId] = useState("");
+  const [printOrderId, setPrintOrderId] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!printOrderId) return undefined;
+    const clearPrintState = () => setPrintOrderId("");
+    const frame = window.requestAnimationFrame(() => window.print());
+    window.addEventListener("afterprint", clearPrintState, { once: true });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("afterprint", clearPrintState);
+    };
+  }, [printOrderId]);
+
+  const printOrder = db.orders.find((order) => order.id === printOrderId);
+  const printBooking = printOrder
+    ? db.clients.find((booking) => String(booking.id) === String(printOrder.bookingId))
+    : null;
+  const printCustomer = printOrder
+    ? db.customers.find((customer) =>
+        String(customer.id) === String(printOrder.customerId || printBooking?.customerId),
+      )
+    : null;
+  const printVehicle = printOrder
+    ? db.vehicles.find((vehicle) =>
+        String(vehicle.id) === String(printOrder.vehicleId || printBooking?.vehicleId),
+      )
+    : null;
+  const printInspection = printOrder
+    ? db.inspections
+        .filter((inspection) => inspection.orderId === printOrder.id)
+        .sort((first, second) =>
+          (parseRecordDate(second.createdAt)?.getTime() || 0) -
+          (parseRecordDate(first.createdAt)?.getTime() || 0),
+        )[0]
+    : null;
 
   const bookingsWithoutOrders = useMemo(() => {
     const linkedBookingIds = new Set(db.orders.map((order) => String(order.bookingId)));
@@ -491,6 +582,13 @@ export default function WorkOrders({ db, mutate, user }) {
                       <div className="work-order-card-top">
                         <strong>{order.number}</strong>
                         <span><ArrowDown size={13} /> {dateText(order.createdAt)}</span>
+                        <button
+                          type="button"
+                          className="work-order-print-btn"
+                          aria-label={`Распечатать заказ ${order.number}`}
+                          title="Печать заказа"
+                          onClick={() => setPrintOrderId(order.id)}
+                        ><Printer size={13} /></button>
                       </div>
                       <h3><CarFront size={16} /> {vehicle?.makeModel || booking?.car || "Автомобиль"}</h3>
                       <p className="work-order-customer"><User size={13} /> {customer?.name || customer?.phone || booking?.phone || "Клиент"}</p>
@@ -573,7 +671,77 @@ export default function WorkOrders({ db, mutate, user }) {
         })}
       </section>
       {!!error && db.orders.length > 0 && <p className="work-order-error" role="alert">{error}</p>}
+      {printOrder && typeof document !== "undefined" && createPortal(
+        <OrderPrintDocument
+          order={printOrder}
+          booking={printBooking}
+          customer={printCustomer}
+          vehicle={printVehicle}
+          inspection={printInspection}
+        />,
+        document.body,
+      )}
     </div>
+  );
+}
+
+function OrderPrintDocument({ order, booking, customer, vehicle, inspection }) {
+  const services = Array.isArray(order.services) ? order.services : [];
+  const subtotalCents = Number(order.subtotalCents) || services.reduce(
+    (total, service) => total + amountToCents(service.price) * (Number(service.quantity) || 1),
+    0,
+  );
+  const totalCents = orderTotal(order);
+  const findings = Array.isArray(inspection?.findings) ? inspection.findings : [];
+
+  return (
+    <article className="print-work-order-document">
+      <header>
+        <div><span>ANGEL DETAILING</span><small>ЗАКАЗ МАСТЕРСКОЙ</small></div>
+        <strong>№ {order.number}</strong>
+      </header>
+      <section className="print-work-order-info">
+        <div><small>Клиент</small><strong>{customer?.name || "Не указан"}</strong><span>{customer?.phone || booking?.phone || "Телефон не указан"}</span></div>
+        <div><small>Автомобиль</small><strong>{vehicle?.makeModel || booking?.car || "Не указан"}</strong><span>Запись: {dateText(booking?.datetime)}</span></div>
+        <div><small>Статус заказа</small><strong>{order.status || "Ожидает приезда"}</strong><span>Создан: {dateText(order.createdAt)}</span></div>
+        <div><small>Плановая выдача</small><strong>{order.plannedCompletion ? dateText(order.plannedCompletion) : "Не назначена"}</strong><span>Исполнитель: {order.assignedTo || "Не назначен"}</span></div>
+      </section>
+      <h2>Работы и услуги</h2>
+      <table>
+        <thead><tr><th>Наименование</th><th>Кол-во</th><th>Стоимость</th></tr></thead>
+        <tbody>
+          {services.map((service, index) => (
+            <tr key={`${service.serviceId || service.name}-${index}`}>
+              <td>{service.name}</td>
+              <td>{Number(service.quantity) || 1}</td>
+              <td>{formatMoney((Number(service.price) || 0) * (Number(service.quantity) || 1))}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="print-work-order-total">
+        <span>Сумма до скидки <strong>{formatMoney(centsToAmount(subtotalCents))}</strong></span>
+        <span>Скидка <strong>{formatMoney(centsToAmount(Math.max(0, subtotalCents - totalCents)))}</strong></span>
+        <span>Итого <strong>{formatMoney(centsToAmount(totalCents))}</strong></span>
+      </div>
+      {order.comment && <section className="print-work-order-notes"><h2>Комментарий к заказу</h2><p>{order.comment}</p></section>}
+      {inspection && (
+        <section className="print-work-order-notes">
+          <h2>Осмотр автомобиля</h2>
+          {inspection.notes && <p>{inspection.notes}</p>}
+          {findings.length > 0 && (
+            <ul>{findings.map((finding) => (
+              <li key={finding.id}>{finding.part} — {finding.type}{finding.comment ? `: ${finding.comment}` : ""}</li>
+            ))}</ul>
+          )}
+          {!inspection.notes && !findings.length && <p>Замечания не зафиксированы.</p>}
+        </section>
+      )}
+      <footer>
+        <span>Документ сформирован из данных CRM и предназначен для ознакомления с заказом.</span>
+        <div><div>Автомобиль принял</div><div>Автомобиль выдал</div></div>
+      </footer>
+    </article>
   );
 }
 
@@ -591,6 +759,9 @@ function InspectionPanel({ order, db, mutate, user }) {
   const [findingComment, setFindingComment] = useState("");
   const [findings, setFindings] = useState(() => latest?.findings || []);
   const [notes, setNotes] = useState(() => latest?.notes || "");
+  const [photos, setPhotos] = useState(() => getInspectionPhotos(latest));
+  const [pendingPhotos, setPendingPhotos] = useState([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [error, setError] = useState("");
   const summary = inspectionSummary(latest);
 
@@ -608,26 +779,102 @@ function InspectionPanel({ order, db, mutate, user }) {
     setError("");
   };
 
-  const saveInspection = () => {
-    const createdAt = new Date().toISOString();
-    const inspection = {
-      id: createId(),
-      orderId: order.id,
-      bookingId: order.bookingId,
-      vehicleId: order.vehicleId || "",
-      customerId: order.customerId || "",
-      revision: (latest?.revision || 0) + 1,
-      previousInspectionId: latest?.id || "",
-      findings,
-      notes: notes.trim(),
-      createdAt,
-      createdBy: user,
-    };
-    mutate(
-      { inspections: [inspection, ...db.inspections] },
-      `Осмотр ${order.number} сохранён · версия ${inspection.revision} · дефектов ${findings.length}`,
-    );
+  const saveInspection = async () => {
+    if (uploadingPhotos) return;
+    setUploadingPhotos(true);
     setError("");
+    const uploaded = [];
+    let photoRefs;
+    let databaseSaveStarted = false;
+    try {
+      for (const file of pendingPhotos) {
+        const base64 = await readImageAsBase64(file);
+        const response = await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: file.name,
+            mimeType: file.type,
+            size: file.size,
+            base64,
+          }),
+        });
+        const payload = await responseJson(response);
+        if (!payload.file?.id || !payload.file.cleanupToken) {
+          throw new Error("Хранилище вернуло неполные данные фото");
+        }
+        uploaded.push(payload.file);
+      }
+      photoRefs = [
+        ...photos,
+        ...uploaded.map(({ cleanupToken, ...file }) => file),
+      ];
+      const createdAt = new Date().toISOString();
+      const inspection = {
+        id: createId(),
+        orderId: order.id,
+        bookingId: order.bookingId,
+        vehicleId: order.vehicleId || "",
+        customerId: order.customerId || "",
+        revision: (latest?.revision || 0) + 1,
+        previousInspectionId: latest?.id || "",
+        findings,
+        notes: notes.trim(),
+        photoRefs,
+        createdAt,
+        createdBy: user,
+      };
+      databaseSaveStarted = true;
+      const saved = await mutate(
+        { inspections: [inspection, ...db.inspections] },
+        `Осмотр ${order.number} сохранён · версия ${inspection.revision} · дефектов ${findings.length}`,
+      );
+      if (!saved) {
+        setPhotos(photoRefs);
+        setPendingPhotos([]);
+        setError("Облачное сохранение не подтверждено. Осмотр и фото оставлены в локальной очереди синхронизации — проверьте соединение и повторите сохранение.");
+        return;
+      }
+      setPhotos(photoRefs);
+      setPendingPhotos([]);
+    } catch (saveError) {
+      if (databaseSaveStarted) {
+        if (photoRefs) {
+          setPhotos(photoRefs);
+          setPendingPhotos([]);
+        }
+        setError(`Облачное сохранение не подтверждено: ${saveError.message}. Фото сохранены и оставлены для повторной синхронизации.`);
+      } else {
+        const cleanupErrors = await discardTemporaryPhotos(uploaded);
+        setError(cleanupErrors.length
+          ? `${saveError.message}. Не удалось удалить временные фото: ${cleanupErrors.join("; ")}`
+          : saveError.message);
+      }
+    } finally {
+      setUploadingPhotos(false);
+    }
+  };
+
+  const addPhotos = (event) => {
+    const selected = Array.from(event.currentTarget.files || []);
+    event.currentTarget.value = "";
+    const valid = selected.filter((file) =>
+      ["image/jpeg", "image/png", "image/webp"].includes(file.type) &&
+      file.size > 0 &&
+      file.size <= 5 * 1024 * 1024,
+    );
+    const invalidCount = selected.length - valid.length;
+    const availableCount = Math.max(0, MAX_INSPECTION_PHOTOS - photos.length - pendingPhotos.length);
+    const accepted = valid.slice(0, availableCount);
+    setPendingPhotos((current) => [...current, ...accepted]);
+    if (invalidCount || valid.length > availableCount) {
+      setError(
+        `${invalidCount ? "Допустимы только JPEG, PNG или WebP до 5 МБ. " : ""}` +
+        `${valid.length > availableCount ? `Можно прикрепить не более ${MAX_INSPECTION_PHOTOS} фото.` : ""}`.trim(),
+      );
+    } else {
+      setError("");
+    }
   };
 
   return (
@@ -684,12 +931,51 @@ function InspectionPanel({ order, db, mutate, user }) {
           <span>Общее состояние и замечания</span>
           <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Состояние кузова, салона, комплектность автомобиля…" />
         </label>
-        <div className="inspection-photo-unavailable">
-          Фото дефектов пока не прикрепляются: подключённое хранилище проекта — Google Sheets, оно не подходит для хранения изображений. Текстовый осмотр сохраняется полностью.
+        <div className="inspection-photos">
+          <strong><Camera size={14} /> Фото осмотра · {photos.length + pendingPhotos.length}/{MAX_INSPECTION_PHOTOS}</strong>
+          <label className="inspection-photo-upload">
+            <Upload size={14} />
+            <span>Добавить фото (JPEG, PNG, WebP до 5 МБ)</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              disabled={uploadingPhotos || photos.length + pendingPhotos.length >= MAX_INSPECTION_PHOTOS}
+              onChange={addPhotos}
+            />
+          </label>
+          {(photos.length > 0 || pendingPhotos.length > 0) && (
+            <div className="inspection-photo-grid">
+              {photos.map((photo) => (
+                <article key={photo.id}>
+                  <a href={`/api/files?id=${encodeURIComponent(photo.id)}`} target="_blank" rel="noreferrer">
+                    <img src={`/api/files?id=${encodeURIComponent(photo.id)}`} alt={photo.name || "Фото осмотра"} loading="lazy" />
+                  </a>
+                  <span title={photo.name}>{photo.name || "Фото осмотра"}</span>
+                  <button
+                    type="button"
+                    aria-label={`Убрать ${photo.name || "фото"} из новой версии`}
+                    onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))}
+                  ><X size={13} /></button>
+                </article>
+              ))}
+              {pendingPhotos.map((file, index) => (
+                <article className="pending" key={`${file.name}-${file.lastModified}-${index}`}>
+                  <div className="inspection-photo-placeholder"><Camera size={18} /></div>
+                  <span title={file.name}>{file.name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Убрать ${file.name}`}
+                    onClick={() => setPendingPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                  ><X size={13} /></button>
+                </article>
+              ))}
+            </div>
+          )}
         </div>
         {error && <p className="work-order-error" role="alert">{error}</p>}
-        <button type="button" className="action-btn" onClick={saveInspection}>
-          <ShieldCheck size={15} /> Сохранить осмотр {latest ? `v${(latest.revision || 0) + 1}` : ""}
+        <button type="button" className="action-btn" onClick={saveInspection} disabled={uploadingPhotos}>
+          <ShieldCheck size={15} /> {uploadingPhotos ? "Загрузка и сохранение…" : `Сохранить осмотр ${latest ? `v${(latest.revision || 0) + 1}` : ""}`}
         </button>
         {!!history.length && (
           <details className="inspection-history">
@@ -697,8 +983,26 @@ function InspectionPanel({ order, db, mutate, user }) {
             {history.map((inspection) => (
               <div key={inspection.id}>
                 <strong>Версия {inspection.revision} · {dateText(inspection.createdAt)}</strong>
-                <span>{inspection.findings?.length || 0} замечаний · {inspection.createdBy || "Сотрудник"}</span>
+                <span>{inspection.findings?.length || 0} замечаний · {getInspectionPhotos(inspection).length} фото · {inspection.createdBy || "Сотрудник"}</span>
                 {inspection.notes && <small>{inspection.notes}</small>}
+                {!!getInspectionPhotos(inspection).length && (
+                  <div className="inspection-history-photos">
+                    {getInspectionPhotos(inspection).map((photo) => (
+                      <a
+                        key={photo.id}
+                        href={`/api/files?id=${encodeURIComponent(photo.id)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <img
+                          src={`/api/files?id=${encodeURIComponent(photo.id)}`}
+                          alt={photo.name || `Фото осмотра, версия ${inspection.revision}`}
+                          loading="lazy"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </details>

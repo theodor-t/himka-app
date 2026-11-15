@@ -1,7 +1,18 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { ROLE_LABELS } from "./access-control.mjs";
 
 export const SESSION_COOKIE = "angel-detailing-session";
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const DEFAULT_ROLES = { TUDOR: "admin", DAN: "admin" };
+
+export const getUserRole = (username) => {
+  if (!Object.prototype.hasOwnProperty.call(DEFAULT_ROLES, username)) return null;
+  const role = process.env[`AUTH_${username}_ROLE`] || DEFAULT_ROLES[username];
+  if (!Object.prototype.hasOwnProperty.call(ROLE_LABELS, role)) {
+    throw new Error(`Invalid role configured for ${username}`);
+  }
+  return role;
+};
 
 const getSecret = () => {
   const secret = process.env.AUTH_SESSION_SECRET;

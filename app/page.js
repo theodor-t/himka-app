@@ -93,6 +93,7 @@ import {
   reminderChannelLinks,
 } from "./lib/messages.mjs";
 import { sortAuditLogsNewestFirst } from "./lib/audit.mjs";
+import { removeExpiredWindows } from "./lib/windows.mjs";
 import {
   DB_SCHEMA_VERSION,
   EMPTY_DB,
@@ -107,7 +108,17 @@ import WorkPosts from "./components/WorkPosts";
 import Waitlist from "./components/Waitlist";
 import Suppliers from "./components/Suppliers";
 import FinancialGoals from "./components/FinancialGoals";
+import NotificationCenter from "./components/NotificationCenter";
+import SystemStatus from "./components/SystemStatus";
 import { availableWorkPost } from "./lib/appointments.mjs";
+import { buildSystemNotifications, unreadSystemNotificationCount } from "./lib/notifications.mjs";
+import { searchRecords } from "./lib/global-search.mjs";
+import { roleCanViewPage } from "./lib/access-control.mjs";
+import {
+  AI_CAPTION_SERVICES,
+  AI_CAPTION_STYLES,
+  AI_CAPTION_TONES,
+} from "./lib/ai-caption.mjs";
 
 const SCRIPT_URL = "/api/db";
 const BACKUP_KEY = "angel-detailing-auto-backup";
@@ -137,6 +148,8 @@ const NAV = [
   ["waitlist", "Лист ожидания", Clock3],
   ["suppliers", "Поставщики", Truck],
   ["financialGoals", "Цели и план", Target],
+  ["notifications", "Уведомления", Bell],
+  ["systemStatus", "Состояние системы", Activity],
   ["customers", "Клиенты и автомобили", Users],
   ["clients", "Записи клиентов", CalendarPlus],
   ["expenses", "2. Затраты", Receipt],
@@ -148,7 +161,7 @@ const NAV = [
   ["logs", "8. Журнал логов", History],
 ];
 const NAV_GROUPS = [
-  { title: "ОБЗОР", items: ["home", "analytics", "weather"] },
+  { title: "ОБЗОР", items: ["home", "analytics", "notifications", "systemStatus", "weather"] },
   { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "orders", "workPosts", "waitlist", "customers", "clients", "services", "videoDescriptions", "reminderTemplates"] },
   { title: "ФИНАНСЫ", items: ["expenses", "profit", "financialGoals", "withdrawals", "debts"] },
   { title: "ОПЕРАЦИИ", items: ["warehouse", "suppliers", "windows", "logs"] },
@@ -332,6 +345,7 @@ function LoadingOverlay({ message }) {
 
 export default function Home() {
   const [user, setUser] = useState(null);
+  const [role, setRole] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [selectedUser, setSelectedUser] = useState("TUDOR");
   const [password, setPassword] = useState("");
@@ -340,7 +354,9 @@ export default function Home() {
   const [db, setDb] = useState(EMPTY_DB);
   const [page, setPage] = useState("home");
   const [sync, setSync] = useState("Загрузка...");
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [modal, setModal] = useState(null);
   const [globalSearch, setGlobalSearch] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -364,8 +380,14 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/auth")
       .then((response) => response.json())
-      .then(({ user: savedUser }) => setUser(savedUser || null))
-      .catch(() => setUser(null))
+      .then(({ user: savedUser, role: savedRole }) => {
+        setUser(savedUser || null);
+        setRole(savedRole || null);
+      })
+      .catch(() => {
+        setUser(null);
+        setRole(null);
+      })
       .finally(() => setSessionChecked(true));
   }, []);
 
@@ -414,7 +436,7 @@ export default function Home() {
     dataRevision.current += 1;
     dbRef.current = next;
     setDb(next);
-    persist(next);
+    return persist(next);
   };
   const persist = async (next) => {
     setLoadingMessage("Сохранение данных...");
@@ -436,13 +458,29 @@ export default function Home() {
     }
     pendingSaves.current += 1;
     saveQueue.current = saveQueue.current.then(async () => {
+      let succeeded = false;
       try {
         const response = await fetch(SCRIPT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: serialized,
         });
-        if (!response.ok) throw new Error(`Save failed (${response.status})`);
+        const responseBody = await response.text();
+        let payload;
+        try {
+          payload = JSON.parse(responseBody);
+        } catch {
+          const detail = responseBody.trim().slice(0, 180);
+          throw new Error(
+            detail || `Сервер вернул некорректный ответ (${response.status})`,
+          );
+        }
+        if (!response.ok || payload.error || Number(payload.status) >= 400) {
+          throw new Error(
+            payload.error || `Ошибка сохранения (${payload.status || response.status})`,
+          );
+        }
+        succeeded = true;
         if (revision === dataRevision.current) {
           localSavePending.current = false;
           try {
@@ -459,16 +497,18 @@ export default function Home() {
             // Keep the successful server response even if browser storage is unavailable.
           }
           setSync("✓ Сохранено");
+          setLastSyncedAt(new Date().toISOString());
         }
-      } catch {
+      } catch (error) {
         if (revision === dataRevision.current) {
           localSavePending.current = true;
-          setSync("⚠ Ошибка сохранения");
+          setSync(`⚠ ${error instanceof Error ? error.message : "Ошибка сохранения"}`);
         }
       } finally {
         pendingSaves.current = Math.max(0, pendingSaves.current - 1);
         if (revision === dataRevision.current) setLoadingMessage(null);
       }
+      return succeeded;
     });
     return saveQueue.current;
   };
@@ -489,8 +529,10 @@ export default function Home() {
       const response = await fetch(SCRIPT_URL, { cache: "no-store" });
       if (!response.ok) throw new Error();
       const payload = await response.json();
-      const freshDb = normalizeDb(payload);
+      const normalizedDb = normalizeDb(payload);
       if (revision !== dataRevision.current || pendingSaves.current > 0) return;
+      const expiration = removeExpiredWindows(normalizedDb);
+      const freshDb = expiration.database;
       dbRef.current = freshDb;
       setDb(freshDb);
       try {
@@ -499,6 +541,7 @@ export default function Home() {
         // Browser cache is optional; Google remains the source of truth.
       }
       if (
+        expiration.expired.length > 0 ||
         !Number.isSafeInteger(payload?.schemaVersion) ||
         payload.schemaVersion < DB_SCHEMA_VERSION
       ) {
@@ -506,6 +549,7 @@ export default function Home() {
         return;
       }
       setSync("✓ Google OK");
+      setLastSyncedAt(new Date().toISOString());
     } catch {
       setSync("⚠ Ошибка Google");
     } finally {
@@ -557,7 +601,9 @@ export default function Home() {
         body: JSON.stringify({ username: selectedUser, password }),
       });
       if (!response.ok) throw new Error();
-      setUser(selectedUser);
+      const session = await response.json();
+      setUser(session.user || selectedUser);
+      setRole(session.role || null);
       setAuthError(false);
     } catch {
       setAuthError(true);
@@ -571,6 +617,7 @@ export default function Home() {
     try {
       await fetch("/api/auth", { method: "DELETE" });
       setUser(null);
+      setRole(null);
       setPage("home");
       dbRef.current = EMPTY_DB;
       setDb(EMPTY_DB);
@@ -582,6 +629,35 @@ export default function Home() {
     setPage(next);
     setMenuOpen(false);
     setSort({ key: "", direction: 1 });
+  };
+  const searchPageByType = {
+    customer: "customers",
+    vehicle: "customers",
+    booking: "clients",
+    order: "orders",
+    supplier: "suppliers",
+  };
+  const searchResults = searchRecords(db, globalSearch).filter((result) =>
+    roleCanViewPage(role, searchPageByType[result.type]),
+  );
+  const unreadNotifications = unreadSystemNotificationCount(
+    buildSystemNotifications(db),
+    db.notifications,
+  );
+  const openSearchResult = (result) => {
+    setGlobalSearch("");
+    setMobileSearchOpen(false);
+    if (result.type === "customer") {
+      setModal({ type: "customer-profile", item: result.value });
+    } else if (result.type === "vehicle") {
+      setModal({ type: "vehicle-profile", item: result.value });
+    } else if (result.type === "booking") {
+      setModal({ type: "client-profile", item: result.value });
+    } else if (result.type === "order") {
+      navigate("orders");
+    } else if (result.type === "supplier") {
+      navigate("suppliers");
+    }
   };
   const sorted = (items, key, defaultDirection = 1) => {
     const activeKey = sort.key || key;
@@ -738,7 +814,9 @@ export default function Home() {
         page={page}
         db={db}
         user={user}
+        role={role}
         sync={sync}
+        lastSyncedAt={lastSyncedAt}
         totals={totals}
         monthly={monthly}
         years={years}
@@ -769,6 +847,7 @@ export default function Home() {
       page,
       db,
       user,
+      role,
       totals,
       monthly,
       years,
@@ -776,6 +855,7 @@ export default function Home() {
       period,
       profitMonth,
       sync,
+      lastSyncedAt,
       clientQuery,
       clientStatus,
       navigate,
@@ -807,7 +887,7 @@ export default function Home() {
           className={`overlay ${menuOpen ? "active" : ""}`}
           onClick={() => setMenuOpen(false)}
         />
-        <aside className={`sidebar ${menuOpen ? "mobile-open" : ""}`}>
+        <aside className={`sidebar ${menuOpen ? "mobile-open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
           <div className="sidebar-header">
             <div className="brand">
               <span className="brand-icon">
@@ -817,18 +897,31 @@ export default function Home() {
                 ANGEL <small>DETAILING</small>
               </span>
             </div>
+            <button
+              type="button"
+              className="sidebar-collapse-btn"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              aria-label={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
+              title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
+            >
+              {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
           </div>
           <nav className="nav-list">
-            {NAV_GROUPS.map((group) => (
+            {NAV_GROUPS.map((group) => {
+              const items = group.items.filter((id) => roleCanViewPage(role, id));
+              if (!items.length) return null;
+              return (
               <div className="nav-section" key={group.title}>
                 <span className="nav-section-title">{group.title}</span>
-                {group.items.map((id) => {
+                {items.map((id) => {
                   const [, label, Icon] = NAV.find((item) => item[0] === id);
                   return (
                     <button
                       key={id}
                       className={`nav-item ${page === id ? "active" : ""}`}
                       onClick={() => navigate(id)}
+                      title={sidebarCollapsed ? label : undefined}
                     >
                       <Icon size={18} />
                       <span>{label}</span>
@@ -836,7 +929,8 @@ export default function Home() {
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </nav>
           <div className="user-info-sidebar">
             <div className="user-profile">
@@ -886,21 +980,11 @@ export default function Home() {
                     setMobileSearchOpen(false);
                     event.currentTarget.blur();
                   }
-                  if (event.key === "Enter" && globalSearch.trim()) {
-                    const match = db.clients.find((client) =>
-                      [client.car, client.phone, client.service].some((value) =>
-                        String(value || "").toLocaleLowerCase("ru").includes(globalSearch.trim().toLocaleLowerCase("ru")),
-                      ),
-                    );
-                    if (match) {
-                      setGlobalSearch("");
-                      setMobileSearchOpen(false);
-                      setModal({ type: "client-profile", item: match });
-                    }
-                  }
+                  if (event.key === "Enter" && searchResults[0])
+                    openSearchResult(searchResults[0]);
                 }}
-                placeholder="Поиск клиента..."
-                aria-label="Поиск клиента по имени, авто или телефону"
+                placeholder="Поиск клиентов, авто, заказов..."
+                aria-label="Глобальный поиск по CRM"
               />
               {mobileSearchOpen && (
                 <button
@@ -917,38 +1001,42 @@ export default function Home() {
               )}
               {globalSearch.trim() && (
                 <div className="global-search-results">
-                  {db.clients
-                    .filter((client) =>
-                      [client.car, client.phone, client.service].some((value) =>
-                        String(value || "").toLocaleLowerCase("ru").includes(globalSearch.trim().toLocaleLowerCase("ru")),
-                      ),
-                    )
-                    .slice(0, 6)
-                    .map((client) => (
+                  {searchResults.map((result) => {
+                    const Icon = result.type === "customer"
+                      ? User
+                      : result.type === "vehicle" || result.type === "booking"
+                        ? CarFront
+                        : result.type === "order"
+                          ? ClipboardList
+                          : Truck;
+                    return (
                       <button
                         type="button"
-                        key={client.id}
-                        onClick={() => {
-                          setGlobalSearch("");
-                          setMobileSearchOpen(false);
-                          setModal({ type: "client-profile", item: client });
-                        }}
+                        key={result.id}
+                        onClick={() => openSearchResult(result)}
                       >
-                        <CarFront size={16} />
-                        <span><strong>{client.car}</strong><small>{client.phone || client.service || "Клиент"}</small></span>
+                        <Icon size={16} />
+                        <span><strong>{result.title}</strong><small>{result.detail}</small></span>
                         <ArrowRight size={14} />
                       </button>
-                    ))}
-                  {!db.clients.some((client) =>
-                    [client.car, client.phone, client.service].some((value) =>
-                      String(value || "").toLocaleLowerCase("ru").includes(globalSearch.trim().toLocaleLowerCase("ru")),
-                    ),
-                  ) && <p>Совпадений не найдено</p>}
+                    );
+                  })}
+                  {!searchResults.length && <p>Совпадений не найдено</p>}
                 </div>
               )}
             </div>
             <div className="top-bar-actions">
-              <span className="sync-status">{sync}</span>
+              <button
+                type="button"
+                className="notification-bell"
+                onClick={() => navigate("notifications")}
+                aria-label={`Уведомления: ${unreadNotifications} непрочитано`}
+                title="Центр уведомлений"
+              >
+                <Bell size={17} />
+                {unreadNotifications > 0 && <span>{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
+              </button>
+              <span className="sync-status" title={sync} role="status" aria-live="polite">{sync}</span>
               <button
                 className="page-reload-btn"
                 type="button"
@@ -960,7 +1048,11 @@ export default function Home() {
               </button>
             </div>
           </header>
-          <div className="page-container">{pageContent}</div>
+          <div className="page-container">
+            <fieldset className="page-content-fieldset" disabled={role === "readonly"}>
+              {pageContent}
+            </fieldset>
+          </div>
         </main>
         {modal?.type === "customer-profile" ? (
           <CustomerProfile
@@ -1129,7 +1221,9 @@ function PageContent({
   page,
   db,
   user,
+  role,
   sync,
+  lastSyncedAt,
   totals,
   monthly,
   years,
@@ -1152,11 +1246,21 @@ function PageContent({
   exportData,
   importData,
 }) {
+  if (!roleCanViewPage(role, page)) {
+    return (
+      <section className="card customers-empty">
+        <ShieldCheck size={25} />
+        <h3>Недостаточно прав</h3>
+        <p>Эта страница недоступна для вашей роли.</p>
+      </section>
+    );
+  }
   if (page === "home")
     return (
       <Dashboard
         db={db}
         user={user}
+        role={role}
         totals={totals}
         monthly={monthly}
         sync={sync}
@@ -1220,6 +1324,10 @@ function PageContent({
     return <Suppliers db={db} mutate={mutate} user={user} />;
   if (page === "financialGoals")
     return <FinancialGoals db={db} mutate={mutate} />;
+  if (page === "notifications")
+    return <NotificationCenter db={db} mutate={mutate} navigate={navigate} />;
+  if (page === "systemStatus")
+    return <SystemStatus db={db} role={role} sync={sync} lastSyncedAt={lastSyncedAt} reload={reload} exportData={exportData} />;
   if (page === "weather") return <WeatherPage />;
   if (page === "calendar")
     return <CalendarPage db={db} openModal={openModal} />;
@@ -1430,9 +1538,40 @@ function VideoDescriptionsPage({ db, mutate, user }) {
   const [editingId, setEditingId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [form, setForm] = useState({ title: "", caption: "", hashtags: "" });
+  const [aiServiceId, setAiServiceId] = useState(AI_CAPTION_SERVICES[0].id);
+  const [aiToneId, setAiToneId] = useState(AI_CAPTION_TONES[0].id);
+  const [aiStyleId, setAiStyleId] = useState(AI_CAPTION_STYLES[0].id);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
   const resetForm = () => {
     setEditingId(null);
     setForm({ title: "", caption: "", hashtags: "" });
+  };
+  const generateAiCaption = async () => {
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const response = await fetch("/api/ai/video-caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceId: aiServiceId,
+          toneId: aiToneId,
+          styleId: aiStyleId,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Не удалось создать описание");
+      setForm((current) => ({
+        ...current,
+        caption: result.caption,
+        hashtags: result.hashtags.join(" "),
+      }));
+    } catch (error) {
+      setAiError(error.message);
+    } finally {
+      setAiLoading(false);
+    }
   };
   const save = (event) => {
     event.preventDefault();
@@ -1485,6 +1624,31 @@ function VideoDescriptionsPage({ db, mutate, user }) {
       <section className="video-library-layout">
         <form className="card video-description-form" onSubmit={save}>
           <div className="card-header"><span>{editingId ? "Редактировать шаблон" : "Новый шаблон"}</span>{editingId && <button type="button" className="text-action" onClick={resetForm}>Отмена</button>}</div>
+          <section className="video-ai-generator" aria-label="Создание описания с Gemini">
+            <div className="video-ai-heading"><Sparkles size={15} /><strong>Создать с Gemini</strong><span>без данных клиентов</span></div>
+            <Field label="Услуга">
+              <select value={aiServiceId} onChange={(event) => setAiServiceId(event.target.value)}>
+                {AI_CAPTION_SERVICES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+            </Field>
+            <div className="video-ai-options">
+              <Field label="Тон">
+                <select value={aiToneId} onChange={(event) => setAiToneId(event.target.value)}>
+                  {AI_CAPTION_TONES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              </Field>
+              <Field label="Формат">
+                <select value={aiStyleId} onChange={(event) => setAiStyleId(event.target.value)}>
+                  {AI_CAPTION_STYLES.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              </Field>
+            </div>
+            <button type="button" className="video-ai-generate" onClick={generateAiCaption} disabled={aiLoading}>
+              {aiLoading ? <LoaderCircle size={14} className="loading-spinner" /> : <Sparkles size={14} />}
+              {aiLoading ? "Создаём…" : "Сгенерировать подпись"}
+            </button>
+            {aiError && <p className="video-ai-error" role="alert">{aiError}</p>}
+          </section>
           <Field label="Название для поиска"><input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Например, химчистка салона" /></Field>
           <Field label="Описание видео"><textarea className="video-caption-input" value={form.caption} onChange={(event) => setForm({ ...form, caption: event.target.value })} placeholder="Расскажите коротко, что сделали в этом видео…" /></Field>
           <Field label="Хэштеги"><textarea className="video-tags-input" value={form.hashtags} onChange={(event) => setForm({ ...form, hashtags: event.target.value })} placeholder="#детейлинг #авто #кишинёв" /></Field>
@@ -2150,6 +2314,7 @@ function CustomerRecordEditor({ type, item, preset, db, user, mutate, onClose })
 function Dashboard({
   db,
   user,
+  role,
   totals,
   monthly,
   sync,
@@ -2180,17 +2345,27 @@ function Dashboard({
   const todayAppointments = appointments.filter((client) =>
     isSameDay(client.datetime, today),
   );
-  const dashboardMetrics = [
-    ["Баланс кассы", totals.cash, "cyan", Wallet],
-    ["Доходы всего", totals.income, "success", TrendingUp],
-    ["Затраты всего", totals.commonExpenses, "warning", Receipt],
-    [
-      "Остаток к оплате",
-      sumAmounts(db.clients, (client) => outstandingForClient(db, client)),
-      "danger",
-      Bell,
-    ],
-  ];
+  const activeOrders = db.orders.filter(
+    (order) => !["Завершён", "Выдан клиенту", "Отменён"].includes(order.status),
+  );
+  const dashboardMetrics = role === "technician"
+    ? [
+        ["Записи сегодня", todayAppointments.length, "cyan", CalendarDays],
+        ["Заказы в работе", activeOrders.length, "success", ClipboardList],
+        ["Низкий остаток", totals.lowStock.length, "warning", Package],
+        ["Рабочие посты", db.workPosts.filter((post) => !post.archived && post.status !== "maintenance").length, "danger", Wrench],
+      ]
+    : [
+        ["Баланс кассы", totals.cash, "cyan", Wallet],
+        ["Доходы всего", totals.income, "success", TrendingUp],
+        ["Затраты всего", totals.commonExpenses, "warning", Receipt],
+        [
+          "Остаток к оплате",
+          sumAmounts(db.clients, (client) => outstandingForClient(db, client)),
+          "danger",
+          Bell,
+        ],
+      ];
   return (
     <div className="dashboard-shell">
       <section className="dashboard-welcome">
@@ -2210,21 +2385,29 @@ function Dashboard({
           <Button icon={CalendarPlus} onClick={() => openModal({ type: "client" })}>
             Новая запись
           </Button>
-          <Button variant="secondary" icon={ChartNoAxesCombined} onClick={() => navigate("analytics")}>
-            Аналитика
-          </Button>
-          <Button variant="secondary" icon={Sparkles} onClick={() => navigate("services")}>
-            Прайс-лист
-          </Button>
+          {role !== "technician" && (
+            <Button variant="secondary" icon={ChartNoAxesCombined} onClick={() => navigate("analytics")}>
+              Аналитика
+            </Button>
+          )}
+          {role !== "technician" && (
+            <Button variant="secondary" icon={Sparkles} onClick={() => navigate("services")}>
+              Прайс-лист
+            </Button>
+          )}
           <Button variant="secondary" icon={RefreshCw} onClick={reload} title="Обновить данные" aria-label="Обновить данные" />
-          <Button variant="secondary" icon={FileText} onClick={() => { window.print(); addLog("Сформирован печатный отчёт"); }} title="Сформировать PDF" aria-label="Сформировать PDF" />
-          <details className="dashboard-tools">
-            <summary><Save size={15} /> Бэкап</summary>
-            <div>
-              <button type="button" onClick={exportData}>Скачать резервную копию</button>
-              <label>Восстановить из файла<input type="file" accept="application/json,.json" onChange={importData} /></label>
-            </div>
-          </details>
+          {role !== "technician" && (
+            <>
+              <Button variant="secondary" icon={FileText} onClick={() => { window.print(); addLog("Сформирован печатный отчёт"); }} title="Сформировать PDF" aria-label="Сформировать PDF" />
+              <details className="dashboard-tools">
+                <summary><Save size={15} /> Бэкап</summary>
+                <div>
+                  <button type="button" onClick={exportData}>Скачать резервную копию</button>
+                  <label>Восстановить из файла<input type="file" accept="application/json,.json" onChange={importData} /></label>
+                </div>
+              </details>
+            </>
+          )}
         </div>
       </section>
       <nav className="dashboard-mobile-quick-actions" aria-label="Быстрые действия">
@@ -2233,14 +2416,26 @@ function Dashboard({
           <span>Основные операции без поиска по меню</span>
         </div>
         <div className="dashboard-mobile-quick-grid">
-          <button type="button" disabled={!getUnpaidClients(db).length} onClick={() => openModal({ type: "income" })}><CircleDollarSign /><span>Оплата</span></button>
-          <button type="button" onClick={() => openModal({ type: "expense" })}><Receipt /><span>Расход</span></button>
-          <button type="button" onClick={() => openModal({ type: "withdrawal" })}><Wallet /><span>Вывод</span></button>
-          <button type="button" onClick={() => openModal({ type: "warehouse" })}><Package /><span>Товар</span></button>
-          <button type="button" onClick={() => openModal({ type: "debt" })}><CircleDollarSign /><span>Долг</span></button>
-          <button type="button" onClick={() => openModal({ type: "window" })}><CalendarPlus /><span>Свободное окно</span></button>
-          <button type="button" onClick={() => navigate("clients")}><Users /><span>Клиенты</span></button>
-          <button type="button" onClick={() => navigate("calendar")}><CalendarDays /><span>Календарь</span></button>
+          {role === "technician" ? (
+            <>
+              <button type="button" onClick={() => openModal({ type: "window" })}><CalendarPlus /><span>Свободное окно</span></button>
+              <button type="button" onClick={() => openModal({ type: "warehouse" })}><Package /><span>Склад</span></button>
+              <button type="button" onClick={() => navigate("orders")}><ClipboardList /><span>Заказы</span></button>
+              <button type="button" onClick={() => navigate("customers")}><Users /><span>Клиенты</span></button>
+              <button type="button" onClick={() => navigate("calendar")}><CalendarDays /><span>Календарь</span></button>
+            </>
+          ) : (
+            <>
+              <button type="button" disabled={!getUnpaidClients(db).length} onClick={() => openModal({ type: "income" })}><CircleDollarSign /><span>Оплата</span></button>
+              <button type="button" onClick={() => openModal({ type: "expense" })}><Receipt /><span>Расход</span></button>
+              <button type="button" onClick={() => openModal({ type: "withdrawal" })}><Wallet /><span>Вывод</span></button>
+              <button type="button" onClick={() => openModal({ type: "warehouse" })}><Package /><span>Товар</span></button>
+              <button type="button" onClick={() => openModal({ type: "debt" })}><CircleDollarSign /><span>Долг</span></button>
+              <button type="button" onClick={() => openModal({ type: "window" })}><CalendarPlus /><span>Свободное окно</span></button>
+              <button type="button" onClick={() => navigate("clients")}><Users /><span>Клиенты</span></button>
+              <button type="button" onClick={() => navigate("calendar")}><CalendarDays /><span>Календарь</span></button>
+            </>
+          )}
         </div>
       </nav>
       <section className="dashboard-metrics">
@@ -2250,14 +2445,12 @@ function Dashboard({
               <span>{label}</span>
               <Icon size={17} />
             </div>
-            <strong>{money(value)}</strong>
-            <small>
-              {label === "Баланс кассы"
-                ? "после расходов и выводов"
-                : label === "Остаток к оплате"
-                  ? "по заданным ценам и долгам"
-                  : "за всё время"}
-            </small>
+            <strong>{role === "technician" ? value : money(value)}</strong>
+            <small>{role === "technician" ? "оперативный показатель мастерской" : label === "Баланс кассы"
+              ? "после расходов и выводов"
+              : label === "Остаток к оплате"
+                ? "по заданным ценам и долгам"
+                : "за всё время"}</small>
           </div>
         ))}
       </section>
@@ -2308,29 +2501,42 @@ function Dashboard({
             <div className="empty-reminder">Нет ближайших записей</div>
           )}
         </div>
-        <div className="card snapshot-card">
-          <div className="card-header">
-            <span>Список должников</span>
-            <Wallet size={18} className="warning-icon" />
+        {role === "technician" ? (
+          <div className="card snapshot-card">
+            <div className="card-header"><span>Заказы мастерской</span><ClipboardList size={18} className="red-icon" /></div>
+            {activeOrders.length ? activeOrders.slice(0, 5).map((order) => (
+              <div className="appointment-item" key={order.id}>
+                <Wrench size={16} />
+                <div><strong>{order.number || order.car || "Заказ"}</strong><span>{order.car || "Автомобиль"} · {order.status}</span></div>
+              </div>
+            )) : <div className="empty-reminder">Активных заказов нет</div>}
           </div>
-          <DebtorsPreview db={db} navigate={navigate} />
-        </div>
+        ) : (
+          <div className="card snapshot-card">
+            <div className="card-header"><span>Список должников</span><Wallet size={18} className="warning-icon" /></div>
+            <DebtorsPreview db={db} navigate={navigate} />
+          </div>
+        )}
       </section>
-      <PrintReport
-        db={db}
-        totals={totals}
-        todayAppointments={todayAppointments}
-        monthly={monthly}
-        reportYear={reportYear}
-      />
-      <FinancialInsights
-        db={db}
-        totals={totals}
-        monthly={monthly}
-        years={years}
-        reportYear={reportYear}
-        setReportYear={setReportYear}
-      />
+      {role !== "technician" && (
+        <>
+          <PrintReport
+            db={db}
+            totals={totals}
+            todayAppointments={todayAppointments}
+            monthly={monthly}
+            reportYear={reportYear}
+          />
+          <FinancialInsights
+            db={db}
+            totals={totals}
+            monthly={monthly}
+            years={years}
+            reportYear={reportYear}
+            setReportYear={setReportYear}
+          />
+        </>
+      )}
     </div>
   );
 }

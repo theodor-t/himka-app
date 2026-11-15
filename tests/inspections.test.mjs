@@ -21,5 +21,9 @@ test("inspection summary handles findings and optional photo references", () => 
       { part: "Салон" },
     ],
   }), { findingCount: 2, photoCount: 2 });
+  assert.deepEqual(inspectionSummary({
+    findings: [{ part: "Капот", photos: ["finding-photo"] }],
+    photoRefs: [{ id: "inspection-photo-1" }, { id: "inspection-photo-2" }],
+  }), { findingCount: 1, photoCount: 3 });
   assert.deepEqual(inspectionSummary(null), { findingCount: 0, photoCount: 0 });
 });

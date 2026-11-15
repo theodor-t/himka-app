@@ -31,6 +31,9 @@ validates file type and size, then sends Gemini file references as multimodal
 input. It never sends a client-provided SQL query to the database. Deploy the
 updated `google-apps-script/Code.gs` web app before using chat history or
 attachments in production; localhost preview storage is in-memory only.
+The `Database` sheet remains compatible with existing JSON in `A1`; snapshots
+larger than 40,000 characters are stored in chunked cells to stay below the
+Google Sheets per-cell limit.
 
 In CRM mode, ANGEL AI can prepare one create/update/delete proposal for a
 collection the signed-in role may edit. It does not write until the user

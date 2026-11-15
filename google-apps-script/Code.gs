@@ -4,6 +4,8 @@
  */
 const SPREADSHEET_ID = "1oeCmLQMyshlypcv0oZ_xy0v_jouelNv8pG71_BuoA1o";
 const DATABASE_SHEET = "Database";
+const DATABASE_CHUNK_HEADER = "ANGEL_DB_CHUNKED_V1";
+const DATABASE_CHUNK_SIZE = 40000;
 const DB_SCHEMA_VERSION = 5;
 const REQUIRED_COLLECTIONS = [
   "clients",
@@ -990,9 +992,7 @@ function migrateLegacyAutospaDb() {
     throw new Error("Database sheet already contains data; refusing to overwrite it");
   }
 
-  sheet.getRange("A1").setValue(JSON.stringify(database));
-  sheet.getRange("A1").setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
-  sheet.setFrozenRows(0);
+  writeDatabaseSnapshot(sheet, database);
   Logger.log("AUTOSPA_DB copied to Database. The original AUTOSPA_DB backup was kept.");
   return "Migration complete. AUTOSPA_DB remains as a backup.";
 }
@@ -1001,7 +1001,18 @@ function readDatabase() {
   const sheet = getDatabaseSheet();
   const value = sheet.getRange("A1").getValue();
   if (!value) return createEmptyDatabase();
-  const data = JSON.parse(value);
+  const manifest = readDatabaseChunkManifest(value);
+  const serialized = manifest
+    ? sheet.getRange(
+        manifest.column === "A" ? 2 : 1,
+        manifest.column === "A" ? 1 : 2,
+        manifest.count,
+        1
+      ).getValues().map(function (row) {
+        return String(row[0] || "");
+      }).join("")
+    : String(value);
+  const data = JSON.parse(serialized);
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     throw new Error("Invalid database");
   }
@@ -1024,7 +1035,55 @@ function writeDatabase(data) {
       next[collection] = current[collection] || [];
     }
   });
-  sheet.getRange("A1").setValue(JSON.stringify(next));
+  writeDatabaseSnapshot(sheet, next);
+}
+
+function readDatabaseChunkManifest(value) {
+  const text = String(value || "");
+  if (text.indexOf(DATABASE_CHUNK_HEADER + ":") !== 0) return null;
+  const match = text.match(/^ANGEL_DB_CHUNKED_V1:([AB]):(\d+)$/);
+  const count = match ? Number(match[2]) : 0;
+  if (!match || !Number.isSafeInteger(count) || count < 1) {
+    throw new Error("Invalid database chunk manifest");
+  }
+  return { column: match[1], count: count };
+}
+
+function splitDatabaseJson(serialized) {
+  const chunks = [];
+  let start = 0;
+  while (start < serialized.length) {
+    let end = Math.min(start + DATABASE_CHUNK_SIZE, serialized.length);
+    if (end < serialized.length) {
+      const lastCodeUnit = serialized.charCodeAt(end - 1);
+      if (lastCodeUnit >= 0xD800 && lastCodeUnit <= 0xDBFF) end -= 1;
+    }
+    chunks.push(serialized.slice(start, end));
+    start = end;
+  }
+  return chunks;
+}
+
+function writeDatabaseSnapshot(sheet, database) {
+  const serialized = JSON.stringify(database);
+  if (serialized.length <= DATABASE_CHUNK_SIZE) {
+    const firstCell = sheet.getRange("A1");
+    firstCell.setNumberFormat("@");
+    firstCell.setValue(serialized);
+  } else {
+    const currentManifest = readDatabaseChunkManifest(sheet.getRange("A1").getValue());
+    const targetColumn = currentManifest?.column === "A" ? "B" : "A";
+    const columnNumber = targetColumn === "A" ? 1 : 2;
+    const startRow = targetColumn === "A" ? 2 : 1;
+    const chunks = splitDatabaseJson(serialized);
+    const chunkRange = sheet.getRange(startRow, columnNumber, chunks.length, 1);
+    chunkRange.setNumberFormat("@");
+    chunkRange.setValues(chunks.map(function (chunk) { return [chunk]; }));
+
+    const firstCell = sheet.getRange("A1");
+    firstCell.setNumberFormat("@");
+    firstCell.setValue(DATABASE_CHUNK_HEADER + ":" + targetColumn + ":" + chunks.length);
+  }
   sheet.getRange("A1").setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
   sheet.setFrozenRows(0);
 }

@@ -9,17 +9,59 @@ const code = await readFile(
 );
 
 function createMigrationContext({ legacyValue, initialCell = "" }) {
-  let cellValue = initialCell;
+  const cells = new Map([["1,1", initialCell]]);
   const properties = { AUTOSPA_DB: legacyValue };
   const logs = [];
-  const range = {
-    getValue: () => cellValue,
-    setValue: (value) => { cellValue = value; },
-    setWrapStrategy: () => {},
-  };
+  function getCoordinates(row, column, rowCount = 1, columnCount = 1) {
+    if (typeof row === "string") {
+      const match = row.match(/^([A-Z]+)(\d+)$/);
+      if (!match) throw new Error(`Unsupported range: ${row}`);
+      column = match[1].split("").reduce((value, letter) =>
+        value * 26 + letter.charCodeAt(0) - 64, 0);
+      row = Number(match[2]);
+    }
+    return { row, column, rowCount, columnCount };
+  }
   const sheet = {
-    getRange: () => range,
-    setFrozenRows: () => {},
+    getRange(row, column, rowCount = 1, columnCount = 1) {
+      const coordinates = getCoordinates(row, column, rowCount, columnCount);
+      const key = (rowIndex, columnIndex) => `${rowIndex},${columnIndex}`;
+      return {
+        getValue: () => cells.get(key(coordinates.row, coordinates.column)) || "",
+        setValue(value) {
+          if (typeof value === "string" && value.length > 50000) {
+            throw new Error("Maximum cell content length (50000) exceeded");
+          }
+          cells.set(key(coordinates.row, coordinates.column), value);
+        },
+        getValues() {
+          return Array.from({ length: coordinates.rowCount }, (_, rowOffset) =>
+            Array.from({ length: coordinates.columnCount }, (_, columnOffset) =>
+              cells.get(key(
+                coordinates.row + rowOffset,
+                coordinates.column + columnOffset,
+              )) || "",
+            ),
+          );
+        },
+        setValues(values) {
+          values.forEach((value, rowOffset) => {
+            value.forEach((cellValue, columnOffset) => {
+              if (typeof cellValue === "string" && cellValue.length > 50000) {
+                throw new Error("Maximum cell content length (50000) exceeded");
+              }
+              cells.set(key(
+                coordinates.row + rowOffset,
+                coordinates.column + columnOffset,
+              ), cellValue);
+            });
+          });
+        },
+        setNumberFormat() {},
+        setWrapStrategy() {},
+      };
+    },
+    setFrozenRows() {},
   };
   const spreadsheet = {
     getSheetByName: () => sheet,
@@ -41,7 +83,10 @@ function createMigrationContext({ legacyValue, initialCell = "" }) {
   vm.runInNewContext(code, context);
   return {
     migrate: () => context.migrateLegacyAutospaDb(),
-    getCell: () => cellValue,
+    read: () => context.readDatabase(),
+    write: (database) => context.writeDatabase(database),
+    getCell: () => cells.get("1,1") || "",
+    getCellAt: (row, column) => cells.get(`${row},${column}`) || "",
     getLegacyValue: () => properties.AUTOSPA_DB,
     logs,
   };
@@ -84,6 +129,30 @@ test("legacy migration refuses to overwrite an existing Database sheet", () => {
 
   assert.throws(migration.migrate, /refusing to overwrite it/);
   assert.equal(migration.getCell(), existing);
+});
+
+test("database snapshots larger than a sheet cell are stored in chunks and remain readable", () => {
+  const migration = createMigrationContext({
+    legacyValue: "{}",
+    initialCell: JSON.stringify({ schemaVersion: 5, customers: [] }),
+  });
+  const database = migration.read();
+  database.customers = [{ id: "customer-1", notes: "x".repeat(90_000) }];
+
+  migration.write(database);
+  assert.match(migration.getCell(), /^ANGEL_DB_CHUNKED_V1:[AB]:\d+$/);
+  assert.equal(migration.read().customers[0].notes.length, 90_000);
+
+  const updated = migration.read();
+  updated.customers[0].notes = "y".repeat(100_000);
+  migration.write(updated);
+  assert.match(migration.getCell(), /^ANGEL_DB_CHUNKED_V1:[AB]:\d+$/);
+  assert.equal(migration.read().customers[0].notes.length, 100_000);
+
+  const compact = migration.read();
+  compact.customers = [];
+  migration.write(compact);
+  assert.equal(JSON.parse(migration.getCell()).customers.length, 0);
 });
 
 test("AI chat attachment upload stores Gemini metadata and migrates the sheet without Drive", () => {

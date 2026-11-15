@@ -33,6 +33,17 @@ Apps Script lock and Script Properties.
 After changing `Code.gs`, update the deployed Apps Script web app version before
 installing the trigger. Resolved notification records are retained for 180 days.
 
+## Migrating legacy `AUTOSPA_DB` data
+
+If the current script stores its database in the `AUTOSPA_DB` Script Property,
+copy the updated `Code.gs` into that same Apps Script project and save it. Before
+deploying, select `migrateLegacyAutospaDb` in the function list and run it once.
+The function validates the legacy JSON and copies it into the configured
+spreadsheet's `Database` sheet. It refuses to overwrite a non-empty `Database`
+sheet and keeps `AUTOSPA_DB` unchanged as a backup. Review the execution log for
+the migration result, then update the existing web app deployment to a new
+version.
+
 ## Inspection photos
 
 Vehicle inspection photos are kept in a private Google Drive folder; only file

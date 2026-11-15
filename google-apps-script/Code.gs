@@ -1041,6 +1041,36 @@ function getDatabaseSheet() {
   return spreadsheet.getSheetByName(DATABASE_SHEET) || spreadsheet.insertSheet(DATABASE_SHEET);
 }
 
+function migrateLegacyAutospaDb() {
+  const legacyValue = PropertiesService.getScriptProperties().getProperty("AUTOSPA_DB");
+  if (!legacyValue) throw new Error("AUTOSPA_DB was not found; no data was migrated");
+
+  let legacyData;
+  try {
+    legacyData = JSON.parse(legacyValue);
+  } catch (error) {
+    throw new Error("AUTOSPA_DB is not valid JSON; no data was migrated");
+  }
+  if (!legacyData || typeof legacyData !== "object" || Array.isArray(legacyData)) {
+    throw new Error("AUTOSPA_DB is not a database object; no data was migrated");
+  }
+
+  const database = Object.assign(createEmptyDatabase(), legacyData);
+  if (!Number.isSafeInteger(legacyData.schemaVersion)) database.schemaVersion = 1;
+  validateDatabase(database);
+
+  const sheet = getDatabaseSheet();
+  if (sheet.getRange("A1").getValue()) {
+    throw new Error("Database sheet already contains data; refusing to overwrite it");
+  }
+
+  sheet.getRange("A1").setValue(JSON.stringify(database));
+  sheet.getRange("A1").setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+  sheet.setFrozenRows(0);
+  Logger.log("AUTOSPA_DB copied to Database. The original AUTOSPA_DB backup was kept.");
+  return "Migration complete. AUTOSPA_DB remains as a backup.";
+}
+
 function readDatabase() {
   const sheet = getDatabaseSheet();
   const value = sheet.getRange("A1").getValue();

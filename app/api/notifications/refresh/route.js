@@ -271,7 +271,11 @@ export async function POST(request) {
       try {
         allowAiRequest = await claimAiRequestSlot(remote.url, remote.apiKey);
       } catch (error) {
-        limitWarning = error instanceof Error ? error.message : "Не удалось проверить лимит AI-запросов.";
+        limitWarning = error instanceof Error && /Invalid collection:\s*clients/i.test(error.message)
+          ? "AI-объяснения пропущены: опубликованный Google Apps Script пока не поддерживает ограничение AI-запросов."
+          : error instanceof Error
+            ? error.message
+            : "Не удалось проверить лимит AI-запросов.";
       }
     }
     const enriched = await enrichWithGemini(notifications, allowAiRequest);

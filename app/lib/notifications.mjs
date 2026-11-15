@@ -522,18 +522,28 @@ export function reconcileSmartNotifications(existingNotifications, candidates, n
   });
 
   const smart = existing.filter(isSmartNotification);
+  const canonicalActiveIds = new Set(
+    [...activeByKey.values()].map((item) => item.id),
+  );
   const resolved = smart
-    .filter((item) => item.status === "active" && !currentKeys.has(item.dedupeKey))
+    .filter((item) =>
+      item.status === "active" &&
+      canonicalActiveIds.has(item.id) &&
+      !currentKeys.has(item.dedupeKey),
+    )
     .map((item) => ({ ...item, status: "resolved", resolvedAt: timestamp, updatedAt: timestamp }));
   const byId = new Map();
   existing.filter((item) => !isSmartNotification(item)).forEach((item) => byId.set(item.id, item));
   const retentionCutoff = new Date(timestamp).getTime() - 180 * DAY;
   smart.filter((item) => {
+    if (item.status === "active") {
+      return canonicalActiveIds.has(item.id) && currentKeys.has(item.dedupeKey);
+    }
     if (item.status === "resolved" && item.resolvedAt) {
       const resolvedTime = parseRecordDate(item.resolvedAt)?.getTime();
       if (Number.isFinite(resolvedTime) && resolvedTime < retentionCutoff) return false;
     }
-    return item.status !== "active" || currentKeys.has(item.dedupeKey);
+    return true;
   })
     .forEach((item) => byId.set(item.id, item));
   resolved.forEach((item) => byId.set(item.id, item));

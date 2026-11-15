@@ -113,6 +113,15 @@ export default function NotificationCenter({
   );
   const allNotifications = db.notifications.filter((item) => item.smart === true);
   const activeNotifications = allNotifications.filter(isActive);
+  const viewCounts = {
+    active: activeNotifications.filter((item) => {
+      const state = notificationState(item, user);
+      return !state.archived && !state.dismissed;
+    }).length,
+    archived: allNotifications.filter((item) => notificationState(item, user).archived).length,
+    dismissed: allNotifications.filter((item) => notificationState(item, user).dismissed).length,
+    resolved: allNotifications.filter((item) => item.status === "resolved").length,
+  };
   const visibleNotifications = allNotifications.filter((item) => {
     const state = notificationState(item, user);
     if (view === "archived") return state.archived;
@@ -228,6 +237,21 @@ export default function NotificationCenter({
     navigate(notification.page || "home");
   };
 
+  const relatedActionLabel = (notification) => {
+    switch (notification.related?.type) {
+      case "customer":
+        return "Открыть клиента";
+      case "appointment":
+        return "Открыть запись";
+      case "inventory":
+        return "Открыть склад";
+      case "order":
+        return "Открыть заказ";
+      default:
+        return "Открыть раздел";
+    }
+  };
+
   const todayKey = new Date().toDateString();
   const todayAppointments = db.clients.filter((item) => {
     const date = parseRecordDate(item.datetime);
@@ -274,7 +298,15 @@ export default function NotificationCenter({
         </div>
       </section>
 
-      {!!error && <p className="notification-feedback" role="status">{error}</p>}
+      {!!error && (
+        <div className="notification-feedback" role="status" aria-live="polite">
+          <CircleAlert size={17} />
+          <p>{error}</p>
+          <button type="button" onClick={() => setError("")} aria-label="Скрыть сообщение">
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {preferences.dailyDigest && (
         <section className="notification-digest card">
@@ -299,7 +331,7 @@ export default function NotificationCenter({
               ["resolved", "Решённые"],
             ].map(([id, label]) => (
               <button type="button" role="tab" aria-selected={view === id} className={view === id ? "active" : ""} key={id} onClick={() => setView(id)}>
-                {label}
+                {label}<span className="notification-tab-count">{viewCounts[id]}</span>
               </button>
             ))}
           </div>
@@ -312,7 +344,7 @@ export default function NotificationCenter({
               </select>
             </label>
             <button type="button" className="btn-sm" onClick={markAllRead} disabled={!visibleNotifications.some((item) => !notificationState(item, user).read)}>
-              <Check size={14} /> Прочитать все
+              <Check size={14} /> Отметить прочитанными
             </button>
             <button type="button" className={`btn-sm notification-settings-toggle${settingsOpen ? " active" : ""}`} onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen}>
               <Settings2 size={14} /> Настройки
@@ -367,8 +399,11 @@ export default function NotificationCenter({
       </section>
 
       <div className="notification-list-heading">
-        <span>{visibleNotifications.length ? `${visibleNotifications.length} уведомлений` : "Уведомлений нет"}</span>
-        <span>Сортировка: сначала новые</span>
+        <div>
+          <strong>{visibleNotifications.length ? `${visibleNotifications.length} уведомлений` : "Уведомлений нет"}</strong>
+          <span>{view === "active" ? "Сначала новые" : "История уведомлений"}</span>
+        </div>
+        {visibleNotifications.length > 0 && <span>Новые события будут сверху</span>}
       </div>
       <section className="notification-list">
         {visibleNotifications.map((notification) => {
@@ -399,7 +434,7 @@ export default function NotificationCenter({
               </div>
               <div className="notification-actions">
                 {!state.read && <button type="button" className="btn-sm" onClick={() => markRead(notification)}><Check size={13} /> Прочитано</button>}
-                <button type="button" className="btn-sm notification-open-action" onClick={() => openRelated(notification)}>Открыть запись</button>
+                <button type="button" className="btn-sm notification-open-action" onClick={() => openRelated(notification)}>{relatedActionLabel(notification)}</button>
                 {view === "archived"
                   ? <button type="button" className="btn-sm" onClick={() => changeUserState(notification, "archivedBy", null, "Возвращено из архива уведомление")}>Вернуть</button>
                   : <button type="button" className="btn-sm notification-icon-action" title="В архив" aria-label="В архив" onClick={() => changeUserState(notification, "archivedBy", new Date().toISOString(), "В архив отправлено уведомление")}><Archive size={14} /></button>}
@@ -415,6 +450,11 @@ export default function NotificationCenter({
             <Bell size={24} />
             <h3>{view === "active" ? "Всё спокойно" : "Здесь пока пусто"}</h3>
             <p>{view === "active" ? "Новых ситуаций, требующих внимания, не найдено." : "Для выбранного фильтра нет уведомлений."}</p>
+            {(category !== "all" || priority !== "all") && (
+              <button type="button" className="btn-sm" onClick={() => { setCategory("all"); setPriority("all"); }}>
+                Сбросить фильтры
+              </button>
+            )}
           </section>
         )}
       </section>

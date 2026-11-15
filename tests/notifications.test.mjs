@@ -63,6 +63,41 @@ test("smart notification lifecycle keeps reads, resolves cleared rules and creat
   assert.equal(notificationState(newActive, "TUDOR").read, false);
 });
 
+test("reconciliation removes duplicate active notifications for the same CRM event", () => {
+  const now = new Date("2026-03-20T12:00:00Z");
+  const [candidate] = buildSystemNotifications({
+    warehouse: [{ id: "polish", name: "Полироль", qty: 1, minQty: 2 }],
+  }, now);
+  const duplicates = [
+    {
+      ...candidate,
+      id: "duplicate-old",
+      smart: true,
+      status: "active",
+      createdAt: "2026-03-20T10:00:00Z",
+      updatedAt: "2026-03-20T10:00:00Z",
+    },
+    {
+      ...candidate,
+      id: "duplicate-new",
+      smart: true,
+      status: "active",
+      createdAt: "2026-03-20T11:00:00Z",
+      updatedAt: "2026-03-20T11:00:00Z",
+      readBy: { TUDOR: "2026-03-20T11:30:00Z" },
+    },
+  ];
+
+  const reconciled = reconcileSmartNotifications(duplicates, [candidate], now);
+  const active = reconciled.filter((item) => item.status === "active");
+  assert.equal(active.length, 1);
+  assert.equal(active[0].id, "duplicate-new");
+  assert.equal(notificationState(active[0], "TUDOR").read, true);
+
+  const resolved = reconcileSmartNotifications(reconciled, [], new Date("2026-03-20T13:00:00Z"));
+  assert.equal(resolved.filter((item) => item.status === "resolved").length, 1);
+});
+
 test("smart rules use reliable CRM fields for client, overlap, payment and trend insights", () => {
   const now = new Date("2026-03-20T12:00:00Z");
   const day = 24 * 60 * 60 * 1000;

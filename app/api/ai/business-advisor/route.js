@@ -669,7 +669,13 @@ export async function POST(request) {
     const recentQuestions = sanitizeConversation(priorConversationMessages, database.customers || []);
     recentQuestions.push({ role: "user", content: redactSensitiveText(question, database.customers || []) });
     const writableCollectionFields = getAiCrmActionSchema(database, role);
-    const userProvidedCustomerPhone = extractSingleUserPhone(question);
+    const recentUserMessages = priorConversationMessages
+      .filter((message) => message.role === "user")
+      .slice(-2)
+      .map((message) => message.content);
+    const userProvidedCustomerPhone = extractSingleUserPhone(
+      [...recentUserMessages, question].join("\n"),
+    );
     const prompt = JSON.stringify({
       language,
       question: redactSensitiveText(question, database.customers || []),

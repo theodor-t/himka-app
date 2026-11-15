@@ -136,10 +136,16 @@ export function getAiCrmActionCollectionOptions(database, role) {
 }
 
 export function extractSingleUserPhone(text) {
-  const matches = [...String(text || "").matchAll(
+  const source = String(text || "");
+  const labeledMatches = [...source.matchAll(
     /(?:телефон|phone|telefon|tel)(?:\s+номер)?\s*[:=]?\s*(\+?\d[\d\s().-]{6,}\d)/giu,
   )]
     .map((match) => match[1].trim())
+    .map((phone) => phone);
+  const internationalMatches = [...source.matchAll(
+    /(?<!\w)(\+\d[\d\s().-]{6,}\d)(?!\w)/gu,
+  )].map((match) => match[1].trim());
+  const matches = [...labeledMatches, ...internationalMatches]
     .map((phone) => ({ phone, normalized: normalizePhoneForMessaging(phone) }))
     .filter((item) => item.normalized);
   const unique = new Map(matches.map((item) => [item.normalized, item.phone]));

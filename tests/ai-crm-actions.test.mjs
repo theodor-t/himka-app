@@ -133,6 +133,10 @@ test("phone values can be retained server-side without sending them to Gemini", 
     extractSingleUserPhone("Создай клиента Иван, телефон: +373 69 123 456"),
     "+373 69 123 456",
   );
+  assert.equal(
+    extractSingleUserPhone("Создай клиента Test +36369917817\nЯ отправил номер телефона!"),
+    "+36369917817",
+  );
   assert.equal(extractSingleUserPhone("Создай клиента в ноябре 2026 года"), "");
   assert.equal(
     extractSingleUserPhone("Телефон 060123456 и телефон 069123456"),

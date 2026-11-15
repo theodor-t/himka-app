@@ -55,13 +55,16 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  Target,
   Users,
   Video,
   Wallet,
+  Wrench,
   Wind,
   Sun,
   X,
   Trash2,
+  Truck,
   Pencil,
   User,
 } from "lucide-react";
@@ -100,6 +103,11 @@ import {
   visitsForVehicle,
 } from "./lib/customer-records.mjs";
 import WorkOrders from "./components/WorkOrders";
+import WorkPosts from "./components/WorkPosts";
+import Waitlist from "./components/Waitlist";
+import Suppliers from "./components/Suppliers";
+import FinancialGoals from "./components/FinancialGoals";
+import { availableWorkPost } from "./lib/appointments.mjs";
 
 const SCRIPT_URL = "/api/db";
 const BACKUP_KEY = "angel-detailing-auto-backup";
@@ -125,6 +133,10 @@ const NAV = [
   ["reminderTemplates", "Шаблоны напоминаний", MessageSquareText],
   ["calendar", "Календарь", CalendarDays],
   ["orders", "Заказы мастерской", ClipboardList],
+  ["workPosts", "Рабочие посты", Wrench],
+  ["waitlist", "Лист ожидания", Clock3],
+  ["suppliers", "Поставщики", Truck],
+  ["financialGoals", "Цели и план", Target],
   ["customers", "Клиенты и автомобили", Users],
   ["clients", "Записи клиентов", CalendarPlus],
   ["expenses", "2. Затраты", Receipt],
@@ -137,9 +149,9 @@ const NAV = [
 ];
 const NAV_GROUPS = [
   { title: "ОБЗОР", items: ["home", "analytics", "weather"] },
-  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "orders", "customers", "clients", "services", "videoDescriptions", "reminderTemplates"] },
-  { title: "ФИНАНСЫ", items: ["expenses", "profit", "withdrawals", "debts"] },
-  { title: "ОПЕРАЦИИ", items: ["warehouse", "windows", "logs"] },
+  { title: "КЛИЕНТЫ И РАСПИСАНИЕ", items: ["calendar", "orders", "workPosts", "waitlist", "customers", "clients", "services", "videoDescriptions", "reminderTemplates"] },
+  { title: "ФИНАНСЫ", items: ["expenses", "profit", "financialGoals", "withdrawals", "debts"] },
+  { title: "ОПЕРАЦИИ", items: ["warehouse", "suppliers", "windows", "logs"] },
 ];
 const RU_COLLATOR = new Intl.Collator("ru", { numeric: true });
 
@@ -1200,6 +1212,14 @@ function PageContent({
     );
   if (page === "orders")
     return <WorkOrders db={db} mutate={mutate} user={user} />;
+  if (page === "workPosts")
+    return <WorkPosts db={db} mutate={mutate} user={user} />;
+  if (page === "waitlist")
+    return <Waitlist db={db} mutate={mutate} openModal={openModal} />;
+  if (page === "suppliers")
+    return <Suppliers db={db} mutate={mutate} user={user} />;
+  if (page === "financialGoals")
+    return <FinancialGoals db={db} mutate={mutate} />;
   if (page === "weather") return <WeatherPage />;
   if (page === "calendar")
     return <CalendarPage db={db} openModal={openModal} />;
@@ -4252,6 +4272,8 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
             phone: preset?.phone || "",
             customerId: preset?.customerId || "",
             vehicleId: preset?.vehicleId || "",
+            waitlistEntryId: preset?.waitlistEntryId || "",
+            workPostId: preset?.workPostId || "",
             seatType: preset?.seatType || "",
             service: preset?.service || "",
             servicePrice: preset?.servicePrice ?? "",
@@ -4326,6 +4348,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
   };
   const save = (event) => {
     event.preventDefault();
+    let allocatedWorkPostId = form.workPostId || "";
     if (isClient && (!form.car || !form.datetime))
       return alert("Заполните марку авто и дату/время!");
     if (isClient) {
@@ -4349,13 +4372,24 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         form.servicePrice !== "" &&
         (!Number.isFinite(Number(form.servicePrice)) || Number(form.servicePrice) < 0)
       ) return alert("Стоимость услуги должна быть нулём или положительной суммой.");
-      const collision = hasAppointmentConflict(
+      const availablePost = availableWorkPost(
         db.clients,
         form,
         db.services,
+        db.workPosts,
         item?.id,
       );
-      if (collision) return alert("Эта запись пересекается по времени с другой услугой. Проверьте длительность и выберите другое время.");
+      if (!availablePost) {
+        const capacity = db.workPosts.filter(
+          (post) => !post.archived && post.status !== "maintenance",
+        ).length;
+        return alert(
+          capacity
+            ? `На это время заняты все ${capacity} рабочих поста. Выберите другое время.`
+            : "Эта запись пересекается по времени с другой услугой. Проверьте длительность и выберите другое время.",
+        );
+      }
+      allocatedWorkPostId = availablePost.postId;
     }
     if (
       isWarehouse &&
@@ -4396,10 +4430,11 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         [],
         item?.id,
       );
-      const occupied = hasAppointmentConflict(
+      const occupied = !availableWorkPost(
         db.clients,
         { datetime: form.datetime, serviceDuration: 60 },
         db.services,
+        db.workPosts,
       );
       if (duplicateWindow || occupied)
         return alert("На это время уже есть свободное окно или запись клиента.");
@@ -4418,6 +4453,7 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
         paymentExcluded: Boolean(form.paymentExcluded),
         customerId: form.customerId || "",
         vehicleId: form.vehicleId || "",
+        workPostId: allocatedWorkPostId,
         author: item?.author || user,
       };
       const exclusionChanged =
@@ -4430,6 +4466,15 @@ function ModalContent({ type, item, preset, db, user, onClose, mutate }) {
           ...(form.windowId
             ? {
                 windows: db.windows.filter((slot) => slot.id !== form.windowId),
+              }
+            : {}),
+          ...(form.waitlistEntryId
+            ? {
+                waitlistEntries: db.waitlistEntries.map((entry) =>
+                  entry.id === form.waitlistEntryId
+                    ? { ...entry, status: "booked", bookingId: value.id, bookedAt: new Date().toISOString() }
+                    : entry,
+                ),
               }
             : {}),
         },

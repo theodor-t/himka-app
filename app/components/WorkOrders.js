@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Plus,
   Receipt,
+  ShieldCheck,
   User,
 } from "lucide-react";
 import {
@@ -25,6 +26,12 @@ import {
   orderBalance,
   orderTotal,
 } from "../lib/work-orders.mjs";
+import {
+  inspectionSummary,
+  VEHICLE_INSPECTION_FINDINGS,
+  VEHICLE_INSPECTION_PARTS,
+} from "../lib/inspections.mjs";
+import { availableWorkPost } from "../lib/appointments.mjs";
 
 const createId = () =>
   globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -68,6 +75,7 @@ export default function WorkOrders({ db, mutate, user }) {
   const [discountValue, setDiscountValue] = useState("");
   const [plannedCompletion, setPlannedCompletion] = useState("");
   const [assignee, setAssignee] = useState("");
+  const [workPostId, setWorkPostId] = useState("");
   const [comment, setComment] = useState("");
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [draggedOrderId, setDraggedOrderId] = useState("");
@@ -114,6 +122,7 @@ export default function WorkOrders({ db, mutate, user }) {
     setDiscountValue("");
     setPlannedCompletion("");
     setAssignee("");
+    setWorkPostId("");
     setComment("");
     setError("");
   };
@@ -131,30 +140,45 @@ export default function WorkOrders({ db, mutate, user }) {
       setError("Добавьте хотя бы одну услугу из прайса или записи.");
       return;
     }
+    const newDuration = lineItems.reduce((total, service) => total + service.duration, 0);
+    const bookingSlot = availableWorkPost(
+      db.clients,
+      { ...booking, serviceDuration: newDuration, workPostId: workPostId || booking.workPostId },
+      db.services,
+      db.workPosts,
+      booking.id,
+    );
+    if (!bookingSlot) {
+      setError("Суммарная длительность заказа не помещается на свободном рабочем посте. Перенесите запись или измените состав услуг.");
+      return;
+    }
+    const assignedPostId = bookingSlot.postId;
+    if (workPostId && assignedPostId !== workPostId) {
+      setError("Выбранный пост занят на всём интервале заказа. Выберите другой пост.");
+      return;
+    }
+    if (assignedPostId) {
+      const assignedPost = db.workPosts.find((item) => item.id === assignedPostId);
+      if (!assignedPost || assignedPost.archived || assignedPost.status === "maintenance") {
+        setError("Выбранный рабочий пост недоступен.");
+        return;
+      }
+      const otherOrder = db.orders.find(
+        (order) =>
+          order.bookingId !== booking.id &&
+          order.workPostId === assignedPostId &&
+          !["Выдан клиенту", "Отменён"].includes(order.status),
+      );
+      if (otherOrder) {
+        setError(`Пост занят заказом ${otherOrder.number}. Выберите другой пост.`);
+        return;
+      }
+    }
     const discount = {
       type: discountType,
       value: Number(discountValue) || 0,
       amountCents: discountCents,
     };
-    const newDuration = lineItems.reduce((total, service) => total + service.duration, 0);
-    const bookingStart = parseRecordDate(booking.datetime)?.getTime();
-    const hasConflict = Number.isFinite(bookingStart) && db.clients.some((candidate) => {
-      if (candidate.id === booking.id || ["Отменен", "Не пришел"].includes(candidate.status)) return false;
-      const start = parseRecordDate(candidate.datetime)?.getTime();
-      if (!Number.isFinite(start)) return false;
-      const duration = Math.max(
-        1,
-        Number(candidate.serviceDuration) ||
-          Number(db.services.find((service) => service.name === candidate.service)?.duration) ||
-          60,
-      );
-      return bookingStart < start + duration * 60000 &&
-        start < bookingStart + newDuration * 60000;
-    });
-    if (hasConflict) {
-      setError("Суммарная длительность заказа пересекается с другой записью. Измените состав услуг или время записи.");
-      return;
-    }
     const createdAt = new Date().toISOString();
     const order = {
       id: createId(),
@@ -162,6 +186,7 @@ export default function WorkOrders({ db, mutate, user }) {
       bookingId: booking.id,
       customerId: booking.customerId || "",
       vehicleId: booking.vehicleId || "",
+      workPostId: assignedPostId,
       services: lineItems,
       subtotalCents,
       discount,
@@ -177,6 +202,7 @@ export default function WorkOrders({ db, mutate, user }) {
     };
     const updatedBooking = {
       ...booking,
+      workPostId: assignedPostId,
       service: lineItems.map((service) => service.name).join(", "),
       servicePrice: centsToAmount(totalCents),
       serviceDuration: lineItems.reduce((total, service) => total + service.duration, 0),
@@ -188,6 +214,13 @@ export default function WorkOrders({ db, mutate, user }) {
         clients: db.clients.map((candidate) =>
           candidate.id === booking.id ? updatedBooking : candidate,
         ),
+        ...(assignedPostId
+          ? {
+              workPosts: db.workPosts.map((post) =>
+                post.id === assignedPostId ? { ...post, currentOrderId: order.id } : post,
+              ),
+            }
+          : {}),
       },
       `Создан заказ ${order.number} для ${booking.car || "автомобиля"}`,
     );
@@ -216,6 +249,15 @@ export default function WorkOrders({ db, mutate, user }) {
     mutate(
       {
         orders: db.orders.map((candidate) => candidate.id === order.id ? updated : candidate),
+        ...(order.workPostId && ["Отменён", "Выдан клиенту"].includes(status)
+          ? {
+              workPosts: db.workPosts.map((post) =>
+                post.id === order.workPostId && post.currentOrderId === order.id
+                  ? { ...post, currentOrderId: "" }
+                  : post,
+              ),
+            }
+          : {}),
         ...(booking && ["Отменён", "Выдан клиенту"].includes(status)
           ? {
               clients: db.clients.map((candidate) =>
@@ -323,6 +365,26 @@ export default function WorkOrders({ db, mutate, user }) {
               onChange={(event) => setAssignee(event.target.value)}
               placeholder="Имя мастера"
             />
+          </label>
+          <label className="work-order-field">
+            <span>Рабочий пост</span>
+            <select value={workPostId} onChange={(event) => setWorkPostId(event.target.value)}>
+              <option value="">Не назначен</option>
+              {db.workPosts
+                .filter((post) => !post.archived && post.status !== "maintenance")
+                .map((post) => {
+                  const occupiedOrder = db.orders.find(
+                    (order) =>
+                      order.workPostId === post.id &&
+                      !["Выдан клиенту", "Отменён"].includes(order.status),
+                  );
+                  return (
+                    <option key={post.id} value={post.id} disabled={Boolean(occupiedOrder)}>
+                      {post.name}{occupiedOrder ? ` · занят ${occupiedOrder.number}` : ""}
+                    </option>
+                  );
+                })}
+            </select>
           </label>
           <label className="work-order-field">
             <span>Скидка</span>
@@ -447,6 +509,7 @@ export default function WorkOrders({ db, mutate, user }) {
                       <div className="work-order-meta">
                         <span><CalendarDays size={13} /> {order.plannedCompletion ? dateText(order.plannedCompletion) : "Выдача не назначена"}</span>
                         <span><User size={13} /> {order.assignedTo || "Исполнитель не назначен"}</span>
+                        <span><CarFront size={13} /> {db.workPosts.find((post) => post.id === order.workPostId)?.name || "Пост не назначен"}</span>
                       </div>
                       {order.comment && <p className="work-order-comment">{order.comment}</p>}
                       {order.cancelReason && <p className="work-order-cancel-reason">Причина отмены: {order.cancelReason}</p>}
@@ -493,6 +556,13 @@ export default function WorkOrders({ db, mutate, user }) {
                           <span key={`${entry.at}-${index}`}>{entry.status} · {dateText(entry.at)}</span>
                         ))}
                       </div>
+                      <InspectionPanel
+                        key={`${order.id}-${db.inspections.find((inspection) => inspection.orderId === order.id)?.id || "new"}`}
+                        order={order}
+                        db={db}
+                        mutate={mutate}
+                        user={user}
+                      />
                     </article>
                   );
                 })}
@@ -504,5 +574,136 @@ export default function WorkOrders({ db, mutate, user }) {
       </section>
       {!!error && db.orders.length > 0 && <p className="work-order-error" role="alert">{error}</p>}
     </div>
+  );
+}
+
+function InspectionPanel({ order, db, mutate, user }) {
+  const history = db.inspections
+    .filter((inspection) => inspection.orderId === order.id)
+    .slice()
+    .sort((first, second) =>
+      (parseRecordDate(second.createdAt)?.getTime() || 0) -
+      (parseRecordDate(first.createdAt)?.getTime() || 0),
+    );
+  const latest = history[0];
+  const [part, setPart] = useState(VEHICLE_INSPECTION_PARTS[0]);
+  const [findingType, setFindingType] = useState(VEHICLE_INSPECTION_FINDINGS[0]);
+  const [findingComment, setFindingComment] = useState("");
+  const [findings, setFindings] = useState(() => latest?.findings || []);
+  const [notes, setNotes] = useState(() => latest?.notes || "");
+  const [error, setError] = useState("");
+  const summary = inspectionSummary(latest);
+
+  const addFinding = () => {
+    const comment = findingComment.trim();
+    if (!comment && findingType === "Другое") {
+      setError("Добавьте описание для дефекта типа «Другое».");
+      return;
+    }
+    setFindings((current) => [
+      ...current,
+      { id: createId(), part, type: findingType, comment, createdAt: new Date().toISOString() },
+    ]);
+    setFindingComment("");
+    setError("");
+  };
+
+  const saveInspection = () => {
+    const createdAt = new Date().toISOString();
+    const inspection = {
+      id: createId(),
+      orderId: order.id,
+      bookingId: order.bookingId,
+      vehicleId: order.vehicleId || "",
+      customerId: order.customerId || "",
+      revision: (latest?.revision || 0) + 1,
+      previousInspectionId: latest?.id || "",
+      findings,
+      notes: notes.trim(),
+      createdAt,
+      createdBy: user,
+    };
+    mutate(
+      { inspections: [inspection, ...db.inspections] },
+      `Осмотр ${order.number} сохранён · версия ${inspection.revision} · дефектов ${findings.length}`,
+    );
+    setError("");
+  };
+
+  return (
+    <details className="work-order-inspection">
+      <summary>
+        <ShieldCheck size={14} />
+        Осмотр автомобиля
+        {latest && <span>v{latest.revision} · {summary.findingCount} замечаний</span>}
+      </summary>
+      <div className="inspection-panel">
+        <div className="inspection-vehicle-outline" aria-label="Схема автомобиля: выберите часть для фиксации дефекта">
+          <div className="inspection-car-nose">Передняя часть</div>
+          <div className="inspection-car-row">
+            <button type="button" className={part === "Левая сторона" ? "selected" : ""} onClick={() => setPart("Левая сторона")}>Левая сторона</button>
+            <div className="inspection-car-cabin">
+              <button type="button" className={part === "Капот" ? "selected" : ""} onClick={() => setPart("Капот")}>Капот</button>
+              <button type="button" className={part === "Крыша" ? "selected" : ""} onClick={() => setPart("Крыша")}>Крыша</button>
+              <button type="button" className={part === "Салон" ? "selected" : ""} onClick={() => setPart("Салон")}>Салон</button>
+            </div>
+            <button type="button" className={part === "Правая сторона" ? "selected" : ""} onClick={() => setPart("Правая сторона")}>Правая сторона</button>
+          </div>
+          <div className="inspection-car-nose rear">Задняя часть</div>
+        </div>
+        <label className="work-order-field">
+          <span>Часть автомобиля</span>
+          <select value={part} onChange={(event) => setPart(event.target.value)}>
+            {VEHICLE_INSPECTION_PARTS.map((item) => <option key={item}>{item}</option>)}
+          </select>
+        </label>
+        <div className="inspection-finding-form">
+          <label className="work-order-field">
+            <span>Тип замечания</span>
+            <select value={findingType} onChange={(event) => setFindingType(event.target.value)}>
+              {VEHICLE_INSPECTION_FINDINGS.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="work-order-field">
+            <span>Комментарий к дефекту</span>
+            <input value={findingComment} onChange={(event) => setFindingComment(event.target.value)} placeholder="Опишите расположение и состояние" />
+          </label>
+          <button type="button" className="btn-sm btn-qty" onClick={addFinding}><Plus size={14} /> Добавить</button>
+        </div>
+        {findings.length > 0 && (
+          <div className="inspection-findings-list">
+            {findings.map((item) => (
+              <article key={item.id}>
+                <span><strong>{item.part}</strong><small>{item.type}{item.comment ? ` · ${item.comment}` : ""}</small></span>
+                <button type="button" aria-label={`Удалить замечание ${item.part}`} onClick={() => setFindings((current) => current.filter((finding) => finding.id !== item.id))}><X size={14} /></button>
+              </article>
+            ))}
+          </div>
+        )}
+        <label className="work-order-field">
+          <span>Общее состояние и замечания</span>
+          <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Состояние кузова, салона, комплектность автомобиля…" />
+        </label>
+        <div className="inspection-photo-unavailable">
+          Фото дефектов пока не прикрепляются: подключённое хранилище проекта — Google Sheets, оно не подходит для хранения изображений. Текстовый осмотр сохраняется полностью.
+        </div>
+        {error && <p className="work-order-error" role="alert">{error}</p>}
+        <button type="button" className="action-btn" onClick={saveInspection}>
+          <ShieldCheck size={15} /> Сохранить осмотр {latest ? `v${(latest.revision || 0) + 1}` : ""}
+        </button>
+        {!!history.length && (
+          <details className="inspection-history">
+            <summary>Предыдущие осмотры · {history.length}</summary>
+            {history.map((inspection) => (
+              <div key={inspection.id}>
+                <strong>Версия {inspection.revision} · {dateText(inspection.createdAt)}</strong>
+                <span>{inspection.findings?.length || 0} замечаний · {inspection.createdBy || "Сотрудник"}</span>
+                {inspection.notes && <small>{inspection.notes}</small>}
+              </div>
+            ))}
+          </details>
+        )}
+      </div>
+    </details>
   );
 }

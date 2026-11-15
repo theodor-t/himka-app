@@ -2722,14 +2722,11 @@ function Dashboard({
   const orderFlowStops = orderFlow.reduce((result, group) => {
     const share = orderFlowTotal ? (group.count / orderFlowTotal) * 100 : 0;
     const start = result.offset;
-    result.parts.push(`${group.color === "active" ? "#a8ec38" : group.color === "waiting" ? "#41c5d5" : "#ff9d42"} ${start}% ${start + share}%`);
+    result.parts.push(`${group.color === "active" ? "#4f8cff" : group.color === "waiting" ? "#41c5d5" : "#a78bfa"} ${start}% ${start + share}%`);
     result.offset += share;
     return result;
   }, { offset: 0, parts: [] }).parts.join(", ");
   const completedToday = todayAppointments.filter((client) => client.status === "Выполнено").length;
-  const completionRate = todayAppointments.length
-    ? Math.round((completedToday / todayAppointments.length) * 100)
-    : 0;
   return (
     <div className="dashboard-shell">
       <section className="dashboard-welcome">
@@ -2828,28 +2825,36 @@ function Dashboard({
               <div><span>ЗАКАЗЫ МАСТЕРСКОЙ</span><strong>Статус работ</strong></div>
               <button type="button" aria-label="Открыть заказы мастерской" onClick={() => navigate("orders")}><ArrowRight size={16} /></button>
             </div>
-            <div className="dashboard-orders-content">
-              <div className="dashboard-order-rows">
-                {orderFlow.map((group) => {
-                  const percentage = orderFlowTotal ? Math.round((group.count / orderFlowTotal) * 100) : 0;
-                  return (
-                    <div className={`dashboard-order-row ${group.color}`} key={group.label}>
-                      <div><span>{group.label}</span><strong>{group.count}</strong></div>
-                      <i><b style={{ width: `${percentage}%` }} /></i>
-                      <small>{percentage}%</small>
-                    </div>
-                  );
-                })}
+            {orderFlowTotal ? (
+              <div className="dashboard-orders-content">
+                <div className="dashboard-order-rows">
+                  {orderFlow.map((group) => {
+                    const percentage = Math.round((group.count / orderFlowTotal) * 100);
+                    return (
+                      <div className={`dashboard-order-row ${group.color}`} key={group.label}>
+                        <div><span>{group.label}</span><strong>{group.count}</strong></div>
+                        <i><b style={{ width: `${percentage}%` }} /></i>
+                        <small>{percentage}%</small>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div
+                  className="dashboard-orders-donut"
+                  style={{ background: `conic-gradient(${orderFlowStops})` }}
+                  role="img"
+                  aria-label={`Всего заказов: ${orderFlowTotal}`}
+                >
+                  <div><strong>{orderFlowTotal}</strong><span>заказов</span></div>
+                </div>
               </div>
-              <div
-                className={`dashboard-orders-donut${orderFlowTotal ? "" : " empty"}`}
-                style={orderFlowTotal ? { background: `conic-gradient(${orderFlowStops})` } : undefined}
-                role="img"
-                aria-label={`Всего заказов: ${orderFlowTotal}`}
-              >
-                <div><strong>{orderFlowTotal}</strong><span>заказов</span></div>
+            ) : (
+              <div className="dashboard-orders-empty">
+                <ClipboardList size={18} />
+                <div><strong>Активных заказов нет</strong><span>Новые работы появятся здесь</span></div>
+                <button type="button" onClick={() => navigate("orders")}>Открыть заказы <ArrowRight size={13} /></button>
               </div>
-            </div>
+            )}
           </section>
         </div>
 
@@ -2869,32 +2874,18 @@ function Dashboard({
           </div>
           <section className="dashboard-panel dashboard-completion-card">
             <div className="dashboard-panel-heading">
-              <div><span>ТЕМП МАСТЕРСКОЙ</span><strong>Выполнено сегодня</strong></div>
-              <Activity size={17} />
+              <div><span>РАСПИСАНИЕ НА СЕГОДНЯ</span><strong>Ход работ</strong></div>
+              <button type="button" aria-label="Открыть календарь" onClick={() => navigate("calendar")}><ArrowRight size={15} /></button>
             </div>
-            <div className="dashboard-gauge" role="img" aria-label={`${completedToday} выполнено из ${todayAppointments.length} записей сегодня`}>
-              <svg viewBox="0 0 220 132" aria-hidden="true">
-                <path className="dashboard-gauge-track" d="M22 112 A88 88 0 0 1 198 112" />
-                <path
-                  className="dashboard-gauge-progress"
-                  d="M22 112 A88 88 0 0 1 198 112"
-                  pathLength="100"
-                  strokeDasharray={`${completionRate} ${100 - completionRate}`}
-                />
-                <path className="dashboard-gauge-tick" d="M39 80l-7-4m28-27-5-7m43-8-1-8m40 14 4-8m27 37 8-4" />
-                <path
-                  className="dashboard-gauge-needle"
-                  d="M110 109V39"
-                  transform={`rotate(${-90 + completionRate * 1.8} 110 110)`}
-                />
-                <circle className="dashboard-gauge-hub" cx="110" cy="110" r="7" />
-                <text x="110" y="95" textAnchor="middle" className="dashboard-gauge-value">{completedToday}/{todayAppointments.length}</text>
-              </svg>
-              <span>{todayAppointments.length ? `${completionRate}%` : "—"}</span>
+            <div className="dashboard-day-progress">
+              <div><span>Всего записей</span><strong>{todayAppointments.length}</strong></div>
+              <div><span>Завершено</span><strong>{completedToday}</strong></div>
+              <div><span>Осталось</span><strong>{Math.max(0, todayAppointments.length - completedToday)}</strong></div>
             </div>
-            <p>{todayAppointments.length
-              ? "записей завершено"
-              : "Сегодня пока нет запланированных записей"}</p>
+            <button className="dashboard-panel-action" type="button" onClick={() => navigate("calendar")}>
+              {todayAppointments.length ? "Посмотреть расписание" : "Открыть календарь"}
+              <ArrowRight size={14} />
+            </button>
           </section>
         </div>
 
@@ -2904,21 +2895,33 @@ function Dashboard({
               <div><span>{role === "technician" ? "РАСПИСАНИЕ" : `ЗАТРАТЫ · ${reportYear}`}</span><strong>{role === "technician" ? `${appointments.length} записей` : money(annualExpenses)}</strong></div>
               {role !== "technician" && <button type="button" aria-label="Открыть аналитику" onClick={() => navigate("analytics")}><ArrowRight size={15} /></button>}
             </div>
-            <div className={`dashboard-mini-chart${role === "technician" ? " appointments-chart" : ""}`}>
-              {overviewBars.map((item, index) => (
-                <div className="dashboard-mini-chart-column" key={`${item.label}-${index}`}>
-                  <div className="dashboard-mini-chart-track">
-                    <i
-                      className={index === new Date().getMonth() && role !== "technician" ? "current" : ""}
-                      style={{ height: item.value ? `${Math.max(8, (item.value / maxOverviewValue) * 100)}%` : "3px" }}
-                      title={role === "technician" ? `${item.value} записей` : `${item.label}: ${money(item.value)}`}
-                    />
-                  </div>
-                  <small>{item.label}</small>
+            {(role === "technician" ? appointments.length > 0 : annualExpenses > 0) ? (
+              <>
+                <div className={`dashboard-mini-chart${role === "technician" ? " appointments-chart" : ""}`}>
+                  {overviewBars.map((item, index) => (
+                    <div className="dashboard-mini-chart-column" key={`${item.label}-${index}`}>
+                      <div className="dashboard-mini-chart-track">
+                        <i
+                          className={index === new Date().getMonth() && role !== "technician" ? "current" : ""}
+                          style={{ height: item.value ? `${Math.max(8, (item.value / maxOverviewValue) * 100)}%` : "3px" }}
+                          title={role === "technician" ? `${item.value} записей` : `${item.label}: ${money(item.value)}`}
+                        />
+                      </div>
+                      <small>{item.label}</small>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <span className="dashboard-mini-chart-caption">{role === "technician" ? "Записи по дням" : "Расходы по месяцам · MDL"}</span>
+                <span className="dashboard-mini-chart-caption">{role === "technician" ? "Записи по дням" : "Расходы по месяцам · MDL"}</span>
+              </>
+            ) : (
+              <div className="dashboard-chart-empty">
+                <span>{role === "technician" ? "На ближайшие 7 дней записей нет" : `Расходов за ${reportYear} год пока нет`}</span>
+                <button type="button" onClick={() => navigate(role === "technician" ? "calendar" : "expenses")}>
+                  {role === "technician" ? "Открыть календарь" : "Добавить расход"}
+                  <ArrowRight size={13} />
+                </button>
+              </div>
+            )}
           </section>
           <section className="dashboard-panel dashboard-category-panel">
             <div className="dashboard-panel-heading">
@@ -2945,13 +2948,6 @@ function Dashboard({
         </div>
       </section>
 
-      {totals.lowStock.length > 0 && (
-        <div className="low-stock-alert dashboard-alert">
-          <Package size={18} />
-          <span><strong>Мало товара:</strong> {totals.lowStock.map((item) => `${item.name} (${item.qty})`).join(", ")}</span>
-        </div>
-      )}
-
       <section className="dashboard-panel dashboard-bookings-panel">
         <div className="dashboard-bookings-header">
           <div><h3>Ближайшие записи</h3><p>Записи мастерской на ближайшие 7 дней</p></div>
@@ -2974,24 +2970,55 @@ function Dashboard({
         </div>
       </section>
 
-      <AvailableWindows db={db} openModal={openModal} navigate={navigate} />
-      <section className="dashboard-grid">
-        {role === "technician" ? (
-          <div className="card snapshot-card">
-            <div className="card-header"><span>Заказы мастерской</span><ClipboardList size={18} className="red-icon" /></div>
-            {activeOrders.length ? activeOrders.slice(0, 5).map((order) => (
-              <div className="appointment-item" key={order.id}>
-                <Wrench size={16} />
-                <div><strong>{order.number || order.car || "Заказ"}</strong><span>{order.car || "Автомобиль"} · {order.status}</span></div>
+      <section className="dashboard-bottom-grid">
+        <div className="dashboard-bottom-main">
+          <AvailableWindows db={db} openModal={openModal} navigate={navigate} />
+        </div>
+        <div className="dashboard-bottom-sidebar">
+          {role === "technician" ? (
+            <div className="card snapshot-card">
+              <div className="card-header"><span>Заказы мастерской</span><ClipboardList size={18} /></div>
+              {activeOrders.length ? activeOrders.slice(0, 5).map((order) => (
+                <div className="appointment-item" key={order.id}>
+                  <Wrench size={16} />
+                  <div><strong>{order.number || order.car || "Заказ"}</strong><span>{order.car || "Автомобиль"} · {order.status}</span></div>
+                </div>
+              )) : <div className="empty-reminder">Активных заказов нет</div>}
+            </div>
+          ) : (
+            <div className="card snapshot-card">
+              <div className="card-header"><span>Список должников</span><Wallet size={18} /></div>
+              <DebtorsPreview db={db} navigate={navigate} />
+            </div>
+          )}
+          <section className="card snapshot-card dashboard-stock-card">
+            <div className="card-header">
+              <span>Контроль остатков</span>
+              <button className="dashboard-stock-link" type="button" onClick={() => navigate("warehouse")} aria-label="Открыть склад">
+                Склад <ArrowRight size={14} />
+              </button>
+            </div>
+            {totals.lowStock.length ? (
+              <div className="dashboard-stock-list">
+                {totals.lowStock.slice(0, 4).map((item) => (
+                  <div className="dashboard-stock-row" key={item.id}>
+                    <span>{item.name}</span>
+                    <strong>{item.qty} <small>шт.</small></strong>
+                    <small>минимум {item.minQty ?? 2}</small>
+                  </div>
+                ))}
+                {totals.lowStock.length > 4 && <span className="dashboard-stock-more">И ещё {totals.lowStock.length - 4} поз.</span>}
               </div>
-            )) : <div className="empty-reminder">Активных заказов нет</div>}
-          </div>
-        ) : (
-          <div className="card snapshot-card">
-            <div className="card-header"><span>Список должников</span><Wallet size={18} className="warning-icon" /></div>
-            <DebtorsPreview db={db} navigate={navigate} />
-          </div>
-        )}
+            ) : (
+              <div className="dashboard-stock-empty">
+                <strong>{db.warehouse.length ? "Все остатки в норме" : "Склад пока пуст"}</strong>
+                <span>{db.warehouse.length
+                  ? `${db.warehouse.length} позиций выше минимального остатка`
+                  : "Добавьте товары, чтобы следить за запасами"}</span>
+              </div>
+            )}
+          </section>
+        </div>
       </section>
       {role !== "technician" && (
         <>
@@ -3092,8 +3119,19 @@ function AvailableWindows({ db, openModal, navigate }) {
           ))}
         </div>
       ) : (
-        <div className="empty-reminder">
-          Добавьте свободные даты и время в разделе управления.
+        <div className="dashboard-windows-empty">
+          <CalendarDays size={20} />
+          <div>
+            <strong>Свободных окон пока нет</strong>
+            <span>Добавьте время, чтобы предложить клиентам ближайшую запись.</span>
+          </div>
+          <Button
+            variant="secondary"
+            icon={CalendarPlus}
+            onClick={() => openModal({ type: "window" })}
+          >
+            Добавить окно
+          </Button>
         </div>
       )}
     </section>

@@ -40,4 +40,8 @@ collection the signed-in role may edit. It does not write until the user
 confirms the preview; the server verifies the signature, role, and unchanged
 target record again before saving. Update and delete requests require an exact
 record ID. Gemini receives field names and aggregate evidence, not stored CRM
-records.
+records. A vehicle proposal must reference an existing, active customer. If an
+exactly matching active vehicle is already unlinked, ANGEL AI proposes linking
+that record instead of creating a duplicate; multiple matches require
+clarification. After confirmation, the server reads the database again and
+verifies the expected record before reporting success.

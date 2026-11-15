@@ -3,12 +3,15 @@ import { afterEach, test } from "node:test";
 import {
   applyAiCrmAction,
   createAiCrmActionProposal,
+  findUnlinkedAiCrmVehicles,
   getAiCrmActionCollectionOptions,
   getPendingAiCrmAction,
   isAiCrmActionCancellation,
   extractSingleUserPhone,
   getAiCrmActionSchema,
   looksLikeAiCrmMutationRequest,
+  resolveAiCrmVehicleCustomer,
+  verifyAiCrmActionPersistence,
 } from "../app/lib/ai-crm-actions.mjs";
 
 const originalSecret = process.env.AUTH_SESSION_SECRET;
@@ -119,6 +122,8 @@ test("CRM update proposals conflict when the target record changes before confir
 test("AI receives writable collection field names without record values", () => {
   const schema = getAiCrmActionSchema(database, "manager");
   assert.deepEqual(schema.customers.sort(), ["createdAt", "id", "name", "phone"]);
+  assert.ok(schema.vehicles.includes("customerId"));
+  assert.ok(schema.vehicles.includes("makeModel"));
   assert.equal("employeeProfiles" in schema, false);
   assert.equal("systemEvents" in schema, false);
   assert.equal(JSON.stringify(schema).includes("Existing customer"), false);
@@ -154,6 +159,126 @@ test("CRM action intent carries through clarification replies and can be cancell
   ]), null);
   assert.equal(isAiCrmActionCancellation("Не надо"), true);
   assert.equal(isAiCrmActionCancellation("Отмени заказ 123"), false);
+});
+
+test("vehicle actions resolve and validate the customer relationship", () => {
+  process.env.AUTH_SESSION_SECRET = "ai-action-test-secret";
+  const vehicleDatabase = { ...database, vehicles: [] };
+  const history = [{
+    role: "assistant",
+    metadata: {
+      actionProposal: {
+        operation: "create",
+        collection: "customers",
+        recordId: "customer-1",
+      },
+    },
+  }];
+  const owner = resolveAiCrmVehicleCustomer(
+    vehicleDatabase,
+    "Добавь для него авто BMW M5 F90",
+    history,
+  );
+  assert.equal(owner.customerId, "customer-1");
+
+  assert.throws(() => createAiCrmActionProposal({
+    username: "TUDOR",
+    role: "admin",
+    database: vehicleDatabase,
+    now,
+    action: {
+      operation: "create",
+      collection: "vehicles",
+      dataJson: JSON.stringify({ makeModel: "BMW M5 F90" }),
+    },
+  }), /клиента/);
+
+  const proposal = createAiCrmActionProposal({
+    username: "TUDOR",
+    role: "admin",
+    database: vehicleDatabase,
+    now,
+    action: {
+      operation: "create",
+      collection: "vehicles",
+      dataJson: JSON.stringify({ customerId: owner.customerId, makeModel: "BMW M5 F90" }),
+    },
+  });
+  assert.equal(proposal.preview.after.customerName, "Existing customer");
+
+  assert.throws(() => applyAiCrmAction({
+    username: "TUDOR",
+    role: "admin",
+    database: {
+      ...vehicleDatabase,
+      customers: [{ ...vehicleDatabase.customers[0], archived: true }],
+    },
+    token: proposal.token,
+    now,
+  }), /архивному клиенту/);
+
+  const applied = applyAiCrmAction({
+    username: "TUDOR",
+    role: "admin",
+    database: vehicleDatabase,
+    token: proposal.token,
+    now,
+  });
+  assert.equal(applied.database.vehicles[0].customerId, owner.customerId);
+  assert.equal(applied.database.vehicles[0].makeModel, "BMW M5 F90");
+  assert.equal(verifyAiCrmActionPersistence(applied.database, applied.database, applied.proposal), true);
+  const unlinkedVehicle = { ...applied.database.vehicles[0] };
+  delete unlinkedVehicle.customerId;
+  assert.throws(() => verifyAiCrmActionPersistence(
+    applied.database,
+    { ...applied.database, vehicles: [unlinkedVehicle] },
+    applied.proposal,
+  ), /не подтвердила ожидаемые данные/);
+
+  const orphanedDatabase = {
+    ...vehicleDatabase,
+    vehicles: [{ id: "orphan-vehicle", makeModel: "BMW M5 F90" }],
+  };
+  const orphanedVehicles = findUnlinkedAiCrmVehicles(orphanedDatabase, "bmw  m5 f90");
+  assert.equal(orphanedVehicles.length, 1);
+  assert.deepEqual(findUnlinkedAiCrmVehicles({
+    ...orphanedDatabase,
+    vehicles: [
+      { id: "owned-vehicle", makeModel: "BMW M5 F90", customerId: owner.customerId },
+      { id: "archived-vehicle", makeModel: "BMW M5 F90", archived: true },
+    ],
+  }, "BMW M5 F90"), []);
+  assert.equal(findUnlinkedAiCrmVehicles({
+    ...orphanedDatabase,
+    vehicles: [...orphanedDatabase.vehicles, { id: "orphan-vehicle-2", makeModel: "BMW M5 F90" }],
+  }, "BMW M5 F90").length, 2);
+  const repairProposal = createAiCrmActionProposal({
+    username: "TUDOR",
+    role: "admin",
+    database: orphanedDatabase,
+    now,
+    action: {
+      operation: "update",
+      collection: "vehicles",
+      targetId: orphanedVehicles[0].id,
+      dataJson: JSON.stringify({ customerId: owner.customerId }),
+    },
+  });
+  assert.equal(repairProposal.preview.before.customerName, "Не привязан");
+  assert.equal(repairProposal.preview.after.makeModel, "BMW M5 F90");
+  assert.equal(repairProposal.preview.after.customerName, "Existing customer");
+
+  const repaired = applyAiCrmAction({
+    username: "TUDOR",
+    role: "admin",
+    database: orphanedDatabase,
+    token: repairProposal.token,
+    now,
+  });
+  assert.equal(repaired.database.vehicles[0].customerId, owner.customerId);
+  assert.equal(repaired.database.vehicles[0].makeModel, "BMW M5 F90");
+  assert.equal(verifyAiCrmActionPersistence(repaired.database, repaired.database, repaired.proposal), true);
+  assert.deepEqual(findUnlinkedAiCrmVehicles(repaired.database, "BMW M5 F90"), []);
 });
 
 test("phone values can be retained server-side without sending them to Gemini", () => {

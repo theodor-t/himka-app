@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { DATABASE_COLLECTIONS } from "./database.mjs";
 import { roleCanWriteCollection } from "./access-control.mjs";
 import { normalizePhoneForMessaging } from "./messages.mjs";
@@ -83,6 +84,22 @@ function previewRecord(record, keys = Object.keys(record || {})) {
   return preview;
 }
 
+function requireAiVehicleCustomer(database, vehicle) {
+  const customerId = String(vehicle?.customerId || "").trim();
+  if (!customerId) {
+    throw actionError("Не удалось определить клиента для автомобиля. Назовите клиента.");
+  }
+  const customer = (Array.isArray(database?.customers) ? database.customers : [])
+    .find((item) => String(item?.id) === customerId);
+  if (!customer) {
+    throw actionError("Клиент для автомобиля не найден. Назовите клиента или сначала создайте его.");
+  }
+  if (customer.archived) {
+    throw actionError("Нельзя добавить автомобиль к архивному клиенту.");
+  }
+  return customer;
+}
+
 function parseActionData(value) {
   if (typeof value !== "string" || value.length > MAX_ACTION_DATA_LENGTH) {
     throw actionError("AI-предложение содержит некорректные данные.");
@@ -164,7 +181,11 @@ export function getAiCrmActionSchema(database, role) {
         roleCanWriteCollection(role, collection),
       )
       .map((collection) => {
-        const fields = new Set(collection === "customers" ? ["name", "phone", "createdAt"] : []);
+        const defaults = {
+          customers: ["name", "phone", "createdAt"],
+          vehicles: ["customerId", "makeModel", "year", "color", "plate", "vin", "notes", "createdAt", "author"],
+        };
+        const fields = new Set(defaults[collection] || []);
         for (const record of (database?.[collection] || []).slice(0, 100)) {
           if (record && typeof record === "object" && !Array.isArray(record)) {
             Object.keys(record).forEach((key) => fields.add(key));
@@ -178,6 +199,69 @@ export function getAiCrmActionSchema(database, role) {
 export function getAiCrmActionCollectionOptions(database, role) {
   const collections = Object.keys(getAiCrmActionSchema(database, role));
   return collections.length ? collections : ["none"];
+}
+
+export function resolveAiCrmVehicleCustomer(database, question, messages) {
+  const customers = Array.isArray(database?.customers) ? database.customers : [];
+  const normalizedQuestion = String(question || "").toLocaleLowerCase();
+  const namedCustomers = customers.filter((customer) => {
+    const name = String(customer?.name || "").trim();
+    return name.length >= 2 && normalizedQuestion.includes(name.toLocaleLowerCase());
+  });
+  const uniqueNamedCustomers = [...new Map(
+    namedCustomers.map((customer) => [String(customer.id), customer]),
+  ).values()];
+  if (uniqueNamedCustomers.length > 1) {
+    return { customerId: "", customerName: "", ambiguous: true };
+  }
+  if (uniqueNamedCustomers.length === 1) {
+    const customer = uniqueNamedCustomers[0];
+    return {
+      customerId: String(customer.id),
+      customerName: String(customer.name || customer.phone || ""),
+      ambiguous: false,
+    };
+  }
+
+  const refersToRecentCustomer =
+    /для\s+него|для\s+не[её]|к\s+нему|его\s+(?:авто|машин)|for\s+(?:him|her)|his\s+(?:car|vehicle)|pentru\s+(?:el|ea|clientul)/iu
+      .test(String(question || ""));
+  if (!refersToRecentCustomer || !Array.isArray(messages)) {
+    return { customerId: "", customerName: "", ambiguous: false };
+  }
+
+  const recentCustomerProposal = messages.slice(-20).reverse().find((message) => {
+    const proposal = message?.metadata?.actionProposal;
+    return message?.role === "assistant" &&
+      proposal?.operation === "create" &&
+      proposal?.collection === "customers" &&
+      typeof proposal.recordId === "string";
+  });
+  const recordId = recentCustomerProposal?.metadata?.actionProposal?.recordId;
+  const customer = customers.find((item) => String(item?.id) === recordId);
+  return customer
+    ? {
+        customerId: String(customer.id),
+        customerName: String(customer.name || customer.phone || ""),
+        ambiguous: false,
+      }
+    : { customerId: "", customerName: "", ambiguous: false };
+}
+
+export function findUnlinkedAiCrmVehicles(database, makeModel) {
+  const normalizeModel = (value) => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const targetModel = normalizeModel(makeModel);
+  if (!targetModel) return [];
+  const customers = Array.isArray(database?.customers) ? database.customers : [];
+  const vehicles = Array.isArray(database?.vehicles) ? database.vehicles : [];
+  const customerIds = new Set(customers.map((customer) => String(customer?.id)));
+  return vehicles.filter((vehicle) =>
+    vehicle?.id != null &&
+    String(vehicle.id).trim().length > 0 &&
+    !vehicle.archived &&
+    normalizeModel(vehicle?.makeModel) === targetModel &&
+    (!vehicle?.customerId || !customerIds.has(String(vehicle.customerId))),
+  );
 }
 
 export function extractSingleUserPhone(text) {
@@ -247,6 +331,13 @@ export function createAiCrmActionProposal({
         throw actionError("Клиент с таким телефоном уже существует. Для изменения используйте его ID.", 409);
       }
     }
+    let vehicleOwner = null;
+    if (collection === "vehicles") {
+      data.makeModel = String(data.makeModel || "").trim();
+      if (!data.makeModel) throw actionError("Для создания автомобиля укажите марку и модель.");
+      vehicleOwner = requireAiVehicleCustomer(database, data);
+      data.author = username;
+    }
     if (fieldSchema.size && Object.keys(data).some((key) => !fieldSchema.has(key))) {
       throw actionError("AI предложил неизвестные для этой записи поля. Уточните данные и повторите.");
     }
@@ -259,7 +350,9 @@ export function createAiCrmActionProposal({
       id: proposal.recordId,
       ...(fieldSchema.has("createdAt") ? { createdAt: new Date(now).toISOString() } : {}),
     };
-    proposal.preview = { after: previewRecord(proposal.data) };
+    const after = previewRecord(proposal.data);
+    if (vehicleOwner) after.customerName = vehicleOwner.name || vehicleOwner.phone || "";
+    proposal.preview = { after };
   } else {
     const targetId = typeof action.targetId === "string" ? action.targetId.trim() : "";
     if (!targetId || targetId.length > 120) {
@@ -281,17 +374,34 @@ export function createAiCrmActionProposal({
       if (Object.hasOwn(data, "id") || Object.hasOwn(data, "createdAt")) {
         throw actionError("ID и дата создания записи не могут быть изменены.");
       }
-      if (Object.keys(data).some((key) => !Object.hasOwn(target, key))) {
+      if (Object.keys(data).some((key) =>
+        !Object.hasOwn(target, key) &&
+        !(collection === "vehicles" && key === "customerId"),
+      )) {
         throw actionError("AI предложил поля, которых нет в этой записи.");
       }
       if (collection === "notificationPreferences" && data.username && data.username !== username) {
         throw actionError("Можно менять только собственные настройки уведомлений.", 403);
       }
+      const vehicleOwner = collection === "vehicles"
+        ? requireAiVehicleCustomer(database, { ...target, ...data })
+        : null;
       proposal.data = data;
       const changedKeys = Object.keys(data);
+      const previewKeys = collection === "vehicles"
+        ? [...new Set([...changedKeys, "makeModel"])]
+        : changedKeys;
+      const after = previewRecord({ ...target, ...data }, previewKeys);
+      if (vehicleOwner) after.customerName = vehicleOwner.name || vehicleOwner.phone || "";
+      const before = previewRecord(target, previewKeys);
+      if (collection === "vehicles") {
+        const previousOwner = (Array.isArray(database?.customers) ? database.customers : [])
+          .find((customer) => String(customer?.id) === String(target.customerId || ""));
+        before.customerName = previousOwner?.name || "Не привязан";
+      }
       proposal.preview = {
-        before: previewRecord(target, changedKeys),
-        after: previewRecord({ ...target, ...data }, changedKeys),
+        before,
+        after,
       };
     } else {
       proposal.preview = { before: previewRecord(target) };
@@ -324,6 +434,11 @@ export function applyAiCrmAction({ username, role, database, token, now = Date.n
   }
   const records = Array.isArray(database?.[collection]) ? database[collection] : [];
   const existing = records.find((record) => String(record?.id) === proposal.recordId);
+  if (collection === "vehicles" && proposal.operation === "create") {
+    requireAiVehicleCustomer(database, proposal.data);
+  } else if (collection === "vehicles" && proposal.operation === "update" && existing) {
+    requireAiVehicleCustomer(database, { ...existing, ...proposal.data });
+  }
   let nextRecords;
   let alreadyApplied = false;
 
@@ -370,4 +485,37 @@ export function applyAiCrmAction({ username, role, database, token, now = Date.n
       recordId: proposal.recordId,
     },
   };
+}
+
+export function verifyAiCrmActionPersistence(expectedDatabase, persistedDatabase, proposal) {
+  const collection = proposal?.collection;
+  const operation = proposal?.operation;
+  const recordId = String(proposal?.recordId || "");
+  if (
+    !["create", "update", "delete"].includes(operation) ||
+    !DATABASE_COLLECTIONS.includes(collection) ||
+    !recordId
+  ) {
+    throw actionError("Не удалось проверить сохранённую CRM-запись.", 502);
+  }
+  const persistedRecords = Array.isArray(persistedDatabase?.[collection])
+    ? persistedDatabase[collection]
+    : [];
+  const persistedRecord = persistedRecords.find((record) => String(record?.id) === recordId);
+
+  if (operation === "delete") {
+    if (persistedRecord) {
+      throw actionError("CRM не подтвердила удаление записи после повторной проверки.", 502);
+    }
+    return true;
+  }
+
+  const expectedRecords = Array.isArray(expectedDatabase?.[collection])
+    ? expectedDatabase[collection]
+    : [];
+  const expectedRecord = expectedRecords.find((record) => String(record?.id) === recordId);
+  if (!expectedRecord || !persistedRecord || !isDeepStrictEqual(persistedRecord, expectedRecord)) {
+    throw actionError("CRM не подтвердила ожидаемые данные после сохранения. Обновите список и проверьте запись.", 502);
+  }
+  return true;
 }

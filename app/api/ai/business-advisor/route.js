@@ -38,8 +38,11 @@ import {
   getPendingAiCrmAction,
   isAiCrmActionCancellation,
   extractSingleUserPhone,
+  findUnlinkedAiCrmVehicles,
   getAiCrmActionSchema,
   looksLikeAiCrmMutationRequest,
+  resolveAiCrmVehicleCustomer,
+  verifyAiCrmActionPersistence,
 } from "../../../lib/ai-crm-actions.mjs";
 
 export const maxDuration = 60;
@@ -332,6 +335,7 @@ export async function POST(request) {
         database,
         token: proposalToken,
       });
+      let persistedDatabase = database;
       if (!result.alreadyApplied) {
         const now = new Date();
         const auditEntry = {
@@ -349,7 +353,9 @@ export async function POST(request) {
           logs: [auditEntry, ...(result.database.logs || [])],
         };
         await writeAiActionDatabase(request, username, role, database, databaseWithAudit);
+        persistedDatabase = await readDatabase(request);
       }
+      verifyAiCrmActionPersistence(result.database, persistedDatabase, result.proposal);
       return NextResponse.json({
         ok: true,
         alreadyApplied: result.alreadyApplied,
@@ -692,6 +698,11 @@ export async function POST(request) {
     const userProvidedCustomerPhone = extractSingleUserPhone(
       [...recentUserMessages, question].join("\n"),
     );
+    const vehicleCustomerReference = resolveAiCrmVehicleCustomer(
+      database,
+      question,
+      priorConversationMessages,
+    );
     const customerActionContext = activeCrmAction
       ? { request: redactSensitiveText(activeCrmAction.request, database.customers || []) }
       : null;
@@ -704,12 +715,15 @@ export async function POST(request) {
       verifiedEvidence: evidence,
       writableCollectionFields,
       userProvidedCustomerPhone: Boolean(userProvidedCustomerPhone),
+      vehicleCustomerReferenceAvailable: Boolean(vehicleCustomerReference.customerId),
+      vehicleCustomerReferenceAmbiguous: vehicleCustomerReference.ambiguous,
       instruction: [
         "The UI separately displays exact values computed by CRM. Do not invent business facts, identities, or causes.",
         "Understand the latest message in the context of recentQuestions and pendingCrmAction.",
         "If the user is answering a follow-up for a pending CRM action, continue it without requiring the user to repeat the original command.",
         "For a new customer, name is required and phone is optional. Never claim that a phone number is required. Ask only for required details that are actually missing.",
         "Phone numbers are redacted before Gemini receives them. If userProvidedCustomerPhone is true, the server will insert the exact user-provided phone into customer data; do not ask for it or invent one.",
+        "A new vehicle must belong to a real customer. If vehicleCustomerReferenceAvailable is true, the server will attach that exact customer. Otherwise ask which client owns the vehicle; never invent a customerId.",
         "If cancelledPendingAction is true, do not prepare or apply any CRM action; acknowledge the cancellation.",
         "For update/delete, require an exact record ID supplied by the user in the current or relevant recent messages; never infer or guess an ID.",
         "Prepare at most one structured proposal using only writableCollectionFields. Do not claim the change has been applied.",
@@ -732,6 +746,7 @@ export async function POST(request) {
           "Для фактов о CRM используй только verifiedEvidence; не выдумывай цифры и личности.",
           "Если пользователь ответил на уточнение по pendingCrmAction, продолжи эту операцию без требования повторить команду.",
           "При создании клиента обязательно только имя; телефон необязателен. Если имя известно, подготовь предложение без лишних вопросов.",
+          "Для нового автомобиля обязательно установить связь с существующим клиентом. Если vehicleCustomerReferenceAvailable=true, сервер установит связь; если нет — уточни клиента и не выдумывай customerId.",
           "Если пользователь явно отменил действие, ответь подтверждением отмены и верни operation none.",
           "Для новой или продолжающейся CRM-операции подготовь одно предложение в actionProposal и никогда не утверждай, что оно уже применено.",
           "Если обязательных данных не хватает, задай один короткий уточняющий вопрос и верни operation none.",
@@ -748,6 +763,39 @@ export async function POST(request) {
       if (!cancelledPendingAction && generated?.actionProposal?.operation !== "none") {
         try {
           let generatedAction = generated.actionProposal;
+          if (
+            generatedAction?.operation === "create" &&
+            generatedAction.collection === "vehicles"
+          ) {
+            const data = JSON.parse(generatedAction.dataJson);
+            if (!data || typeof data !== "object" || Array.isArray(data)) {
+              throw new Error("AI предложил некорректные поля автомобиля.");
+            }
+            if (vehicleCustomerReference.ambiguous) {
+              throw new Error("Нашлось несколько клиентов с таким именем. Уточните, кому добавить автомобиль.");
+            }
+            if (!vehicleCustomerReference.customerId) {
+              throw new Error("Уточните, какому клиенту добавить автомобиль.");
+            }
+            const unlinkedVehicles = findUnlinkedAiCrmVehicles(database, data.makeModel);
+            if (unlinkedVehicles.length > 1) {
+              throw new Error("Найдено несколько таких автомобилей без владельца. Уточните год, номер или VIN.");
+            }
+            generatedAction = unlinkedVehicles.length === 1
+              ? {
+                  operation: "update",
+                  collection: "vehicles",
+                  targetId: String(unlinkedVehicles[0].id),
+                  dataJson: JSON.stringify({ customerId: vehicleCustomerReference.customerId }),
+                }
+              : {
+                  ...generatedAction,
+                  dataJson: JSON.stringify({
+                    ...data,
+                    customerId: vehicleCustomerReference.customerId,
+                  }),
+                };
+          }
           if (
             userProvidedCustomerPhone &&
             ["create", "update"].includes(generatedAction?.operation) &&

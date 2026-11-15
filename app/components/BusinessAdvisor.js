@@ -287,11 +287,17 @@ export default function BusinessAdvisor({ db, mutate, navigate, openModal, role,
     if (!chatOnly || !chatPortalTarget) return undefined;
     const previousBodyOverflow = document.body.style.overflow;
     const previousRootOverflow = document.documentElement.style.overflow;
+    const previousBodyBackground = document.body.style.backgroundColor;
+    const previousRootBackground = document.documentElement.style.backgroundColor;
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
+    document.body.style.backgroundColor = "#09111e";
+    document.documentElement.style.backgroundColor = "#09111e";
     return () => {
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousRootOverflow;
+      document.body.style.backgroundColor = previousBodyBackground;
+      document.documentElement.style.backgroundColor = previousRootBackground;
     };
   }, [chatOnly, chatPortalTarget]);
 

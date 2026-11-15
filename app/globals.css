@@ -11567,7 +11567,7 @@ tbody tr:hover td {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
   width: 100%;
-  height: var(--advisor-visual-height, 100dvh);
+  height: calc(var(--advisor-visual-height, 100dvh) + env(safe-area-inset-bottom, 0px));
   min-height: 0;
   overflow: hidden;
   box-sizing: border-box;

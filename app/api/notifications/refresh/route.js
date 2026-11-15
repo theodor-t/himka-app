@@ -8,6 +8,7 @@ import {
   buildSystemNotifications,
   reconcileSmartNotifications,
 } from "../../../lib/notifications.mjs";
+import { persistNotifications } from "../../../lib/notification-persistence.mjs";
 import {
   getLocalPreviewDatabase,
   isLocalPreviewRequest,
@@ -59,27 +60,6 @@ async function readRemoteDatabase() {
     throw new Error(payload.error || `Google database read failed (${response.status})`);
   }
   return { database: normalizeDatabase(payload), url, apiKey };
-}
-
-async function persistRemoteNotifications(url, apiKey, notifications) {
-  url.searchParams.set("action", "mergeNotifications");
-  url.searchParams.set("key", apiKey);
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ notifications }),
-    redirect: "follow",
-  });
-  const text = await response.text();
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    throw new Error(`Google returned a non-JSON response (${response.status})`);
-  }
-  if (!response.ok || payload.error || Number(payload.status) >= 400) {
-    throw new Error(payload.error || `Google notification save failed (${response.status})`);
-  }
 }
 
 async function claimAiRequestSlot(url, apiKey) {
@@ -297,15 +277,25 @@ export async function POST(request) {
     const enriched = await enrichWithGemini(notifications, allowAiRequest);
     notifications = enriched.notifications;
 
+    let storageWarning = "";
     if (localPreview) {
       database = setLocalPreviewDatabase({ ...database, notifications });
     } else {
-      await persistRemoteNotifications(remote.url, remote.apiKey, notifications);
+      const persistence = await persistNotifications({
+        url: remote.url,
+        apiKey: remote.apiKey,
+        notifications,
+        database,
+      });
+      if (persistence.compatibilityFallback) {
+        storageWarning = "Уведомления сохранены, но Google Apps Script использует старый режим сохранения. Обновите Code.gs для безопасного объединения изменений.";
+      }
     }
     return NextResponse.json({
       ok: true,
       activeCount: notifications.filter((item) => item.smart && item.status === "active").length,
       aiWarning: limitWarning || enriched.warning,
+      storageWarning,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return jsonError(error instanceof Error ? error.message : "Notification refresh failed", 500);

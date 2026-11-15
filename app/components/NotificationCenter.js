@@ -142,7 +142,9 @@ export default function NotificationCenter({
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Не удалось обновить уведомления");
-      if (result.aiWarning) setError(result.aiWarning);
+      if (result.storageWarning || result.aiWarning) {
+        setError([result.storageWarning, result.aiWarning].filter(Boolean).join(" "));
+      }
       await reload();
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Ошибка обновления уведомлений");
